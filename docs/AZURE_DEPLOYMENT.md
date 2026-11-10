@@ -198,8 +198,15 @@ replacing the artifact or automatically repeating an uncertain deployment.
 
 The public ARM OneDeploy schema does not specify the response body. This helper
 supports only an explicit returned deployment ID and polling that same ID until
-`complete=true` and numeric `status=4`; unknown response shapes fail closed. Live
-response compatibility, package-pull reachability, scoped role assignments and
+`complete=true` and numeric `status=4`. Read-only live inspection confirmed GET
+may return `{value:[{id,location,name,properties,type},...]}` with the operation's
+UUID, status and completion flag inside `properties`. The helper selects only
+the exact ID accepted by PUT, never the first, latest or active historical entry.
+An absent ID waits only within the existing bounded polling deadline; duplicate
+matching IDs or malformed entries fail closed. Direct single-record GET responses
+remain supported. **The PUT response profile is not yet verified live**: it must
+supply an explicit deployment ID or the helper fails without guessing from history.
+Unknown response shapes fail closed. Live PUT compatibility, package-pull reachability, scoped role assignments and
 SAS generation must be verified before enabling the repository switch. A failed
 post-submission check does not prove that deployment did not occur.
 

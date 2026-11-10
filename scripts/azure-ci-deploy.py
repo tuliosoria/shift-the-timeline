@@ -195,6 +195,29 @@ def deployment_record(response):
     return record
 
 
+def polled_deployment(response, accepted_id):
+    # Verified ARM GET wraps history in value:[{...,properties:{id,...}}].
+    # Eventual listing propagation may temporarily omit the accepted operation.
+    if isinstance(response, dict) and 'value' in response:
+        entries = response['value']
+        if not isinstance(entries, list) or len(entries) > 1000:
+            fail()
+        matches = []
+        for entry in entries:
+            if not isinstance(entry, dict) or not isinstance(entry.get('properties'), dict):
+                fail()
+            record = deployment_record(entry)
+            if record['id'] == accepted_id:
+                matches.append(record)
+        if len(matches) > 1:
+            fail()
+        return matches[0] if matches else None
+    record = deployment_record(response)
+    if record['id'] != accepted_id:
+        fail()
+    return record
+
+
 def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request,
            now=lambda: dt.datetime.now(dt.timezone.utc), sleep=time.sleep, clock=time.monotonic,
            release_http=release_request):
@@ -227,9 +250,10 @@ def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request
         for _ in range(120):
             if clock() >= deadline:
                 fail()
-            record = deployment_record(http('GET', token))
-            if record['id'] != ident:
-                fail()
+            record = polled_deployment(http('GET', token), ident)
+            if record is None:
+                sleep(5)
+                continue
             status, complete = record.get('status'), record.get('complete')
             if type(status) is not int or type(complete) is not bool:
                 fail()

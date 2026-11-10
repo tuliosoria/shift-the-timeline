@@ -148,6 +148,34 @@ class DeployTests(unittest.TestCase):
             m.deploy(self.path, self.commit, self.digest, cli=self.cli, http=broken, now=lambda: self.now)
         self.assertNotIn(self.secret, str(caught.exception))
 
+    def test_history_list_selects_only_exact_accepted_id_pending_then_success(self):
+        history = [{'id': 'arm-resource-' + str(i), 'properties': {
+            'id': 'historical-' + str(i), 'status': 4, 'complete': True, 'active': True}}
+            for i in range(3)]
+        self.polls = [
+            {'value': history},  # Accepted operation has not propagated yet.
+            {'value': history + [{'properties': {'id': 'deploy-1', 'status': 1, 'complete': False}}]},
+            {'value': [{'properties': {'id': 'deploy-1', 'status': 4, 'complete': True}}] + history}
+        ]
+        self.assertEqual(self.deploy()['status'], 'deployment_complete')
+        self.assertEqual(len(self.http_calls), 4)
+
+    def test_wrong_id_history_never_counts_as_success(self):
+        self.polls = [{'value': [{'properties': {'id': 'old', 'status': 4, 'complete': True}}]}]
+        times = iter([0, 1, 601])
+        with self.assertRaises(m.DeploymentError):
+            self.deploy(clock=lambda: next(times))
+        self.assertEqual(len(self.http_calls), 2)
+
+    def test_history_malformed_and_duplicate_matches_fail_closed(self):
+        good = {'properties': {'id': 'deploy-1', 'status': 4, 'complete': True}}
+        for response in [{'value': {}}, {'value': [None]}, {'value': [{'id': 'deploy-1'}]},
+                         {'value': [{'properties': {'id': 'https://unexpected'}}]},
+                         {'value': [good, good]}]:
+            with self.assertRaises(m.DeploymentError):
+                m.polled_deployment(response, 'deploy-1')
+        self.assertIsNone(m.polled_deployment({'value': []}, 'deploy-1'))
+
     def test_release_verification_requires_exact_live_revision(self):
         responses = iter([{'commit': 'b' * 40}, {'commit': self.commit}])
         m.verify_release(self.commit, fetch=lambda: next(responses), sleep=lambda _: None)
