@@ -5,14 +5,13 @@ import {readAzureConfig} from './azure/config.mjs';
 import {createAzureRuntime} from './azure/runtime.mjs';
 import {createServer} from './http.mjs';
 import {startupStep,reportStartupFailure} from './azure/diagnostics.mjs';
+import {createManagedIdentityPool} from './azure/database.mjs';
 
 let pool,server,runtime;
 try {
  const config=await startupStep('config',()=>readAzureConfig(process.env));
  const credential=await startupStep('identity',()=>new ManagedIdentityCredential());
- pool=new Pool({host:config.host,port:5432,database:config.database,user:config.user,
-  password:()=>startupStep('token',async()=>{const token=await credential.getToken('https://ossrdbms-aad.database.windows.net/.default');if(!token?.token)throw Object.assign(new Error('Database identity unavailable.'),{code:'SHIFT_TOKEN_MISSING'});return token.token;}),
-  ssl:{rejectUnauthorized:true},max:5,connectionTimeoutMillis:10000,idleTimeoutMillis:30000,statement_timeout:10000});
+ pool=await startupStep('database',()=>createManagedIdentityPool({Pool,credential,config}));
  pool.on('error',()=>console.error('Database connection unavailable.'));
  runtime=await startupStep('runtime',()=>createAzureRuntime({store:new PostgresStore({pool})}));
  await startupStep('server',async()=>{
