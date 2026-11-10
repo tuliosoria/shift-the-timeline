@@ -39,7 +39,7 @@ npm audit
 npm run package
 ```
 
-O pacote é criado do zero e contém somente assets públicos, bundle Lambda e avisos de terceiros. Saídas anteriores ficam em `dist.previous-*`, fora do diretório a publicar. Nunca publique essas pastas.
+O pacote é criado do zero e contém assets públicos, quatro bundles Lambda separados (API, worker, relay e reconciliador) e avisos de terceiros. Saídas anteriores ficam em `dist.previous-*`, fora do diretório a publicar. Nunca publique essas pastas.
 
 Testes locais não substituem integração com DynamoDB/Lambda reais, DNS/TLS, QA de navegador ou playtest.
 
@@ -49,7 +49,7 @@ Testes locais não substituem integração com DynamoDB/Lambda reais, DNS/TLS, Q
 - `server/persistent-game.mjs`: transações e idempotência.
 - `server/storage/`: adaptadores de memória e DynamoDB.
 - `server/api.mjs`, `server/sessions.mjs`: HTTP, origem, cookies e autorização.
-- `server/ai/`: jobs/orçamento/entrega duráveis e provedor restrito, não ativados no runtime.
+- `server/ai/`: jobs/orçamento/entrega duráveis, runtimes separados e provedor restrito. Todos os gatilhos e flags de IA permanecem desligados no template.
 - `public/`: cliente do navegador, sem solução do caso.
 - `infra/template.json`: SAM/CloudFormation, sem aplicação automática.
 - `tests/fixtures/`: conteúdo sintético público.

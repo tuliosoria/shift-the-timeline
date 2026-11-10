@@ -4,13 +4,16 @@ export function includePath(path){const parts=path.split('/');if(parts.some(p=>p
 export async function packageApp(root=process.cwd()){
  root=resolve(root);const output=resolve(root,'dist'),stage=await mkdtemp(resolve(root,'.shift-build-'));
  try{
-  const result=await build({absWorkingDir:root,entryPoints:['server/lambda.mjs'],outfile:resolve(stage,'api/server/lambda.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',metafile:true,sourcemap:false,legalComments:'inline',banner:{js:"import {createRequire as __shiftCreateRequire} from 'node:module';const require=__shiftCreateRequire(import.meta.url);"}});
+  const expected=[];
+  for(const [target,entry] of Object.entries({api:'server/lambda.mjs',worker:'server/ai/worker-lambda.mjs',relay:'server/ai/relay-lambda.mjs',reconciler:'server/ai/reconciler-lambda.mjs'})){
+  const result=await build({absWorkingDir:root,entryPoints:[entry],outfile:resolve(stage,target,entry),bundle:true,minify:true,platform:'node',target:'node22',format:'esm',metafile:true,sourcemap:false,legalComments:'inline',banner:{js:"import {createRequire as __shiftCreateRequire} from 'node:module';const require=__shiftCreateRequire(import.meta.url);"}});
   for(const input of Object.keys(result.metafile.inputs))if(!includePath(input))throw new Error(`Non-allowlisted bundle input: ${input}`);
-  await writeFile(resolve(stage,'api/package.json'),'{"type":"module","engines":{"node":">=22"}}\n');
+  await writeFile(resolve(stage,target,'package.json'),'{"type":"module","engines":{"node":">=22"}}\n');
   const packages=new Set();for(const input of Object.keys(result.metafile.inputs)){const parts=input.split('/');const i=parts.lastIndexOf('node_modules');if(i>=0)packages.add(parts.slice(0,i+1+(parts[i+1]?.startsWith('@')?2:1)).join('/'));}
   let notices='Third-party dependency notices for this bundled artifact.\n';for(const pkg of [...packages].sort()){const metadata=JSON.parse(await readFile(resolve(root,pkg,'package.json'),'utf8'));notices+=`\n## ${metadata.name} ${metadata.version??''} (${metadata.license??'see notices'})\n`;let found=false;for(const name of ['LICENSE','LICENSE.txt','LICENSE.md','NOTICE','NOTICE.txt']){try{notices+=`\n${await readFile(resolve(root,pkg,name),'utf8')}\n`;found=true;}catch(e){if(e.code!=='ENOENT')throw e;}}if(!found&&['@aws-sdk/credential-provider-http','@aws-sdk/credential-provider-login','@aws-sdk/nested-clients'].includes(metadata.name)&&metadata.license==='Apache-2.0'&&metadata.repository?.url==='https://github.com/aws/aws-sdk-js-v3.git'){notices+='\nApache-2.0 license text from the same upstream SDK package collection:\n'+await readFile(resolve(root,'node_modules/@aws-sdk/core/LICENSE'),'utf8');found=true;}if(!found)throw new Error(`Dependency license notice missing: ${pkg}`);}
-  await writeFile(resolve(stage,'api/THIRD_PARTY_LICENSES.txt'),notices);
-  const expected=['api/server/lambda.mjs','api/package.json','api/THIRD_PARTY_LICENSES.txt'];
+  await writeFile(resolve(stage,target,'THIRD_PARTY_LICENSES.txt'),notices);
+  expected.push(`${target}/${entry}`,`${target}/package.json`,`${target}/THIRD_PARTY_LICENSES.txt`);
+  }
   for(const name of ['index.html','app.js','style.css']){await mkdir(resolve(stage,'web'),{recursive:true});await copyFile(resolve(root,'public',name),resolve(stage,'web',name));expected.push('web/'+name);}
   const actual=[];async function walk(dir){for(const file of await readdir(dir,{withFileTypes:true})){const path=resolve(dir,file.name);if(file.isSymbolicLink())throw new Error('Symlink in output');if(file.isDirectory())await walk(path);else actual.push(relative(stage,path));}}await walk(stage);
   if(JSON.stringify(actual.sort())!==JSON.stringify(expected.sort()))throw new Error('Package file list differs from allowlist');

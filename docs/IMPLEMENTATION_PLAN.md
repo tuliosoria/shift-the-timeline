@@ -22,7 +22,8 @@
 - [x] Reserva de orçamento e job/outbox na mesma transação de pergunta, com integração opcional testada.
 - [x] Leases/fencing, relay e reconciliação persistentes em código, com dependências injetadas.
 - [x] Índice de pendências, stream somente de chaves e filas/DLQ opcionais no template.
-- [ ] Runtime worker/relay/reconciliador implantável, políticas IAM e gatilhos revisados e desativados por padrão.
+- [x] Runtimes worker/relay/reconciliador, pacotes separados, políticas IAM declarativas e gatilhos desativados.
+- [ ] Validação real desses runtimes e políticas em homologação autorizada.
 - [x] Testes simulados de concorrência de orçamento, mudança de período, entrega duplicada e resultado incerto.
 - [x] Projeção privada e renderização da narração opcional separada da evidência canônica.
 - [ ] QA de navegador e aviso/consentimento de dados antes de ativar envio externo.

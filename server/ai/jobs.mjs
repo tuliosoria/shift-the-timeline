@@ -12,7 +12,8 @@ function current(room,job,now){const t=target(room,job,now);return t&&room.phase
 
 // Only explicitly injected by tests/development. Production runtime does not enable this repository.
 export class AiJobs {
- constructor({store,policy,now=Date.now}){
+ constructor({store,policy,now=Date.now,maintenance=false}){
+  if(maintenance&&policy===undefined){if(!store)throw new Error('Store required');this.store=store;this.now=now;this.policy=null;this.reserve=null;return;}
   if(!store||!policy||typeof policy.model!=='string'||!policy.model||policy.model.length>100)throw new Error('Explicit AI policy required');
   this.policy={...PROPOSED_LIMITS,...policy};
   for(const key of ['roomMicroUsd','dayMicroUsd','monthMicroUsd','maxConcurrent'])if(!Number.isSafeInteger(this.policy[key])||this.policy[key]<1||this.policy[key]>PROPOSED_LIMITS[key])throw new Error('Invalid proposed AI limit');
@@ -20,6 +21,7 @@ export class AiJobs {
   this.reserve=reserveCost(this.policy);this.store=store;this.now=now;
  }
  async prepareQuestion({room,player,receiptKey,caseData}){
+  if(!this.policy)throw new Error('Maintenance repository cannot admit questions');
   const interview=player.interviews.find(i=>i.round===room.round),message=interview.messages.at(-1),now=this.now(),date=new Date(now),day=date.toISOString().slice(0,10),month=day.slice(0,7);
   const scopes=[{key:`AIBUDGET#ROOM#${room.code}`,max:this.policy.roomMicroUsd,expiresAt:room.createdAt+8*DAY},{key:`AIBUDGET#DAY#${day}`,max:this.policy.dayMicroUsd,expiresAt:Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()+8)},{key:`AIBUDGET#MONTH#${month}`,max:this.policy.monthMicroUsd,expiresAt:Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,8)}];
   let balances,guards;try{[balances,guards]=await Promise.all([Promise.all(scopes.map(s=>this.store.getAi(s.key))),Promise.all(scopes.map(s=>this.store.getAi(guardKey(s.key))))]);for(let i=0;i<scopes.length;i++){if(!!balances[i]!==!!guards[i])throw new Error('AI budget initialization mismatch');if(balances[i]){validBudget(balances[i]);validGuard(guards[i],scopes[i].key);}}}catch{message.narration={status:'fallback'};return [];}
@@ -31,25 +33,36 @@ export class AiJobs {
  }
  async dispatch(id,send){
   const key=`AIOUTBOX#${id}`,outbox=await this.store.getAi(key);if(!outbox||outbox.status!=='pending')return {status:'not_pending'};
-  const job=await this.store.getAi(jobKey(id));if(job&&job.deadline<=this.now())return this.fallback(job,'deadline');
-  if(job&&!FINAL.has(job.status))await send({jobId:id});
-  return this.retry(async()=>{const fresh=await this.store.getAi(key);if(!fresh||fresh.status!=='pending')return {status:'not_pending'};await this.store.commitAi({writes:[write(key,fresh,{status:job&&!FINAL.has(job.status)?'sent':'done',dueAt:undefined})]});return {status:'sent'};});
+  const expired=outbox.deadline<=this.now();if(!expired)await send({jobId:id});
+  return this.retry(async()=>{const fresh=await this.store.getAi(key);if(!fresh||fresh.status!=='pending')return {status:'not_pending'};await this.store.commitAi({writes:[write(key,fresh,{status:expired?'done':'sent',dueAt:undefined})]});return {status:expired?'expired':'sent'};});
  }
- async reconcile({send,limit=25,cursor}={}){
-  const page=await this.store.listAiDue(this.now(),limit,cursor);let failed=0,deferFailures=0;
-  for(const key of page.keys)try{const record=await this.store.getAi(key);if(!record||!Number.isSafeInteger(record.dueAt)||record.dueAt>this.now())continue;
-   if(record.kind==='job'&&!FINAL.has(record.status)&&record.deadline<=this.now())await this.fallback(record,'deadline');
-   else if(record.kind==='outbox'&&record.status==='pending')await this.dispatch(record.jobId,send);
-  }catch{failed++;try{await this.retry(async()=>{const fresh=await this.store.getAi(key);if(fresh&&Number.isSafeInteger(fresh.dueAt)&&fresh.dueAt<=this.now())await this.store.commitAi({writes:[write(key,fresh,{dueAt:this.now()+60000,lastRecoveryFailureAt:this.now()})]});});}catch{deferFailures++;}}
-  return {examined:page.keys.length,failed,deferFailures,cursor:page.cursor};
+ async reconcile({send,limit=25,cursor,shouldContinue=()=>true}={}){
+  const page=await this.store.listAiDue(this.now(),limit,cursor);let failed=0,deferFailures=0,examined=0,lastCursor=cursor??null;
+  const deadline=error=>!shouldContinue()||['AiWorkDeadline','AbortError','TimeoutError'].includes(error?.name);
+  const stopped=()=>({examined,failed,deferFailures,cursor:lastCursor,stopped:true});
+  for(let i=0;i<page.keys.length;i++){
+   if(!shouldContinue())return stopped();const key=page.keys[i];
+   try{const record=await this.store.getAi(key);
+    if(record&&Number.isSafeInteger(record.dueAt)&&record.dueAt<=this.now()){
+     if(record.kind==='job'&&!FINAL.has(record.status)&&record.deadline<=this.now())await this.fallback(record,'deadline');
+     else if(record.kind==='outbox'&&record.status==='pending')await this.dispatch(record.jobId,send);
+    }
+   }catch(error){if(deadline(error))return stopped();failed++;
+    try{await this.retry(async()=>{const fresh=await this.store.getAi(key);if(fresh&&Number.isSafeInteger(fresh.dueAt)&&fresh.dueAt<=this.now())await this.store.commitAi({writes:[write(key,fresh,{dueAt:this.now()+60000,lastRecoveryFailureAt:this.now()})]});});}
+    catch(deferError){deferFailures++;if(deadline(deferError))return stopped();}
+   }
+   examined++;lastCursor=page.items?.[i]?.cursor??lastCursor;
+  }
+  return {examined,failed,deferFailures,cursor:page.cursor,stopped:false};
  }
  async retry(run){for(let i=0;i<8;i++)try{return await run();}catch(e){if(!(e instanceof ConflictError))throw e;}throw new ConflictError();}
  async claim(id){return this.retry(async()=>{
   const job=await this.store.getAi(jobKey(id)),now=this.now();if(!job||FINAL.has(job.status)||job.status==='provider_started'||job.status==='leased'&&job.leaseUntil>now)return null;
   const w=write(jobKey(id),job,{status:'leased',fence:randomUUID(),leaseUntil:now+5000});await this.store.commitAi({writes:[w]});return w.value;
  });}
- async markProviderStarted(claim){return this.retry(async()=>{
+ async markProviderStarted(claim){if(!this.policy)return false;return this.retry(async()=>{
   const job=await this.store.getAi(jobKey(claim.id));if(!job||job.status!=='leased'||job.fence!==claim.fence||job.leaseUntil<=this.now()||job.deadline<=this.now())return false;
+  if(job.model!==this.policy.model||job.rates?.inputRate!==this.policy.inputRate||job.rates?.outputRate!==this.policy.outputRate||job.reservedMicroUsd!==this.reserve)return false;
   const room=await this.store.getRoom(job.code);if(!current(room,job,this.now()))return false;
   const budgetChecks=[];for(const key of job.budgetKeys){const balance=validBudget(await this.store.getAi(key)),guard=validGuard(await this.store.getAi(guardKey(key)),key);if(balance.usedMicroUsd<job.reservedMicroUsd)throw new Error('AI budget invariant violated');budgetChecks.push({key,expectedVersion:balance.version},{key:guardKey(key),expectedVersion:guard.version});}
   const slots=await this.store.getAi('AISLOTS#GLOBAL'),now=this.now();if(job.leaseUntil<=now||job.deadline<=now)return false;
@@ -70,7 +83,7 @@ export class AiJobs {
   if(result.actualMicroUsd>job.reservedMicroUsd)throw new Error('Provider cost exceeds reservation');
   const uncertain=started&&!completed||!!result.costUncertain;
   const charge=completed?result.actualMicroUsd:uncertain?job.reservedMicroUsd:0,refund=job.reservedMicroUsd-charge;
-  const balances=await Promise.all(job.budgetKeys.map(k=>this.store.getAi(k)));for(const key of job.budgetKeys)validGuard(await this.store.getAi(guardKey(key)),key);for(const b of balances){validBudget(b);if(b.usedMicroUsd<job.reservedMicroUsd)throw new Error('AI budget invariant violated');}
+  const balances=[];for(const key of job.budgetKeys)balances.push(await this.store.getAi(key));for(const key of job.budgetKeys)validGuard(await this.store.getAi(guardKey(key)),key);for(const b of balances){validBudget(b);if(b.usedMicroUsd<job.reservedMicroUsd)throw new Error('AI budget invariant violated');}
   const writes=job.budgetKeys.map((k,i)=>write(k,balances[i],{usedMicroUsd:balances[i].usedMicroUsd-refund}));
   const finished={status:completed?'complete':'fallback',settledMicroUsd:charge,costUncertain:uncertain,finishedAt:now,reason:completed?null:result.reason??'stale_or_late',dueAt:undefined};
   writes.push(write(jobKey(job.id),job,finished));

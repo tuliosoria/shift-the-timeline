@@ -1,6 +1,6 @@
 # Orquestração de IA: código testado, execução externa desligada
 
-O runtime HTTP/Lambda continua somente canônico. Nenhum parâmetro do template o transforma em consumidor GPT. A integração opcional é exercitada por testes com provedor falso e armazenamento em memória; o adaptador DynamoDB tem testes de contrato, não testes na AWS real.
+O runtime HTTP/Lambda continua somente canônico. O template mantém flags dos runtimes e gatilhos desativados. ProvisionAiWorkers descreve funções desligadas, sem transformar a API em produtora de jobs GPT. A integração opcional é exercitada por testes com provedor falso e armazenamento em memória; o adaptador DynamoDB tem testes de contrato, não testes na AWS real.
 
 ## Pergunta e orçamento
 
@@ -30,7 +30,7 @@ A fila transporta apenas jobId. Pergunta, persona, evidência e sessão não vã
 
 O marcador sent é gravado depois da confirmação de envio. Uma confirmação perdida pode gerar nova entrega da mesma ID. O consumidor verifica o estado persistido e não repete uma chamada marcada como iniciada. Duplicatas não consomem nova pergunta nem nova reserva.
 
-O índice esparso AiDueIndex permite consultar pendências por prazo, com limite e cursor, sem scan da tabela. A reconciliação finaliza jobs vencidos mesmo sem navegador conectado e reprograma tentativas de envio que falharam. Uma falha individual de liquidação recebe adiamento de 60 segundos, sem liberar saldo desconhecido, e não interrompe os itens seguintes. O resultado informa failed, deferFailures e cursor para o futuro executor acompanhar erros e continuar páginas limitadas. Ela precisa ser ligada a um mecanismo operacional aprovado; o template ainda não cria esse schedule.
+O índice esparso AiDueIndex permite consultar pendências por prazo, com limite e cursor, sem scan da tabela. A reconciliação finaliza jobs vencidos mesmo sem navegador conectado e reprograma tentativas de envio que falharam. Uma falha individual de liquidação recebe adiamento de 60 segundos, sem liberar saldo desconhecido, e não interrompe os itens seguintes. O resultado informa failed, deferFailures e cursor para o futuro executor acompanhar erros e continuar páginas limitadas. O runtime de reconciliação percorre até quatro páginas de 25 registros por invocação, persiste cursor com controle de versão e interrompe o trabalho com uma margem de cinco segundos para tentar salvar o progresso. O prazo é conferido entre itens e operações; chamadas SDK recebem sinal de cancelamento. Só itens concluídos avançam o cursor, inclusive quando a interrupção ocorre dentro da página. Checkpoint disputado ou falha de rede pode exigir reprocessamento idempotente na próxima invocação. O template descreve um schedule de cinco minutos, desativado. A ativação depende de revisão operacional aprovada.
 
 ## Privacidade e limites de qualidade
 
@@ -42,8 +42,18 @@ Schema e limites de tamanho não provam consistência narrativa nem eliminam alu
 
 1. Aprovar com o dono da credencial projeto, modelo/versionamento, tarifas, limites e política de dados.
 2. Aviso/consentimento dos jogadores para o envio externo, pedindo codinomes e ausência de dados pessoais.
-3. Runtime separado para worker, relay e reconciliação, políticas IAM mínimas, fila/DLQ, gatilhos e alarmes revisados. O worker precisará das ações condicionais DynamoDB, incluindo ConditionCheckItem; o reconciliador precisará Query somente no índice e os acessos de atualização necessários. Essas permissões ainda não foram concedidas.
+3. Validar em homologação os runtimes e políticas declarados. O worker usa ações condicionais DynamoDB, incluindo ConditionCheckItem; relay lê/escreve somente outbox e recebe chaves do stream; reconciliador usa o índice e os registros necessários à liquidação. Somente o worker pode receber permissão condicional para o ARN GPT exato. Nenhuma dessas permissões foi aplicada. Configurar alarmes e revisar ativação separadamente.
 4. Testes reais DynamoDB/SQS/Lambda, capacidade regional, recuperação e avaliação narrativa.
 5. Configuração segura da credencial e teste pago limitado, com autorização específica.
 
 Não há chave, criação de segredo, aumento de quota, deploy ou chamada real de IA neste desenvolvimento.
+
+## Runtimes e permissões declaradas
+
+Cada função tem pacote, papel de execução e grupo de logs próprios. Worker, relay e reconciliador checam seu flag antes de criar qualquer dependência. Worker exige política completa e ARN explícito, valida a origem SQS e busca a credencial somente ao preparar uma chamada admitida. Uma política de modelo/preço diferente da gravada no job provoca fallback antes da leitura da credencial.
+
+Relay e reconciliador não exigem configuração de modelo nem de segredo. Usam modo de manutenção que não pode admitir perguntas ou iniciar o provedor. Relay apenas envia/acknowledga o outbox; se ele vencer, fecha o outbox e deixa a liquidação financeira para o reconciliador. Portanto, um atraso na recuperação pode manter reserva por mais tempo.
+
+IAM é delimitado por tabela/índice/stream/fila e prefixos das partições. Os papéis novos não têm acesso ao bucket do caso, sessões ou credencial de origem. O worker pode receber GetSecretValue somente no ARN configurado; ARN vazio não concede essa permissão e uma regra do template recusa o mesmo ARN para GPT e origem da API. Segredo com chave KMS própria exigirá revisão específica, sem concessão genérica de decrypt.
+
+Os runtimes não imprimem eventos, prompts, conteúdo de segredo ou mensagens originais de erros. Falhas de inicialização são genéricas e uma invocação posterior pode tentar inicializar novamente. Isso não equivale a observabilidade completa: alarmes, métricas operacionais e resposta à DLQ precisam ser combinados antes da ativação.

@@ -21,7 +21,8 @@ export class DynamoStore {
   TransactItems.push(...aiWrites.map(w=>aiPut(this.tableName,w)));
   try{await this.client.send(new TransactWriteCommand({TransactItems}));}catch(e){if(e.name==='TransactionCanceledException'&&e.CancellationReasons?.some(r=>r.Code==='ConditionalCheckFailed'))throw new ConflictError();throw e;}
  }
- async listAiDue(now,limit=25,cursor){if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new Error('Invalid reconciliation limit');const r=await this.client.send(new QueryCommand({TableName:this.tableName,IndexName:'AiDueIndex',KeyConditionExpression:'aiDuePk = :pk AND aiDueSk <= :now',ExpressionAttributeValues:{':pk':'AI#DUE',':now':`${String(now).padStart(16,'0')}#~`},Limit:limit,...(cursor?{ExclusiveStartKey:cursor}:{})}));return {keys:(r.Items??[]).map(x=>x.pk),cursor:r.LastEvaluatedKey??null};}
+ withAbortSignal(signal){return new DynamoStore({tableName:this.tableName,client:{send:command=>this.client.send(command,{abortSignal:signal})}});}
+ async listAiDue(now,limit=25,cursor){if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new Error('Invalid reconciliation limit');const r=await this.client.send(new QueryCommand({TableName:this.tableName,IndexName:'AiDueIndex',KeyConditionExpression:'aiDuePk = :pk AND aiDueSk <= :now',ExpressionAttributeValues:{':pk':'AI#DUE',':now':`${String(now).padStart(16,'0')}#~`},Limit:limit,...(cursor?{ExclusiveStartKey:cursor}:{})}));return {keys:(r.Items??[]).map(x=>x.pk),items:(r.Items??[]).map(x=>({key:x.pk,cursor:{pk:x.pk,sk:x.sk,aiDuePk:x.aiDuePk,aiDueSk:x.aiDueSk}})),cursor:r.LastEvaluatedKey??null};}
  async getAi(id){return (await this.getItem(id,'AI'))?.data??null;}
  async commitAi({writes,checks=[],room,roomCode,expectedRoomVersion}){
   const condition={ConditionExpression:'#version = :expected',ExpressionAttributeNames:{'#version':'version'},ExpressionAttributeValues:{':expected':expectedRoomVersion}};

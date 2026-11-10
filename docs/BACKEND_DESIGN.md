@@ -38,7 +38,7 @@ A verdade e a evidência são canônicas. GPT poderá acrescentar voz ao suspeit
 
 A camada opcional agora reserva orçamento por sala/dia/mês e grava job/outbox na mesma transação da pergunta. Leases, fencing e marca de início do provedor impedem repetir uma chamada cujo resultado ficou incerto. Relay e reconciliação usam dados persistidos e índice de pendências. A interface separa narração privada de evidência canônica, que fica pronta imediatamente e é a única enviada ao quadro.
 
-Essa camada é testada por injeção com provedor falso. O runtime publicado não a instancia; nenhum worker, relay ou reconciliador ativo é implantado. Nenhuma variável de ambiente deste corte ativa chamadas GPT no jogo. Veja [estados e limites](AI_ORCHESTRATION.md).
+Essa camada é testada por injeção com provedor falso. A API publicada não a instancia. Worker, relay e reconciliador agora têm runtimes separados e políticas declarativas, mas mapeamentos, schedule e flags permanecem desligados. A API continua sem produzir jobs GPT; ativação exige uma mudança revisada, incluindo aviso de dados aos jogadores. Veja [estados e limites](AI_ORCHESTRATION.md).
 
 A integração futura exige projeto/modelo aprovado pelo dono da credencial, chave restrita em armazenamento seguro e limites de custo. Modelo não será escolhido pelo browser. Não se promete retenção zero: configuração `store:false` não elimina necessariamente logs de abuso do provedor.
 

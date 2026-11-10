@@ -22,7 +22,7 @@ npm run package
 cfn-lint infra/template.json
 ```
 
-A versão de cfn-lint usada no CI é 1.60.0. O diretório publicável é somente `dist/web`. O artefato Lambda é somente `dist/api`. Compare todos os arquivos com `dist/manifest.json`. Não publique `dist.previous-*`, pasta privada, testes ou diretório de trabalho.
+A versão de cfn-lint usada no CI é 1.60.0. O diretório publicável é somente `dist/web`. Os artefatos Lambda são `dist/api`, `dist/worker`, `dist/relay` e `dist/reconciler`, cada qual para a função correspondente. Compare todos os arquivos com `dist/manifest.json`. Não publique `dist.previous-*`, pasta privada, testes ou diretório de trabalho.
 
 `ReleaseId` deve identificar o commit/release verificado. Assets vão para `releases/<ReleaseId>/` no bucket de assets. O caso JSON vai para a chave privada indicada por `CaseKey` no bucket de casos; comparar seu hash com `CaseSha256` antes de habilitar novas salas.
 
@@ -35,7 +35,9 @@ A versão de cfn-lint usada no CI é 1.60.0. O diretório publicável é somente
 - Habilitar novas salas somente para a homologação combinada e medir contenção/custos.
 - Rodar partida completa com 3 e 4 contextos reais, privacidade, erro/retry, reinício, expiração e rollback.
 
-O índice AiDueIndex e o stream KEYS_ONLY preparam o armazenamento para IA. ProvisionAiQueue começa false e somente descreve filas/DLQ opcionais: não cria workers, event source mappings, schedule, permissões para GPT nem habilita o runtime. A criação futura de papéis, segredos, gatilhos e alarmes exige revisão separada.
+O índice AiDueIndex e o stream KEYS_ONLY preparam o armazenamento para IA. ProvisionAiQueue e ProvisionAiWorkers começam false; workers exigem filas. Se provisionados futuramente, os três runtimes ainda terão flags false, mapeamentos Enabled=false e schedule DISABLED. AiSecretArn começa vazio e não concede leitura GPT; preencher um ARN em um change set futuro concede acesso somente ao papel do worker e exige autorização específica. AiPolicyJson é configuração de modelo/tarifas/limites, nunca uma chave.
+
+A API continua canônica e não produz jobs. Não altere flags ou gatilhos para tentar ativar IA sem concluir aviso/consentimento, aprovação do dono da credencial, integração da admissão e homologação. Não há passo automático que aplique IAM ou habilite execução.
 
 Não existe uma implantação validada nem URL jogável prometida por este PR. O template pode precisar de ajustes depois da validação real. O GPT permanece desconectado; não basta fornecer uma chave para habilitá-lo.
 
@@ -46,3 +48,11 @@ Pause novas salas. Retorne código e assets à versão anterior compatível por 
 Não troque o caso de salas existentes. O runtime aceita uma versão de caso por processo e retorna indisponibilidade quando a sala tem outra versão; aguarde expiração das salas antes da troca, ou implemente carregador multiversão antes de fazer atualização sem interrupção.
 
 Restauração de backup precisa ser testada em tabela separada. Não reativar sessões revogadas ou dados expirados. Exclusão definitiva exige decisão explícita, não faz parte do rollback.
+
+## Verificação dos runtimes desligados
+
+O build produz 15 arquivos verificados no manifesto, distribuídos nos quatro pacotes de função e nos assets. Testes importam os handlers e verificam que worker/relay/reconciliador desligados não criam clientes nem acessam dados.
+
+A visibilidade SQS proposta é 180 segundos para worker de 30 segundos, batch size 1 e MaximumConcurrency 2. Isso não reserva capacidade Lambda nem isola os outros projetos. O relay usa stream com filtro de inserções de outbox; falhas esgotadas vão à DLQ própria. O schedule permanece desligado e não faz retry automático.
+
+A política de leitura de streams segue o [exemplo oficial da AWS](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/iam-policy-example-lamda-process-dynamodb-streams.html), limitado aos streams da tabela SHIFT. Os contratos IAM ainda precisam ser exercitados na AWS real antes de afirmar que a implantação funciona.
