@@ -50,4 +50,4 @@ A revisão independente encontrou três pontos, reproduzidos antes das correçõ
 2. Asserções dentro do provedor falso podiam virar fallback e deixar o teste verde. A captura é conferida fora do mock, junto do resultado persistido e do saldo. Uma mutação intencional do endpoint comprovou que o teste falha.
 3. Os dois parâmetros de segredo aceitavam o mesmo ARN. Uma regra do template recusa compartilhar a credencial GPT com o segredo de origem da API.
 
-O CI deste corte ainda deve ser registrado após publicação. Nada disso substitui IAM/DynamoDB/SQS/Lambda reais.
+O [CI do terceiro corte](https://github.com/tuliosoria/shift-the-timeline/actions/runs/42784927693), commit 7e24bf1644039b72d90f77fc8d161ea20797ec2c, passou: instalação limpa, 104 testes, sintaxe, auditoria, quatro pacotes e cfn-lint. Nada disso substitui IAM/DynamoDB/SQS/Lambda reais.
