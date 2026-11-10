@@ -83,6 +83,22 @@ try {
    const record=page.locator('.board-record.correlation').filter({hasText:hypothesis});await record.waitFor();
    assert.match(await record.textContent(),/Unverified/);await record.locator('summary').first().click();
    const expanded=await record.locator('details').first().locator('p').textContent();assert.ok(sharedAnswers.includes(expanded),'Correlation still resolves original canonical source');await overflow(page);
+   // Search only the shared board; filters must not disturb the unsent composer.
+   await page.fill('#hypothesis','Keep this unsent hypothesis while reviewing records.');
+   await page.selectOption('#board-filter','correlation');await page.fill('#board-search','recorded visitors');
+   assert.equal(await page.locator('[aria-labelledby="team-board-heading"] .board-record').count(),1);
+   assert.match(await page.locator('#board-results').textContent(),/^1 of /);
+   assert.equal(await page.inputValue('#hypothesis'),'Keep this unsent hypothesis while reviewing records.');
+   await page.focus('#board-search');await page.evaluate(()=>window.boardSearchBeforePoll=document.querySelector('#board-search'));
+   store.rooms.get(code).version++;await page.waitForFunction(()=>!window.boardSearchBeforePoll.isConnected);
+   assert.equal(await page.inputValue('#board-search'),'recorded visitors');assert.equal(await page.inputValue('#board-filter'),'correlation');
+   assert.equal(await page.locator('#board-search').evaluate(el=>el===document.activeElement),true);
+   await navigate(page,'analyse');await navigate(page,'deduce');assert.equal(await page.inputValue('#board-search'),'recorded visitors');
+   await page.fill('#board-search','NO_MATCH_IN_THIS_PUBLIC_BOARD');assert.equal(await page.locator('[aria-labelledby="team-board-heading"] .board-record').count(),0);
+   assert.match(await page.locator('[aria-labelledby="team-board-heading"]').textContent(),/No shared records match/);
+   await page.click('[data-action="clear-board-search"]');assert.equal(await page.inputValue('#board-search'),'');assert.equal(await page.inputValue('#board-filter'),'all');
+   assert.equal(await page.locator('#board-search').evaluate(el=>el===document.activeElement),true);
+   assert.equal(await page.inputValue('#hypothesis'),'Keep this unsent hypothesis while reviewing records.');await page.fill('#hypothesis','');
    // Explicit synthetic PUBLIC-source layout fixture, not authored case evidence.
    // It enters the in-memory store and normal API/UI path, never a DOM-only fake.
    const syntheticId='synthetic-preview-layout';const syntheticText='Synthetic layout only\n'+'X'.repeat(300)+'\nA second visible line.';
@@ -103,6 +119,15 @@ try {
   for(const page of pages){
    if(round===3){await page.reload();await page.locator('.stepper').waitFor();}
    await navigate(page,'deduce');
+   if(round===3){
+    await page.selectOption('#board-filter','note');await page.fill('#board-search','Synthetic team note');
+    const expected=store.rooms.get(code).board.filter(record=>record.type==='note'&&record.text.includes('Synthetic team note')).length;
+    assert.equal(await page.locator('[aria-labelledby="team-board-heading"] .board-record').count(),expected);
+    assert.equal(await page.locator('#board-results').textContent(),`${expected} of 60 shared records shown. Private interviews are not searched.`);
+    assert.match(await page.locator('.board-capacity').textContent(),/60 \/ 60/);
+    await overflow(page);if(page===pages[1])await page.screenshot({path:'/tmp/shift-recovery-board-search-mobile.png',fullPage:true});
+    await page.click('[data-action="clear-board-search"]');assert.equal(await page.locator('[aria-labelledby="team-board-heading"] .board-record').count(),60);
+   }
    const progress=page.locator('.round-review');await progress.waitFor();
    assert.match(await progress.textContent(),/Sharing answers and creating correlations are optional/);
    assert.match(await progress.textContent(),/Answers still private/);
