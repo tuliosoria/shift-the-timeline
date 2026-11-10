@@ -70,7 +70,7 @@ try {
    assert.equal(await page.locator(`#source-b option[value="suspect:${dossier.id}"]`).count(),1,'Source search matches full public profiles');
    assert.equal(await page.locator('#source-preview-a p').last().textContent(),dossierText);
    await page.fill('#source-search','');await overflow(page);
-   await page.screenshot({path:'/tmp/shift-dossier-preview-mobile.png',fullPage:true});
+   await page.screenshot({path:'/tmp/shift-recovery-dossier-preview-mobile.png',fullPage:true});
 
    await page.focus('#source-a');await page.selectOption('#source-a',sources[0].value);assert.equal(await page.locator('#source-a').evaluate(el=>el===document.activeElement),true);
    await page.selectOption('#source-b',sources[1].value);await page.selectOption('#relation','supports');
