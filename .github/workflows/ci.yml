@@ -64,3 +64,5 @@ jobs:
         env:
           SHIFT_POSTGRES_TEST_URL: postgres://postgres:ci-only-not-a-real-secret@localhost:5432/shift_test
       - run: npm run package:azure
+      - run: az bicep install --version v0.44.1
+      - run: az bicep build --file infra/azure/main.bicep --outfile /tmp/shift-azure.json

@@ -11,6 +11,10 @@ param prefix string = 'shift'
 @description('The operator IPv4 CIDR allowed during initial staging (for example, a single /32). No broad default.')
 param operatorIpv4Cidr string
 
+@maxLength(4)
+@description('Additional individually approved operator/proxy IPv4 /32 CIDRs. Empty by default; never use for general public access.')
+param additionalOperatorIpv4Cidrs array = []
+
 @description('Only set true after cost, privacy and external-access approval and smoke testing.')
 param allowPublicAccess bool = false
 
@@ -19,6 +23,10 @@ param allowNewRooms bool = false
 
 @description('Initial operator-only maintenance startup for private DB bootstrap; disable after migration.')
 param bootstrapMode bool = false
+
+@allowed(['', '1', '2', '3'])
+@description('Optional explicit database availability zone for same-SKU capacity retries.')
+param databaseAvailabilityZone string = ''
 
 @description('Pinned, server-only JSON case artifact path in the application package; never under public/.')
 param caseFile string = '/home/site/wwwroot/private/case.json'
@@ -38,6 +46,12 @@ var suffix = uniqueString(subscription().subscriptionId, resourceGroup().id)
 var appName = '${prefix}-${suffix}'
 var databaseName = 'shift'
 var appRole = 'shift_app'
+var additionalOperatorRules = [for (cidr, index) in additionalOperatorIpv4Cidrs: {
+        name: 'approved-operator-${index}'
+        ipAddress: cidr
+        action: 'Allow'
+        priority: 110 + index
+      }]
 var tags = {
   project: 'SHIFT'
   environment: 'playtest'
@@ -62,6 +76,8 @@ resource network 'Microsoft.Network/virtualNetworks@2024-05-01' = {
         name: 'database'
         properties: {
           addressPrefix: '10.87.2.0/28'
+          // PostgreSQL adds this endpoint during creation; preserve it on retries.
+          serviceEndpoints: [{ service: 'Microsoft.Storage' }]
           delegations: [{ name: 'postgres', properties: { serviceName: 'Microsoft.DBforPostgreSQL/flexibleServers' } }]
         }
       }
@@ -92,6 +108,7 @@ resource databaseServer 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' =
   sku: { name: 'Standard_B1ms', tier: 'Burstable' }
   properties: {
     version: '16'
+    availabilityZone: empty(databaseAvailabilityZone) ? null : databaseAvailabilityZone
     authConfig: { passwordAuth: 'Disabled', activeDirectoryAuth: 'Enabled', tenantId: tenant().tenantId }
     backup: { backupRetentionDays: 7, geoRedundantBackup: 'Disabled' }
     highAvailability: { mode: 'Disabled' }
@@ -148,7 +165,7 @@ resource app 'Microsoft.Web/sites@2023-12-01' = {
       http20Enabled: true
       scmIpSecurityRestrictionsUseMain: true
       ipSecurityRestrictionsDefaultAction: allowPublicAccess ? 'Allow' : 'Deny'
-      ipSecurityRestrictions: [{ name: 'staging-operator', ipAddress: operatorIpv4Cidr, action: 'Allow', priority: 100 }]
+      ipSecurityRestrictions: concat([{ name: 'staging-operator', ipAddress: operatorIpv4Cidr, action: 'Allow', priority: 100 }], additionalOperatorRules)
     }
   }
 }
@@ -178,7 +195,7 @@ resource settings 'Microsoft.Web/sites/config@2023-12-01' = {
     SHIFT_PG_USER: appRole
     SHIFT_CASE_FILE: caseFile
     SHIFT_CASE_SHA256: caseSha256
-    SHIFT_ALLOW_NEW_ROOMS: string(allowNewRooms)
+    SHIFT_ALLOW_NEW_ROOMS: allowNewRooms ? 'true' : 'false'
     SHIFT_AI_ENABLED: 'false'
   }
 }
