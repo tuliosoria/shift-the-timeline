@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101b25">
+  <title>SHIFT · The Timeline</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Pular para o conteúdo</a>
+  <header class="masthead"><a href="/" class="brand" aria-label="SHIFT início"><span class="brand-mark" aria-hidden="true">◈</span><span>SHIFT<small>THE TIMELINE</small></span></a><div class="edition">ARQUIVO TEMPORAL <span>01 / PROTÓTIPO</span></div></header>
+  <main id="main" tabindex="-1">
+    <section id="welcome" class="welcome">
+      <div class="intro">
+        <p class="eyebrow"><span class="signal"></span> UMA VISÃO. UM CRIME. UMA CHANCE.</p>
+        <h1>O futuro já aconteceu.<br><em>Mudem o final.</em></h1>
+        <p class="lede">O assassino ainda não agiu. Reúnam a equipe, ouçam os suspeitos e conectem as pistas antes que a visão se torne realidade.</p>
+        <div class="rules-strip"><span><b>3–4</b> investigadores</span><span><b>24h</b> na história</span><span><b>3</b> turnos</span></div>
+        <div class="rail-art" aria-hidden="true"><div class="moon"></div><div class="mountain m1"></div><div class="mountain m2"></div><div class="train"><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="rails"></div><span>EXPRESSO DA MEIA-NOITE</span></div>
+      </div>
+      <section class="entry-panel" aria-labelledby="enter-title">
+        <p class="eyebrow">UNIDADE DE INVESTIGAÇÃO TEMPORAL</p><h2 id="enter-title">Sua equipe começa aqui.</h2>
+        <p class="muted">Cada investigador tem uma conversa privada. O que vocês compartilham pode mudar tudo.</p>
+        <form id="entry-form">
+          <label for="name">Seu nome de investigador</label><input id="name" name="name" autocomplete="nickname" maxlength="30" placeholder="Como devemos chamar você?" required>
+          <button class="primary wide" type="submit" name="mode" value="create">Criar uma sala <span aria-hidden="true">↗</span></button>
+          <div class="divider"><span>OU ENTRE COM SEUS AMIGOS</span></div>
+          <label for="code">Código da sala</label><div class="join-row"><input id="code" name="code" autocapitalize="characters" autocomplete="off" maxlength="8" placeholder="ABC123"><button type="submit" name="mode" value="join">Entrar</button></div>
+        </form>
+        <p class="prototype-note"><span aria-hidden="true">◇</span> Primeiro protótipo jogável. Entrevistas roteirizadas, sem IA ao vivo. Salas duram apenas enquanto o servidor estiver ligado.</p>
+      </section>
+    </section>
+    <section id="game" hidden>
+      <div class="session-bar"><div><p class="eyebrow">OPERAÇÃO EM ANDAMENTO</p><h1 id="case-title">Expresso da Meia-Noite</h1></div><div class="room-actions"><button id="copy-code" title="Copiar código da sala">Sala <b id="room-code"></b> <span aria-hidden="true">⧉</span></button><button id="leave" class="quiet">Sair</button></div></div>
+      <div id="connection" role="status" hidden>Reconectando… suas decisões continuam salvas nesta sessão.</div>
+      <button id="retry-pending" hidden>Confirmar ação pendente</button><button id="recover-host" hidden>Assumir sala sem anfitrião</button><div id="lobby" class="lobby" hidden><div><p class="eyebrow">ANTES DA VISÃO</p><h2>Esperando a equipe.</h2><p>Compartilhe o código e reúna de 3 a 4 investigadores em navegadores diferentes.</p><div id="lobby-players" class="player-grid"></div><button id="start" class="primary">Iniciar investigação</button><p id="start-hint" class="muted"></p></div><aside class="field-guide"><p class="eyebrow">MANUAL DE CAMPO</p><h3>Nem todo segredo é um crime.</h3><ol><li>Entrevistem um suspeito por turno, com até cinco perguntas.</li><li>Publiquem as pistas que desejarem compartilhar no quadro da equipe.</li><li>Quando todos encerrarem, o relógio avança oito horas.</li><li>No final, cada pessoa acusa em segredo. Acertar juntos é a vitória completa.</li></ol><p class="muted">15 suspeitos, no máximo 12 entrevistas. Escolham com cuidado.</p></aside></div>
+      <div id="active-game" hidden>
+        <section class="vision" aria-labelledby="vision-title"><div><p class="eyebrow">VISÃO DO FUTURO</p><h2 id="vision-title"></h2><p id="vision-description"></p></div><div class="clock"><strong id="hours"></strong><span>ATÉ O CRIME</span><div id="timeline" class="timeline" aria-hidden="true"></div><small id="round-label"></small></div></section>
+        <div class="workspace"><section class="investigation"><div class="section-heading"><div><p class="eyebrow">SIGA O FIO</p><h2 id="work-title">Suspeitos</h2></div><span id="interview-status" class="tag"></span></div>
+          <div id="suspect-panel"><p id="selection-hint" class="muted">Uma entrevista por turno. As conversas são privadas.</p><label class="search-label" for="search">Buscar suspeito</label><input id="search" type="search" placeholder="Nome ou função" autocomplete="off"><div id="suspects" class="suspect-grid"></div></div>
+          <div id="interview-panel" hidden><div id="interview-person" class="interview-person"></div><div id="messages" class="messages" role="log" aria-label="Conversa privada"></div><div class="question-prompts"><button data-question="Onde você estava?">Álibi</button><button data-question="O que você viu?">O que viu</button><button data-question="Você tinha algum motivo?">Motivo</button></div><form id="ask-form"><label for="question">Sua pergunta</label><div class="ask-row"><input id="question" maxlength="500" autocomplete="off" placeholder="O que não está sendo dito?" required><button type="submit">Perguntar</button></div></form><div class="finish-row"><small id="remaining"></small><button id="finish" class="primary">Encerrar entrevista</button></div></div>
+          <div id="waiting-panel" class="waiting-panel" hidden><span aria-hidden="true">◷</span><h3>Sua entrevista terminou.</h3><p>Compartilhe suas descobertas. O próximo turno começa quando todos terminarem.</p><button id="review-interview">Rever conversa</button></div>
+          <div id="accusation-sent" class="waiting-panel" hidden><span aria-hidden="true">◇</span><h3>Acusação registrada em segredo.</h3><p>Aguardando as decisões da equipe. Sua escolha não pode ser alterada.</p></div>
+        <section id="history-panel" class="history-panel" hidden><h3>Seu arquivo de entrevistas</h3><p class="muted">Somente você pode ver estas conversas anteriores.</p><div id="history"></div></section></section><aside class="board"><p class="eyebrow">A VERDADE É UM TRABALHO EM EQUIPE</p><h2>Quadro de pistas</h2><div id="players" class="roster"></div><div id="notes" class="notes" aria-label="Pistas compartilhadas"></div><form id="note-form"><label for="note">Compartilhar uma descoberta</label><textarea id="note" maxlength="500" rows="3" placeholder="Quem disse? O que isso muda?" required></textarea><button class="wide" type="submit">Fixar no quadro <span aria-hidden="true">+</span></button></form></aside></div>
+      </div>
+      <section id="result" class="result" hidden></section>
+    </section>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <div id="error" class="error" role="alert" hidden></div>
+  </main>
+  <footer><span>SHIFT · THE TIMELINE</span><span>Um mistério cooperativo. Uma linha do tempo compartilhada.</span></footer>
+  <dialog id="confirm-dialog"><form method="dialog"><p class="eyebrow">DECISÃO FINAL</p><h2 id="confirm-title"></h2><p id="confirm-copy"></p><div class="dialog-actions"><button value="cancel">Voltar</button><button id="confirm-yes" value="yes" class="primary">Confirmar</button></div></form></dialog>
+</body>
+</html>
