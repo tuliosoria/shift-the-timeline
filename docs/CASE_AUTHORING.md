@@ -18,7 +18,7 @@ For the public synthetic development fixture:
 SHIFT_CASE_FILE=tests/fixtures/case.mjs npm run check:case
 ```
 
-Nothing is submitted, uploaded or sent to an AI provider. No case is selected
+The checker itself makes no network or AI calls. No case is selected
 automatically. The preflight-generated report contains counts, outcome names and generic
 warnings, not narrative text, culprit IDs, answers or the solution. The imported
 module itself is not sandboxed: its logging, warnings and other side effects
