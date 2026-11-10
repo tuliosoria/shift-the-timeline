@@ -30,7 +30,13 @@ document.addEventListener('click',event=>{
  const choice=event.target.closest('[data-film-choice]');
  if(choice&&dialog.open)playFilm(choice.dataset.filmChoice);
 });
-document.getElementById('film-close').addEventListener('click',()=>dialog.close());
-dialog.addEventListener('close',releaseFilm);
+function closeFilm(){
+ if(!dialog.open)return;
+ dialog.close();releaseFilm();
+}
+document.getElementById('film-close').addEventListener('click',closeFilm);
+dialog.addEventListener('cancel',event=>{event.preventDefault();closeFilm();});
+// A queued close event must not unload a film that has already been reopened.
+dialog.addEventListener('close',()=>{if(!dialog.open&&trigger)releaseFilm();});
 video.addEventListener('error',()=>{if(dialog.open&&video.hasAttribute('src'))status.textContent='The film could not be loaded. You can close this viewer and keep investigating.';});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)video.pause();});
