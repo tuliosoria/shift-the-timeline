@@ -26,7 +26,10 @@ try{
   await page.waitForTimeout(300);assert.equal(requests.length,0,'Static first paint never fetches films');
   await page.fill('#create-name','Film agent');await noOverflow(page);
   await page.getByRole('button',{name:'Play The night train'}).click();
-  await page.waitForFunction(()=>document.querySelector('#case-film-video')?.currentTime>0);
+  try{await page.waitForFunction(()=>document.querySelector('#case-film-video')?.currentTime>0);}catch(error){
+   console.error('Film playback diagnostic',await page.locator('#case-film-video').evaluate(v=>({src:v.currentSrc,error:v.error?{code:v.error.code,message:v.error.message}:null,readyState:v.readyState,paused:v.paused,hidden:document.hidden,codec:v.canPlayType('video/mp4; codecs="avc1.64001f, mp4a.40.2"'),status:document.querySelector('#film-status').textContent})),{requests,errors});
+   await page.screenshot({path:'/tmp/shift-recovery-films-playback-failure.png',fullPage:true});throw error;
+  }
   assert.equal(requests.length>0,true);
   assert.equal(await page.locator('#case-film-video').evaluate(v=>v.muted&&v.playsInline&&v.controls&&!v.autoplay&&!v.loop),true);
   assert.equal(await page.locator('#film-dialog').getAttribute('aria-describedby'),'film-description');
