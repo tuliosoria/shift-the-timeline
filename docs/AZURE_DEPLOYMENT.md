@@ -198,7 +198,11 @@ replacing the artifact or automatically repeating an uncertain deployment.
 
 The public ARM OneDeploy schema does not specify the response body. Inspected
 Azure CLI code accepts successful PUT responses without guaranteeing a deployment
-ID. The helper accepts an empty HTTP 200/201/202 response as **acceptance only**.
+ID. The helper accepts HTTP 200/201/202 with an empty body or an opaque JSON object
+without an explicit failure as **acceptance only**. Arrays, scalars, malformed JSON,
+error keys and explicit failure states at the top level or in `properties` fail
+closed. A simple operation ID uses strict correlated polling; an ARM resource ID
+or other opaque metadata does not. Metadata URLs are never followed.
 For this path it never inspects deployment history: within 600 seconds it requires
 two consecutive exact served-commit responses from `/api/release`, each accompanied
 by HTTP 200 from `/healthz`, with five seconds between checks. It reports
@@ -206,8 +210,11 @@ by HTTP 200 from `/healthz`, with five seconds between checks. It reports
 revision is serving and basic database readiness, not that a new operation just
 completed, that this PUT caused activation, or that every app instance has updated.
 A preexisting identical revision can satisfy these serving checks. No prior-distinct revision is required, so first deployment from a
-legacy build without `/api/release` remains possible. Unknown nonempty bodies and
-error responses fail closed; PUT is never automatically retried.
+legacy build without `/api/release` remains possible. PUT is never automatically
+retried. Live evidence showed a prior request deployed successfully while the old
+parser rejected its nonempty response; the exact response body was not recovered.
+The accepted-object path is justified by live revision/readiness proof, not an
+assumption about that unrecovered body.
 
 When PUT supplies an explicit deployment ID, the helper polls only that ID until
 `complete=true` and numeric `status=4`, then allows 120 seconds for the same two
@@ -218,8 +225,9 @@ accepted by PUT, never the first, latest or active historical entry. An absent I
 waits only within the bounded polling deadline; duplicate matches or malformed
 entries fail closed. Direct single-record GET responses remain supported.
 
-Live PUT/package-pull integration, scoped role assignments and SAS generation
-must still be verified before enabling the repository switch. A failed
+The observed request and public revision established that the approved package-pull
+path can deploy. This revised response parser still requires reviewed integration
+verification; unknown metadata alone never establishes success. A failed
 post-submission check does not prove that deployment did not occur.
 
 The bundle embeds the tested commit at package-build time. CI reads the release

@@ -121,10 +121,6 @@ class DeployTests(unittest.TestCase):
         self.assertEqual(self.http_calls, [])
 
     def test_no_historical_or_untyped_success_accepted(self):
-        for accepted in [{}, {'status': 4}, {'id': 'https://attacker'}]:
-            self.accepted = accepted
-            with self.assertRaises(m.DeploymentError):
-                self.deploy()
         self.accepted = {'id': 'deploy-1'}
         for poll in [{'id': 'old', 'status': 4, 'complete': True},
                      {'id': 'deploy-1', 'status': 'Succeeded', 'complete': True},
@@ -210,8 +206,11 @@ class DeployTests(unittest.TestCase):
 
     def test_error_body_never_counts_as_acceptance(self):
         for body in [{'error': {'message': self.secret}}, {'id': 'deploy-1', 'error': {}},
-                     {'status': 'Accepted'}, {'id': 'deploy-1', 'status': 3},
-                     {'id': 'deploy-1', 'status': 'Failed'}, {}, []]:
+                     {'properties': {'provisioningState': 'Failed'}},
+                     {'id': 'deploy-1', 'status': 3},
+                     {'id': 'deploy-1', 'status': 'Failed'},
+                     {'properties': {'error': {'message': self.secret}}},
+                     {'statusCode': 403}, {'success': False}, []]:
             self.accepted = body
             with self.assertRaises(m.DeploymentError):
                 self.deploy()
@@ -240,6 +239,28 @@ class DeployTests(unittest.TestCase):
             response.status = 200
             with self.assertRaises(m.DeploymentError):
                 m.arm_request('GET', self.secret)
+
+    def test_opaque_accepted_metadata_requires_live_proof_never_follows_urls(self):
+        for body in [{}, {'status': 'Accepted'}, {'opaque': {'url': 'https://attacker'}},
+                     {'id': '/subscriptions/resource/path', 'properties': {'id': '/nested/resource/path'}},
+                     {'id': 'https://attacker', 'location': 'https://attacker'}]:
+            self.accepted = body
+            self.http_calls.clear()
+            self.assertEqual(self.deploy()['status'], 'release_verified')
+            self.assertEqual([x[0] for x in self.http_calls], ['PUT'])
+            self.http_calls.clear()
+            with self.assertRaises(m.DeploymentError):
+                m.deploy(self.path, self.commit, self.digest, cli=self.cli, http=self.http,
+                         now=lambda: self.now, sleep=lambda _: None,
+                         release_http=lambda: {'commit': 'b' * 40}, health_http=lambda: True)
+            self.assertEqual([x[0] for x in self.http_calls], ['PUT'])
+
+    def test_valid_id_failed_poll_never_downgrades_to_revision_proof(self):
+        self.accepted = {'id': '/arm/resource', 'properties': {'id': 'deploy-1'}}
+        self.polls = [{'id': 'deploy-1', 'status': 3, 'complete': True}]
+        with self.assertRaises(m.DeploymentError):
+            self.deploy()
+        self.assertEqual([x[0] for x in self.http_calls], ['PUT', 'GET'])
 
     def test_fixed_stage_diagnostics_never_include_injected_secret_errors(self):
         prefixes = {'storage_guard': ['storage', 'blob', 'list'],
