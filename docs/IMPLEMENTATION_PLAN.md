@@ -12,7 +12,7 @@
 - [x] Template SAM/CloudFormation sem deploy ou alteração de quota.
 - [x] Empacotamento novo, imutável e com manifesto completo.
 - [x] Revisão independente de código e correções testadas.
-- [ ] CI remoto e validação completa do CloudFormation.
+- [x] CI remoto e validação estática do CloudFormation com cfn-lint.
 - [ ] Testes reais DynamoDB/Lambda e QA de navegador.
 - [ ] Deploy de homologação, teste de capacidade e rollback.
 
