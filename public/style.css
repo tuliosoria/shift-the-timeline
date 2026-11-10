@@ -20,3 +20,5 @@ dialog{max-width:min(560px,calc(100vw - 32px));width:100%;max-height:calc(100dvh
 #storage-notice:empty{display:none}#storage-notice{max-width:1280px;margin:12px auto 0;padding:14px 18px;border:1px solid var(--gold);border-radius:7px;color:var(--text);background:#303b37;font-size:14px}@media(max-width:1328px){#storage-notice{margin-inline:24px}}@media(max-width:560px){#storage-notice{margin-inline:16px}}
 
 .source-preview{min-width:0;overflow-wrap:anywhere}.source-preview p{white-space:pre-wrap}
+
+.vote-card{min-width:0}.vote-dossier{margin-top:4px;padding:0 13px;border:1px solid var(--line);border-radius:8px;background:#172633}.vote-dossier summary{font-size:14px;color:var(--gold)}.vote-dossier p{font-size:14px;overflow-wrap:anywhere;white-space:pre-wrap}
