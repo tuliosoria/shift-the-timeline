@@ -163,3 +163,48 @@ evidence authority remain enforced. Accounting rejects numeric overflow rather
 than losing precision. Omit `uncapped` to retain the existing bounded mode;
 invalid or mixed modes fail closed. Neither configuration mode authorizes
 activation or transferring credentials by itself.
+
+## Verified-main CI deployment (explicitly enabled only after integration checks)
+
+The optional deployment job uses GitHub OIDC with the exact federated subject
+`repo:tuliosoria/shift-the-timeline:ref:refs/heads/main` and audience
+`api://AzureADTokenExchange`. It deliberately declares **no GitHub environment**:
+there is no environment approval or environment branch-protection gate. This is
+an approved alternative to the unavailable environment-administration path, not
+an assertion that an environment was configured. Treat changes merged to `main`
+and the deployment workflow as trusted release-authority changes.
+
+Repository variables `SHIFT_AZURE_CLIENT_ID` and `SHIFT_AZURE_TENANT_ID` identify
+the narrowly scoped federated identity. `SHIFT_AZURE_DEPLOY_ENABLED` must be
+explicitly set to `true` to enable deployments; unset means disabled. Only a push
+to `main`, after both `validate` and real-PostgreSQL tests pass, can enter the job.
+Only that job receives `id-token: write`. Deployments serialize without cancelling
+an in-progress release, reject stale main revisions, download the immutable
+package built by the same run, and verify its SHA-256 before deployment.
+
+The helper uploads a commit/digest-named zip to the separately approved private
+release container using Entra login and refuses overwrite. It uses a 15-minute,
+HTTPS-only, read-only single-blob user-delegation SAS held in memory and an ARM
+bearer token held in memory. It does not change app settings, public/SCM ingress,
+networking, IAM, database state, or publishing credentials. **SCM restrictions and
+disabled basic publishing remain unchanged.** No publish profile or stored
+client secret is required.
+
+The release-container 1 GB preflight is preserve-only, not a hard storage quota;
+serialize writers and account separately for unrelated containers. No artifact
+cleanup or lifecycle policy is configured. A retry encountering an existing blob
+fails closed: inspect whether the earlier deployment took effect rather than
+replacing the artifact or automatically repeating an uncertain deployment.
+
+The public ARM OneDeploy schema does not specify the response body. This helper
+supports only an explicit returned deployment ID and polling that same ID until
+`complete=true` and numeric `status=4`; unknown response shapes fail closed. Live
+response compatibility, package-pull reachability, scoped role assignments and
+SAS generation must be verified before enabling the repository switch. A failed
+post-submission check does not prove that deployment did not occur.
+
+The bundle embeds the tested commit at package-build time. After ARM completion,
+CI reads `/api/release` without credentials and requires that exact commit before
+reporting completion. The endpoint exposes only the revision, with no caching;
+unversioned local builds return 404. This verifies the served revision, not
+comprehensive game health or database migration correctness.

@@ -7,9 +7,11 @@ import {createHash,randomUUID} from 'node:crypto';
 import {PUBLIC_ASSETS,readPublicAsset} from '../server/public-assets.mjs';
 import {validateCase} from '../server/case-loader.mjs';
 import {caseData,catalog} from '../examples/public-demo.mjs';
+const releaseCommit=process.env.SHIFT_RELEASE_COMMIT??null;
+if(releaseCommit!==null&&!/^[a-f0-9]{40}$/.test(releaseCommit))throw new Error('Invalid release commit');
 const root=process.cwd(),stage=await mkdtemp(resolve(root,'.shift-build-azure-'));
 validateCase({caseData,catalog});
-const result=await build({absWorkingDir:root,entryPoints:['server/azure-index.mjs'],outfile:resolve(stage,'server/azure-index.mjs'),bundle:true,platform:'node',target:'node22',format:'esm',metafile:true,sourcemap:false,external:['pg-native'],banner:{js:"import {createRequire as __shiftRequire} from 'node:module';const require=__shiftRequire(import.meta.url);"}});
+const result=await build({absWorkingDir:root,entryPoints:['server/azure-index.mjs'],outfile:resolve(stage,'server/azure-index.mjs'),bundle:true,define:{__SHIFT_RELEASE_COMMIT__:JSON.stringify(releaseCommit)},platform:'node',target:'node22',format:'esm',metafile:true,sourcemap:false,external:['pg-native'],banner:{js:"import {createRequire as __shiftRequire} from 'node:module';const require=__shiftRequire(import.meta.url);"}});
 for(const path of Object.keys(result.metafile.inputs))if(!includePath(path))throw new Error('Unexpected bundle input: '+path);
 await writeFile(resolve(stage,'server/azure-bootstrap.mjs'),await readFile(resolve(root,'server/azure-bootstrap.mjs')));
 for(const asset of PUBLIC_ASSETS){const path=resolve(stage,'public',asset.file);await mkdir(dirname(path),{recursive:true});await writeFile(path,await readPublicAsset(asset.file));}
