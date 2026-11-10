@@ -3,8 +3,8 @@
 
 ARM OneDeploy 2023-12-01 has an untyped public response schema. This client
 supports an explicit deployment ID and matching Kudu status/complete record, or
-an empty accepted PUT followed by exact served revision and readiness verification.
-Unknown nonempty response shapes fail closed and require a reviewed update.
+accepted empty/opaque object metadata followed by exact served revision and readiness
+verification. Explicit failures and non-object bodies fail closed; metadata is never proof.
 Never print captured CLI/HTTP data, exception text, tokens or package URLs.
 """
 import argparse
@@ -228,6 +228,36 @@ def deployment_record(response):
     return record
 
 
+def accepted_deployment_id(response):
+    # Transport already checked HTTP success and object/empty body. Metadata is
+    # not proof of deployment and must never supply a URL or history selection.
+    if response is None:
+        return None
+    if not isinstance(response, dict):
+        fail()
+    nested = response.get('properties')
+    records = [response] + ([nested] if isinstance(nested, dict) else [])
+    for record in records:
+        if 'error' in record or 'errors' in record:
+            fail()
+        for key in ('status', 'state', 'provisioningState', 'deploymentStatus'):
+            value = record.get(key)
+            if isinstance(value, str) and value.strip().lower() in ('failed', 'failure', 'error', 'canceled', 'cancelled', 'aborted'):
+                fail()
+            if key == 'status' and type(value) is int and value not in (0, 1, 2, 4):
+                fail()
+        if type(record.get('statusCode')) is int and record['statusCode'] >= 400:
+            fail()
+        if record.get('success') is False or record.get('succeeded') is False:
+            fail()
+    # Prefer the nested operation ID over an ARM resource ID in the envelope.
+    for record in reversed(records):
+        ident = record.get('id')
+        if isinstance(ident, str) and re.fullmatch(r'[A-Za-z0-9_-]{1,128}', ident):
+            return ident
+    return None
+
+
 def polled_deployment(response, accepted_id):
     # Verified ARM GET wraps history in value:[{...,properties:{id,...}}].
     # Eventual listing propagation may temporarily omit the accepted operation.
@@ -284,17 +314,12 @@ def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request
         stage = 'submit'
         response = http('PUT', token, {'properties': {
             'type': 'zip', 'packageUri': uri, 'clean': False, 'restart': True}})
-        if response is None:
-            # Empty 2xx is acceptance only. Never infer completion from old ARM history.
+        ident = accepted_deployment_id(response)
+        if ident is None:
+            # Accepted metadata is not success. Never infer completion from old history.
             stage = 'release'
             verify_release(commit, fetch=release_http, health=health_http, sleep=sleep, clock=clock, timeout=600)
             return {'commit': commit, 'sha256': digest, 'status': 'release_verified'}
-        accepted = deployment_record(response)
-        if 'error' in response or 'error' in accepted:
-            fail()
-        if 'status' in accepted and (type(accepted['status']) is not int or accepted['status'] not in (0, 1, 2, 4)):
-            fail()
-        ident = accepted['id']
         stage = 'poll'
         deadline = clock() + 600
         for _ in range(120):
