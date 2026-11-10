@@ -31,6 +31,15 @@ try{
  await page.waitForFunction(()=>!document.querySelector('[data-action="start"]')?.disabled);await page.click('[data-action="start"]');
  const suspect=caseData.suspects[0];await page.click(`[data-action="dossier"][data-id="${suspect.id}"]`);await page.click(`[data-action="select"][data-id="${suspect.id}"]`);await confirm(page);await page.locator('#question-form').waitFor();
  assert.equal(await page.locator('[name="aiConsent"]').isChecked(),false);assert.ok(!(await page.locator('#question-form').textContent()).includes('everything local'));
+ // A peer update must not silently remove opt-in/focus for this exact draft.
+ await page.fill('#question','Where were you?');await page.locator('#question-ai-consent').check();await page.locator('#question-ai-consent').focus();
+ await page.evaluate(()=>{window.consentBeforePoll=document.querySelector('#question-ai-consent');});
+ await pages[1].evaluate(async code=>{const r=await fetch(`/api/rooms/${code}/actions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'heartbeat',id:crypto.randomUUID()})});if(!r.ok)throw Error('Synthetic peer update failed');},code);
+ await page.waitForFunction(()=>window.consentBeforePoll&&!window.consentBeforePoll.isConnected);
+ assert.equal(await page.locator('#question-ai-consent').isChecked(),true);assert.equal(await page.locator('#question-ai-consent').evaluate(el=>el===document.activeElement),true);
+ await page.fill('#question','A changed question');assert.equal(await page.locator('#question-ai-consent').isChecked(),false);
+ await page.locator('#question-ai-consent').check();await page.selectOption('#question-topic','alibi');assert.equal(await page.locator('#question-ai-consent').isChecked(),false);
+ await page.locator('#question-ai-consent').check();await page.reload();await page.locator('#question-ai-consent').waitFor();assert.equal(await page.locator('#question-ai-consent').isChecked(),false);
  const ask=async(topic,consent)=>{await page.fill('#question',`A synthetic ${topic} question`);await page.selectOption('#question-topic',topic);await page.locator('[name="aiConsent"]').setChecked(consent);const sent=page.waitForRequest(r=>r.url().endsWith('/actions')&&r.postDataJSON()?.type==='ask');await page.click('#question-form button');const body=(await sent).postDataJSON();assert.equal(body.aiConsent,consent?true:undefined);await page.getByText(suspect.responses[topic],{exact:true}).waitFor();return page.locator('.bubble.answer').filter({has:page.getByText(suspect.responses[topic],{exact:true})});};
  const plain=await ask('clue',false);assert.equal(await plain.locator('.generated-voice').count(),0);assert.equal(store.ai.size,0);
  const pending=await ask('alibi',true);await pending.getByRole('status').waitFor();assert.match(await pending.getByRole('status').textContent(),/PREPARING/);assert.equal(await pending.locator('[data-action="share"]').isEnabled(),true);assert.equal(await page.locator('#question-form button').isEnabled(),true);
