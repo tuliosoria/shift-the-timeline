@@ -6,7 +6,7 @@ O runtime HTTP/Lambda é canônico por padrão. O template mantém EnableAi=fals
 
 A pergunta produz evidência canônica imediatamente. Quando um repositório AiJobs está habilitado explicitamente e a pergunta tem consentimento booleano true, a mesma transação grava pergunta, recibo idempotente, job, outbox e três reservas: sala, dia UTC e mês UTC. Concorrentes disputam as versões dos contadores; orçamento insuficiente mantém a resposta canônica sem criar job. Cada contador recebe uma guarda de inicialização na mesma transação: se um contador já usado desaparecer, a guarda impede recriar o saldo como zero. Antes de iniciar, as três reservas e guardas são verificadas e suas versões condicionam a mudança de estado. Falha na leitura do orçamento também desativa a narração daquela pergunta.
 
-Os valores atuais são propostas, não autorização de gasto: US$0,25/sala, US$5/dia, US$25/mês, até duas chamadas locais em execução. A reserva considera 2.500 tokens de entrada e 350 de saída, em microdólares inteiros. Modelo e tarifas ficam fixados no job; um provedor com outro modelo é recusado antes da chamada.
+O escopo aprovado em 10 de novembro de 2026 usa US$0,25/sala, US$5/dia e US$25/mês, com até duas chamadas locais em execução. Consulte [escopo aprovado e condições de implantação](APPROVED_DEPLOYMENT.md); os contadores não garantem o total da fatura do provedor. A reserva considera 2.500 tokens de entrada e 350 de saída, em microdólares inteiros. Modelo e tarifas ficam fixados no job; um provedor com outro modelo é recusado antes da chamada.
 
 O saldo representa uso liquidado mais reservas ainda não liberadas. Conclusão com uso conhecido devolve a diferença. Expiração anterior ao marcador de início devolve toda a reserva. Resultado incerto depois do início mantém a reserva inteira, mesmo que o jogador receba apenas o texto canônico. Isso evita gastar novamente um valor que o provedor pode ter consumido.
 
@@ -40,11 +40,11 @@ Schema e limites de tamanho não provam consistência narrativa nem eliminam alu
 
 ## O que falta para ativar
 
-1. Aprovar com o dono da credencial projeto, modelo/versionamento, tarifas, limites e política de dados.
+1. Conferir que projeto, modelo, tarifas, limites e política de dados correspondem ao escopo aprovado. Mudanças materiais exigem nova aprovação.
 2. Verificar o aviso/consentimento implementado para envio externo. Pedir codinomes e ausência de dados pessoais; ausência de consentimento mantém evidência canônica sem job, reserva ou chamada.
 3. Validar em homologação os runtimes e políticas declarados. O worker usa ações condicionais DynamoDB, incluindo ConditionCheckItem; relay lê/escreve somente outbox e recebe chaves do stream; reconciliador usa o índice e os registros necessários à liquidação. Somente o worker pode receber permissão condicional para o ARN GPT exato. Nenhuma dessas permissões foi aplicada. Configurar alarmes e revisar ativação separadamente.
 4. Testes reais DynamoDB/SQS/Lambda, capacidade regional, recuperação e avaliação narrativa.
-5. Configuração segura da credencial e teste pago limitado, com autorização específica.
+5. Configuração segura da credencial real e teste pago limitado dentro do escopo e orçamento aprovados.
 
 Não há chave, criação de segredo, aumento de quota, deploy ou chamada real de IA neste desenvolvimento.
 
