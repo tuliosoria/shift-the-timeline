@@ -63,6 +63,9 @@ try {
  assert.equal((await pages[2].locator('body').textContent()).includes('FABRICATED VOICE'),false);
  assert.equal(await pages[2].locator('[aria-label="Unverified AI voice"]').count(),0);
  assert.equal(store.rooms.get(code).players.find(p=>p.name==='Agent 1').interviews[0].messages[0].answer,canonicalAnswer);
+ // The static footer must not deny optional AI while generated voice is visible.
+ assert.match(await pages[1].locator('footer').textContent(),/FIXED CASE EVIDENCE · PRIVATE INTERVIEWS/);
+ assert.doesNotMatch(await pages[1].locator('footer').textContent(),/NO GENERATIVE AI/);
  // Optional external narration is explicit per question and never selected by default.
  assert.equal(await pages[1].locator('[name=aiConsent]').isChecked(),false);
  await pages[1].fill('#question','Who had clearance at the time?');
