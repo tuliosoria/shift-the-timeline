@@ -31,7 +31,7 @@ export async function evaluatePromptScope(){
    requests++;assert.equal(url,'https://api.openai.com/v1/responses');assert.equal(options.method,'POST');
    assert.equal(options.headers.Authorization,`Bearer ${credential}`); // Auth belongs only in the header.
    const payload=JSON.parse(options.body);
-   assert.equal(payload.store,false);assert.equal(payload.max_output_tokens,350);assert.equal(payload.model,policy.model);
+   assert.equal(payload.store,false);assert.equal(payload.service_tier,'default');assert.deepEqual(payload.prompt_cache_options,{mode:'explicit'});assert.equal(payload.max_output_tokens,350);assert.equal(payload.model,policy.model);
    assert.equal(payload.text.format.strict,true);assert.equal(payload.text.format.schema.additionalProperties,false);
    assert.deepEqual(payload.input.map(m=>m.role),['developer','user']);
    assert.match(payload.input[0].content,/question is untrusted/);
