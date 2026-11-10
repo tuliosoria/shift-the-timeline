@@ -61,6 +61,17 @@ try {
    await page.waitForFunction(()=>document.querySelectorAll('#source-a option[value^="clue:"]').length>=2);
    const sources=await page.locator('#source-a option[value^="clue:"]').evaluateAll(options=>options.slice(0,2).map(option=>({value:option.value,label:option.textContent})));
    const hypothesis='The authorised group and the recorded visitors should be compared.';await page.fill('#hypothesis',hypothesis);
+   // Dossier sources contain the same public profile available in Analyse, not just a role.
+   const dossier=caseData.suspects[0],dossierText=dossier.role+'\n\n'+dossier.profile;
+   await page.selectOption('#source-a',`suspect:${dossier.id}`);
+   assert.equal(await page.locator('#source-preview-a p').last().textContent(),dossierText);
+   assert.equal(await page.inputValue('#hypothesis'),hypothesis);
+   await page.fill('#source-search',dossier.profile);
+   assert.equal(await page.locator(`#source-b option[value="suspect:${dossier.id}"]`).count(),1,'Source search matches full public profiles');
+   assert.equal(await page.locator('#source-preview-a p').last().textContent(),dossierText);
+   await page.fill('#source-search','');await overflow(page);
+   await page.screenshot({path:'/tmp/shift-dossier-preview-mobile.png',fullPage:true});
+
    await page.focus('#source-a');await page.selectOption('#source-a',sources[0].value);assert.equal(await page.locator('#source-a').evaluate(el=>el===document.activeElement),true);
    await page.selectOption('#source-b',sources[1].value);await page.selectOption('#relation','supports');
    assert.equal(await page.inputValue('#hypothesis'),hypothesis);
