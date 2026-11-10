@@ -57,7 +57,14 @@ test('confirmed commands clear only their own matching drafts; failures preserve
  }
 });
 test('browser uses cookie credentials and eight-character invitations without JavaScript bearer tokens',()=>{assert.ok(!source.includes('Authorization:'));assert.ok(!source.includes('token:p'));assert.match(source,/credentials:'same-origin'/);assert.match(source,/minlength="8" maxlength="8"/);assert.match(source,/api\/session/);});
-test('generated narration is labelled separately and escaped without changing the canonical answer',()=>{const fn=source.match(/function renderNarration\(message\)\{[^\n]+\}/)?.[0];assert.ok(fn,'Separate narration renderer required');const sandbox={};vm.runInNewContext(source.split('\n').find(x=>x.startsWith('const esc='))+fn+'; result=renderNarration({answer:"CANON",narration:{status:"complete",text:"<script>bad</script>"}});',sandbox);assert.match(sandbox.result,/NOT EVIDENCE/);assert.ok(!sandbox.result.includes('<script>'));assert.match(sandbox.result,/&lt;script&gt;/);assert.ok(!sandbox.result.includes('CANON'));vm.runInNewContext('result=renderNarration({narration:{status:"pending"}})',sandbox);assert.equal(sandbox.result,'');});
+test('generated narration is labelled separately and escaped without changing the canonical answer',()=>{
+ const {client}=clientHarness(clientState());
+ const rendered=client.renderNarration({answer:'CANON',narration:{status:'complete',text:'<script>bad</script>'}});
+ assert.match(rendered,/NOT EVIDENCE/);assert.ok(!rendered.includes('<script>'));assert.match(rendered,/&lt;script&gt;/);assert.ok(!rendered.includes('CANON'));
+ const pending=client.renderNarration({narration:{status:'pending'}});assert.match(pending,/PREPARING/);assert.match(pending,/role="status"/);assert.match(pending,/aria-live="polite"/);
+ const fallback=client.renderNarration({narration:{status:'fallback'}});assert.match(fallback,/UNAVAILABLE/);assert.match(fallback,/will not be retried automatically/);assert.match(fallback,/role="status"/);
+ assert.equal(client.renderNarration({answer:'CANON'}),'');
+});
 test('repeated retry clicks share one in-flight attempt and cannot unlock a stale response',async()=>{
  const initial=clientState(),h=clientHarness(initial),responses=[];
  h.sandbox.fetch=()=>new Promise(resolve=>responses.push(resolve));

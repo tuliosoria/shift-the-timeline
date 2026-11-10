@@ -4,6 +4,7 @@ import {PostgresStore} from './storage/postgres.mjs';
 import {readAzureConfig} from './azure/config.mjs';
 import {createAzureRuntime} from './azure/runtime.mjs';
 import {createServer} from './http.mjs';
+import {azureClientAddress} from './azure/client-address.mjs';
 import {startupStep,reportStartupFailure} from './azure/diagnostics.mjs';
 import {createManagedIdentityPool} from './azure/database.mjs';
 
@@ -15,7 +16,7 @@ try {
  pool.on('error',()=>console.error('Database connection unavailable.'));
  runtime=await startupStep('runtime',()=>createAzureRuntime({store:new PostgresStore({pool})}));
  await startupStep('server',async()=>{
- server=createServer({api:runtime.api,origin:config.origin});
+ server=createServer({api:runtime.api,origin:config.origin,sourceIp:azureClientAddress});
  const port=Number(process.env.PORT??8080);if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid port.');
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'0.0.0.0',()=>{server.removeListener('error',reject);resolve();});});
  });

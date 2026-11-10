@@ -33,7 +33,7 @@ export async function createAzureRuntime({env=process.env,store,loadCaseImpl=rea
  const limiter=createRateLimiter({store,now});
  const api=createApi({game,sessions:new Sessions({store,secure:true,now}),allowedOrigin:config.origin,dialogueMode:jobs?'optional-openai':'canonical',rateLimit:async input=>{
   if(!config.allowNewRooms&&input.path==='/api/rooms'&&input.request.method==='POST')throw new DomainError('New rooms are temporarily paused.',503);
-  // Never trust caller-supplied forwarding headers. Shared ingress IP limits are conservative.
+  // The Azure transport validates platform-overwritten CLIENT-IP; generic transports use the socket.
   await limiter(input);
  }});
  let running=null,timer=null,maintenance=null,maintenanceTimer=null,stopped=false;
