@@ -52,6 +52,10 @@ try{
  const failed=createProvider({model:policy.model,getSecret:async()=>'synthetic-only',fetchImpl:async()=>{calls++;return new Response('synthetic outage',{status:503});}});await runJob({enabled:true,jobId:job.id,repository:jobs,provider:failed});
  await fallback.getByText('OPTIONAL AI VOICE · UNAVAILABLE',{exact:true}).waitFor();assert.match(await fallback.getByRole('status').textContent(),/will not be retried automatically/);assert.ok((await fallback.textContent()).includes(suspect.responses.motive));assert.equal(await page.locator('.question-count').innerText().then(t=>t.startsWith('3')),true);
  await runJob({enabled:true,jobId:job.id,repository:jobs,provider:failed});assert.equal(calls,2);await page.reload();await page.locator('.round-bar').waitFor();await page.locator('[data-stage="interrogate"]').first().click();await page.getByText('OPTIONAL AI VOICE · UNAVAILABLE',{exact:true}).waitFor();assert.equal(calls,2);
+ // The fourth accepted question removes the composer: retain keyboard orientation at the answer.
+ const lastAnswer=await ask('relationship',false);await page.locator('#question-form').waitFor({state:'detached'});
+ assert.equal(await lastAnswer.evaluate(el=>el===document.activeElement),true,'Final answer receives focus after its composer disappears');
+ await page.screenshot({path:'/tmp/shift-recovery-final-answer-focus-mobile.png',fullPage:true});
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('PASS: three local browser sessions; no-consent/no-job, pending→synthetic complete/fallback, usable evidence, private escaped voice, canonical-only sharing, stable fallback after reload. No real AI/model-quality claim.');
 }finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
