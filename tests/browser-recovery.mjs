@@ -13,7 +13,7 @@ const store=new MemoryStore();
 const server=createServer({api:(...args)=>api(...args),origin:'http://127.0.0.1'});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const origin=`http://127.0.0.1:${server.address().port}`;
-api=createApi({game:new DurableGame({store,caseData:TRAIN_CASE,catalog:CASES,now:()=>now}),sessions:new Sessions({store,secure:false,now:()=>now}),allowedOrigin:origin,rateLimit:async()=>{}});
+api=createApi({game:new DurableGame({store,caseData:TRAIN_CASE,catalog:CASES,now:()=>now}),sessions:new Sessions({store,secure:false,now:()=>now}),allowedOrigin:origin,rateLimit:async()=>{},dialogueMode:'optional-openai'});
 const browser=await chromium.launch({headless:true});
 try {
  const pages=[],errors=[];
@@ -37,6 +37,17 @@ try {
  await pages[1].click('#question-form button');await pages[1].waitForFunction(()=>document.querySelector('#notice').textContent.includes('already covered'));
  assert.equal(await pages[1].inputValue('#question'),'Where were you yesterday?');
  assert.equal(await pages[1].locator('.bubble.question').count(),1);
+ // Optional external narration is explicit per question and never selected by default.
+ assert.equal(await pages[1].locator('[name=aiConsent]').isChecked(),false);
+ await pages[1].fill('#question','What did you notice?');
+ let sent=pages[1].waitForRequest(r=>r.url().endsWith('/actions')&&r.postDataJSON()?.type==='ask');
+ await pages[1].click('#question-form button');assert.equal((await sent).postDataJSON().aiConsent,undefined);
+ await pages[1].waitForFunction(()=>document.querySelectorAll('.bubble.question').length===2);
+ await pages[1].fill('#question','What was at stake?');await pages[1].check('[name=aiConsent]');
+ sent=pages[1].waitForRequest(r=>r.url().endsWith('/actions')&&r.postDataJSON()?.type==='ask');
+ await pages[1].click('#question-form button');assert.equal((await sent).postDataJSON().aiConsent,true);
+ await pages[1].waitForFunction(()=>document.querySelectorAll('.bubble.question').length===3);
+ assert.equal(await pages[1].locator('[name=aiConsent]').isChecked(),false);
  await pages[1].screenshot({path:'/tmp/shift-recovery-topic-guidance.png',fullPage:true});
  // Observe the real scheduled presence request, not just a manual test command.
  await pages[1].waitForRequest(r=>r.url().endsWith('/actions')&&r.postDataJSON()?.type==='heartbeat',{timeout:35000});
