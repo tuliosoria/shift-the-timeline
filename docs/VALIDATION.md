@@ -29,7 +29,7 @@ Todos os cenários usam dados sintéticos e provedor falso. Não houve obtençã
 
 O [workflow de verificação](https://github.com/tuliosoria/shift-the-timeline/actions/runs/42755461694) do primeiro corte passou com Node.js 22: instalação limpa, 52 testes, sintaxe, auditoria, pacote e validação estática cfn-lint 1.60.0. A primeira execução apontou uma dependência CloudFormation redundante, removida antes desta execução verde.
 
-O segundo corte deve passar novamente no CI do commit publicado. A validação estática não executa um change set nem prova o comportamento da stack na AWS.
+O [CI do segundo corte](https://github.com/tuliosoria/shift-the-timeline/actions/runs/42780225125), commit 195961b66b06111229db528268abf572eecb21ca, também passou: 86 testes, sintaxe, auditoria, pacote e cfn-lint. A validação estática não executa um change set nem prova o comportamento da stack na AWS.
 
 ## Ainda não comprovado
 - Integração real DynamoDB, Lambda, Secrets Manager, CloudFront, WAF e DNS/TLS.
