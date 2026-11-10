@@ -33,6 +33,8 @@ class DeployTests(unittest.TestCase):
     def cli(self, args):
         self.calls.append(args)
         if args[:3] == ['storage', 'blob', 'list']:
+            self.assertEqual(args[args.index('--include') + 1], 'sv')
+            self.assertNotIn('v', args)
             return json.dumps(self.listing)
         if args[:3] == ['storage', 'blob', 'upload']:
             snapshot = pathlib.Path(args[args.index('--file') + 1])
@@ -238,6 +240,40 @@ class DeployTests(unittest.TestCase):
             response.status = 200
             with self.assertRaises(m.DeploymentError):
                 m.arm_request('GET', self.secret)
+
+    def test_fixed_stage_diagnostics_never_include_injected_secret_errors(self):
+        prefixes = {'storage_guard': ['storage', 'blob', 'list'],
+                    'upload': ['storage', 'blob', 'upload'],
+                    'sas': ['storage', 'blob', 'generate-sas'],
+                    'token': ['account', 'get-access-token']}
+        for stage in ('artifact', 'storage_guard', 'upload', 'sas', 'token', 'submit', 'poll', 'release'):
+            with self.subTest(stage=stage):
+                def cli(args):
+                    prefix = prefixes.get(stage)
+                    if prefix and args[:len(prefix)] == prefix:
+                        raise RuntimeError(self.secret)
+                    return self.cli(args)
+                def http(method, token, body=None):
+                    if (stage == 'submit' and method == 'PUT') or (stage == 'poll' and method == 'GET'):
+                        raise RuntimeError(self.secret)
+                    return {'id': 'deploy-1'} if method == 'PUT' else {'id': 'deploy-1', 'status': 4, 'complete': True}
+                def release():
+                    if stage == 'release':
+                        raise RuntimeError(self.secret)
+                    return {'commit': self.commit}
+                with self.assertRaises(m.DeploymentError) as caught:
+                    m.deploy(self.path, 'bad' if stage == 'artifact' else self.commit, self.digest,
+                             cli=cli, http=http, now=lambda: self.now, sleep=lambda _: None,
+                             release_http=release, health_http=lambda: True)
+                self.assertEqual(m.failure_diagnostic(caught.exception), {'event': 'azure_deploy_failed', 'stage': stage})
+                self.assertNotIn(self.secret, json.dumps(m.failure_diagnostic(caught.exception)))
+                self.assertNotIn(self.secret, str(caught.exception))
+        self.assertEqual(m.failure_diagnostic(RuntimeError(self.secret))['stage'], 'unknown')
+        forged = m.DeploymentError('submit')
+        forged.stage = self.secret
+        self.assertEqual(m.failure_diagnostic(forged)['stage'], 'unknown')
+        forged.stage = []
+        self.assertEqual(m.failure_diagnostic(forged)['stage'], 'unknown')
 
     def test_http_transport_has_fixed_arm_url_and_rejects_redirect(self):
         self.assertEqual(urllib.parse.urlsplit(m.ARM).hostname, 'management.azure.com')
