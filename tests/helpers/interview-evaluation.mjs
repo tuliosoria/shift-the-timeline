@@ -65,7 +65,7 @@ export const invalidResponses=Object.freeze([
 ]);
 export async function evaluateInvalidResponses(){
  const context={persona:'Synthetic witness.',canonical:'A fixed fact.',question:'What did you see?'};
- for(const sample of invalidResponses){const provider=makeProvider(async()=>sample.response());await assert.rejects(()=>provider(context),undefined,sample.name);}
+ for(const sample of invalidResponses){let calls=0;const provider=makeProvider(async()=>{calls++;return sample.response();});await assert.rejects(()=>provider(context),undefined,sample.name);assert.equal(calls,1,`${sample.name}: fixture must be exercised`);}
  return {invalidResponsesRejected:invalidResponses.length};
 }
 
@@ -106,9 +106,9 @@ export async function evaluateEvidenceIsolation(){
 export async function evaluateWorkerFallbacks(){
  for(const sample of invalidResponses){
   const h=await harness();const state=await h.ask(),message=state.me.interviews[0].messages[0];
-  const job=h.jobList()[0],provider=makeProvider(async()=>sample.response());
+  let calls=0;const job=h.jobList()[0],provider=makeProvider(async()=>{calls++;return sample.response();});
   const result=await runJob({enabled:true,jobId:job.id,repository:h.jobs,provider,rates:policy,now:h.now});
-  assert.equal(result.status,'fallback',sample.name);
+  assert.equal(result.status,'fallback',sample.name);assert.equal(calls,1,`${sample.name}: worker must exercise provider fixture`);
   const view=await h.game.view(h.code,'session-A');assert.equal(view.me.interviews[0].messages[0].answer,message.answer);
   assert.deepEqual(view.me.interviews[0].messages[0].narration,{status:'fallback'});
  }
