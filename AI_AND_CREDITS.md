@@ -1,17 +1,31 @@
-# Uso de IA e créditos
+# AI use and credits
 
-## Estado inicial
+SHIFT's concept, documentation, artwork and development received assistance from OpenAI tools in November 2026, under the project's creative direction. Automated tests and code review do not replace editorial review or playtesting.
 
-A organização do conceito, o briefing e esta documentação receberam assistência de IA da OpenAI em novembro de 2026, a partir da direção criativa fornecida para o projeto.
+## During play
 
-Não há código de jogo nem assets de produção neste commit inicial. Estudos visuais gerados por IA foram explorados separadamente e não estão incluídos no repositório. Não devem ser apresentados como screenshots de um jogo implementado.
+This build uses canonical answers without live GPT calls. The optional narration orchestration is tested with simulations and remains disabled. Canonical evidence and outcomes stay authoritative on the server. No AI credential is included.
 
-## IA durante a partida
+Activating generative narration later requires separate approval of the model, costs, data policy and secure credentials.
 
-Entrevistas com suspeitos interpretados por IA são uma mecânica planejada. Provedor, modelo, custos, política de dados e implementação ainda serão definidos. A verdade do caso deve ser fixada antes da partida e validada no servidor, sem depender da IA para decidir culpado ou pontuação.
+## Original artwork
 
-## Atualização antes da submissão
+The 15 fictional suspect portraits and three illustrated stage icons were created with OpenAI image generation. Four portraits were revised to make the cast more visually distinct. Their appearance is artistic direction, not evidence about guilt. Art was based only on public fictional profiles, never the private solution.
 
-Registrar ferramentas utilizadas, partes assistidas ou geradas e revisões realizadas. Se arte, áudio, código ou texto assistido por IA entrar na build, incluir essa informação e preencher a declaração exigida pelo Game Off e pelo itch.io.
+Browser assets are WebP derivatives with transparency, sized to 512px for portraits and 192px for stage icons. Original generated PNGs are retained separately and are not included in the deployment bundle. The 18 browser illustrations total approximately 634 KiB. Mockup previews are concept images, not screenshots proving browser behaviour.
 
-Para materiais de terceiros, registrar autor, fonte, licença, alterações e atribuições exigidas. Não adicionar assets sem direito de uso.
+## Typography
+
+The SHIFT wordmark uses the unmodified Rye Regular font by Sorkin Type Co, distributed under the SIL Open Font License 1.1. The original font and its copyright/licence are self-hosted in `public/assets/fonts/`; no external font request is made during play. Text and controls use system fonts.
+
+Verified source: https://github.com/google/fonts/tree/main/ofl/rye
+
+Source TTF Git blob SHA: `f539f0960133f00d4ad13d06bd58891130ca555a`. The font was not subsetted or renamed. Preserve the bundled `OFL-Rye.txt` when distributing it.
+
+## Code dependencies and editorial content
+
+The backend uses AWS SDK v3; esbuild is the existing build tool. Versions are pinned in the package lock and dependency notices are packaged with the runtime artefacts.
+
+The full editorial case, including its English localisation and solution, stays private and outside this repository and browser bundle. Public tests and screenshots use synthetic content.
+
+Before competition submission, review the organiser's current AI disclosure requirements and record all contributions and materials actually distributed. This file does not assert compliance with rules that have not been checked.

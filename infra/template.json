@@ -1,0 +1,1485 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Transform": "AWS::Serverless-2016-10-31",
+  "Description": "SHIFT canonical durable beta. Declarative only: no deploy or credentials are included.",
+  "Parameters": {
+    "Environment": {
+      "Type": "String",
+      "Default": "staging",
+      "AllowedValues": [
+        "staging",
+        "production"
+      ]
+    },
+    "DomainName": {
+      "Type": "String",
+      "Default": "shift.terminalufo.com",
+      "AllowedPattern": "^shift(-staging)?\\.terminalufo\\.com$"
+    },
+    "HostedZoneId": {
+      "Type": "String",
+      "AllowedPattern": "^Z[A-Z0-9]+$"
+    },
+    "OriginSecretArn": {
+      "Type": "String",
+      "AllowedPattern": "^arn:aws:secretsmanager:us-east-1:[0-9]{12}:secret:.+$",
+      "Description": "Existing separately approved origin-verification secret with JSON token; never the GPT key."
+    },
+    "CaseKey": {
+      "Type": "String",
+      "Default": "cases/train-v1.json",
+      "AllowedPattern": "^cases/[A-Za-z0-9_.-]+\\.json$"
+    },
+    "CaseSha256": {
+      "Type": "String",
+      "AllowedPattern": "^[a-f0-9]{64}$"
+    },
+    "ReleaseId": {
+      "Type": "String",
+      "AllowedPattern": "^[a-f0-9]{7,64}$"
+    },
+    "AllowNewRooms": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": [
+        "true",
+        "false"
+      ]
+    },
+    "ProvisionAiQueue": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Description": "Optional queue scaffolding only. Does not enable AI or deploy a worker."
+    },
+    "ProvisionAiWorkers": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Description": "Provision disabled worker, relay and reconciler resources only; does not activate AI."
+    },
+    "AiSecretArn": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^$|^arn:aws:secretsmanager:us-east-1:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$",
+      "Description": "Optional future approved secret ARN. Never provide a key value. Only worker role can receive read permission."
+    },
+    "AiPolicyJson": {
+      "Type": "String",
+      "Default": "",
+      "MaxLength": 4096,
+      "Description": "Future explicitly approved complete model, rate and limit configuration. Not a credential; empty until approved."
+    }
+  },
+  "Rules": {
+    "UseUsEast1": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "AWS::Region"
+              },
+              "us-east-1"
+            ]
+          },
+          "AssertDescription": "CloudFront certificate and WAF require us-east-1."
+        }
+      ]
+    },
+    "AiWorkersRequireQueue": {
+      "RuleCondition": {
+        "Fn::Equals": [
+          {
+            "Ref": "ProvisionAiWorkers"
+          },
+          "true"
+        ]
+      },
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "ProvisionAiQueue"
+              },
+              "true"
+            ]
+          },
+          "AssertDescription": "AI workers require the optional queue resources."
+        }
+      ]
+    },
+    "DifferentAiAndOriginSecrets": {
+      "RuleCondition": {
+        "Fn::Not": [
+          {
+            "Fn::Equals": [
+              {
+                "Ref": "AiSecretArn"
+              },
+              ""
+            ]
+          }
+        ]
+      },
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "AiSecretArn"
+                  },
+                  {
+                    "Ref": "OriginSecretArn"
+                  }
+                ]
+              }
+            ]
+          },
+          "AssertDescription": "GPT credentials and API origin verification must use separate secrets."
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "AssetsBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        }
+      }
+    },
+    "CasesBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        }
+      }
+    },
+    "GameTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "pk",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "sk",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "aiDuePk",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "aiDueSk",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "pk",
+            "KeyType": "HASH"
+          },
+          {
+            "AttributeName": "sk",
+            "KeyType": "RANGE"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": true
+        },
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true
+        },
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+          "RecoveryPeriodInDays": 7
+        },
+        "DeletionProtectionEnabled": true,
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "SHIFT"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "Environment"
+            }
+          }
+        ],
+        "StreamSpecification": {
+          "StreamViewType": "KEYS_ONLY"
+        },
+        "GlobalSecondaryIndexes": [
+          {
+            "IndexName": "AiDueIndex",
+            "KeySchema": [
+              {
+                "AttributeName": "aiDuePk",
+                "KeyType": "HASH"
+              },
+              {
+                "AttributeName": "aiDueSk",
+                "KeyType": "RANGE"
+              }
+            ],
+            "Projection": {
+              "ProjectionType": "KEYS_ONLY"
+            }
+          }
+        ]
+      }
+    },
+    "ApiLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/shift/${AWS::StackName}/api-access"
+        },
+        "RetentionInDays": 14
+      }
+    },
+    "FunctionLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${AWS::StackName}-api"
+        },
+        "RetentionInDays": 14
+      }
+    },
+    "HttpApi": {
+      "Type": "AWS::Serverless::HttpApi",
+      "Properties": {
+        "StageName": "$default",
+        "DefaultRouteSettings": {
+          "ThrottlingBurstLimit": 30,
+          "ThrottlingRateLimit": 20
+        },
+        "AccessLogSettings": {
+          "DestinationArn": {
+            "Fn::GetAtt": [
+              "ApiLogs",
+              "Arn"
+            ]
+          },
+          "Format": "{\"requestId\":\"$context.requestId\",\"route\":\"$context.routeKey\",\"status\":\"$context.status\"}"
+        }
+      }
+    },
+    "ApiFunction": {
+      "Type": "AWS::Serverless::Function",
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${AWS::StackName}-api"
+        },
+        "CodeUri": "../dist/api",
+        "Handler": "server/lambda.handler",
+        "Runtime": "nodejs22.x",
+        "Architectures": [
+          "arm64"
+        ],
+        "MemorySize": 256,
+        "Timeout": 10,
+        "Environment": {
+          "Variables": {
+            "NODE_ENV": "production",
+            "SHIFT_ORIGIN": {
+              "Fn::Sub": "https://${DomainName}"
+            },
+            "SHIFT_TABLE": {
+              "Ref": "GameTable"
+            },
+            "SHIFT_CASE_BUCKET": {
+              "Ref": "CasesBucket"
+            },
+            "SHIFT_CASE_KEY": {
+              "Ref": "CaseKey"
+            },
+            "SHIFT_CASE_SHA256": {
+              "Ref": "CaseSha256"
+            },
+            "SHIFT_ORIGIN_SECRET_ARN": {
+              "Ref": "OriginSecretArn"
+            },
+            "SHIFT_ALLOW_NEW_ROOMS": {
+              "Ref": "AllowNewRooms"
+            },
+            "SHIFT_AI_ENABLED": "false"
+          }
+        },
+        "Policies": [
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "dynamodb:GetItem",
+                  "dynamodb:PutItem",
+                  "dynamodb:UpdateItem",
+                  "dynamodb:DeleteItem"
+                ],
+                "Resource": {
+                  "Fn::GetAtt": [
+                    "GameTable",
+                    "Arn"
+                  ]
+                }
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject"
+                ],
+                "Resource": {
+                  "Fn::Sub": "${CasesBucket.Arn}/${CaseKey}"
+                }
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "secretsmanager:GetSecretValue"
+                ],
+                "Resource": {
+                  "Ref": "OriginSecretArn"
+                }
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents"
+                ],
+                "Resource": {
+                  "Fn::Sub": "${FunctionLogs.Arn}:*"
+                }
+              }
+            ]
+          }
+        ],
+        "Events": {
+          "Proxy": {
+            "Type": "HttpApi",
+            "Properties": {
+              "ApiId": {
+                "Ref": "HttpApi"
+              },
+              "Path": "/{proxy+}",
+              "Method": "ANY"
+            }
+          }
+        }
+      }
+    },
+    "Certificate": {
+      "Type": "AWS::CertificateManager::Certificate",
+      "Properties": {
+        "DomainName": {
+          "Ref": "DomainName"
+        },
+        "ValidationMethod": "DNS",
+        "DomainValidationOptions": [
+          {
+            "DomainName": {
+              "Ref": "DomainName"
+            },
+            "HostedZoneId": {
+              "Ref": "HostedZoneId"
+            }
+          }
+        ]
+      }
+    },
+    "OAC": {
+      "Type": "AWS::CloudFront::OriginAccessControl",
+      "Properties": {
+        "OriginAccessControlConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-assets"
+          },
+          "OriginAccessControlOriginType": "s3",
+          "SigningBehavior": "always",
+          "SigningProtocol": "sigv4"
+        }
+      }
+    },
+    "ApiCachePolicy": {
+      "Type": "AWS::CloudFront::CachePolicy",
+      "Properties": {
+        "CachePolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-api-no-cache"
+          },
+          "MinTTL": 0,
+          "DefaultTTL": 0,
+          "MaxTTL": 0,
+          "ParametersInCacheKeyAndForwardedToOrigin": {
+            "CookiesConfig": {
+              "CookieBehavior": "none"
+            },
+            "HeadersConfig": {
+              "HeaderBehavior": "none"
+            },
+            "QueryStringsConfig": {
+              "QueryStringBehavior": "none"
+            },
+            "EnableAcceptEncodingGzip": false,
+            "EnableAcceptEncodingBrotli": false
+          }
+        }
+      }
+    },
+    "ApiOriginPolicy": {
+      "Type": "AWS::CloudFront::OriginRequestPolicy",
+      "Properties": {
+        "OriginRequestPolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-api-origin"
+          },
+          "CookiesConfig": {
+            "CookieBehavior": "all"
+          },
+          "HeadersConfig": {
+            "HeaderBehavior": "whitelist",
+            "Headers": [
+              "Origin",
+              "Content-Type",
+              "Sec-Fetch-Site",
+              "CloudFront-Viewer-Address"
+            ]
+          },
+          "QueryStringsConfig": {
+            "QueryStringBehavior": "all"
+          }
+        }
+      }
+    },
+    "WebHeaders": {
+      "Type": "AWS::CloudFront::ResponseHeadersPolicy",
+      "Properties": {
+        "ResponseHeadersPolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-security"
+          },
+          "SecurityHeadersConfig": {
+            "ContentTypeOptions": {
+              "Override": true
+            },
+            "FrameOptions": {
+              "FrameOption": "DENY",
+              "Override": true
+            },
+            "ReferrerPolicy": {
+              "ReferrerPolicy": "no-referrer",
+              "Override": true
+            },
+            "StrictTransportSecurity": {
+              "AccessControlMaxAgeSec": 31536000,
+              "IncludeSubdomains": false,
+              "Preload": false,
+              "Override": true
+            },
+            "ContentSecurityPolicy": {
+              "ContentSecurityPolicy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+              "Override": true
+            }
+          }
+        }
+      }
+    },
+    "WebAcl": {
+      "Type": "AWS::WAFv2::WebACL",
+      "Properties": {
+        "Scope": "CLOUDFRONT",
+        "DefaultAction": {
+          "Allow": {}
+        },
+        "VisibilityConfig": {
+          "CloudWatchMetricsEnabled": true,
+          "MetricName": {
+            "Fn::Sub": "${AWS::StackName}-web"
+          },
+          "SampledRequestsEnabled": false
+        },
+        "Rules": [
+          {
+            "Name": "request-rate",
+            "Priority": 1,
+            "Action": {
+              "Block": {}
+            },
+            "Statement": {
+              "RateBasedStatement": {
+                "Limit": 1000,
+                "AggregateKeyType": "IP",
+                "EvaluationWindowSec": 300
+              }
+            },
+            "VisibilityConfig": {
+              "CloudWatchMetricsEnabled": true,
+              "MetricName": {
+                "Fn::Sub": "${AWS::StackName}-rate"
+              },
+              "SampledRequestsEnabled": false
+            }
+          }
+        ]
+      }
+    },
+    "WebDistribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Enabled": true,
+          "IPV6Enabled": true,
+          "HttpVersion": "http2and3",
+          "PriceClass": "PriceClass_100",
+          "DefaultRootObject": "index.html",
+          "Aliases": [
+            {
+              "Ref": "DomainName"
+            }
+          ],
+          "ViewerCertificate": {
+            "AcmCertificateArn": {
+              "Ref": "Certificate"
+            },
+            "SslSupportMethod": "sni-only",
+            "MinimumProtocolVersion": "TLSv1.2_2021"
+          },
+          "WebACLId": {
+            "Fn::GetAtt": [
+              "WebAcl",
+              "Arn"
+            ]
+          },
+          "Origins": [
+            {
+              "Id": "assets",
+              "DomainName": {
+                "Fn::GetAtt": [
+                  "AssetsBucket",
+                  "RegionalDomainName"
+                ]
+              },
+              "OriginPath": {
+                "Fn::Sub": "/releases/${ReleaseId}"
+              },
+              "OriginAccessControlId": {
+                "Fn::GetAtt": [
+                  "OAC",
+                  "Id"
+                ]
+              },
+              "S3OriginConfig": {
+                "OriginAccessIdentity": ""
+              }
+            },
+            {
+              "Id": "api",
+              "DomainName": {
+                "Fn::Sub": "${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+              },
+              "CustomOriginConfig": {
+                "OriginProtocolPolicy": "https-only",
+                "OriginSSLProtocols": [
+                  "TLSv1.2"
+                ]
+              },
+              "OriginCustomHeaders": [
+                {
+                  "HeaderName": "X-Shift-Origin",
+                  "HeaderValue": {
+                    "Fn::Sub": "{{resolve:secretsmanager:${OriginSecretArn}:SecretString:token}}"
+                  }
+                }
+              ]
+            }
+          ],
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "assets",
+            "ViewerProtocolPolicy": "redirect-to-https",
+            "AllowedMethods": [
+              "GET",
+              "HEAD"
+            ],
+            "CachedMethods": [
+              "GET",
+              "HEAD"
+            ],
+            "Compress": true,
+            "MinTTL": 0,
+            "DefaultTTL": 60,
+            "MaxTTL": 300,
+            "ForwardedValues": {
+              "QueryString": false,
+              "Cookies": {
+                "Forward": "none"
+              }
+            },
+            "ResponseHeadersPolicyId": {
+              "Ref": "WebHeaders"
+            }
+          },
+          "CacheBehaviors": [
+            {
+              "PathPattern": "/api/*",
+              "TargetOriginId": "api",
+              "ViewerProtocolPolicy": "https-only",
+              "AllowedMethods": [
+                "GET",
+                "HEAD",
+                "OPTIONS",
+                "PUT",
+                "PATCH",
+                "POST",
+                "DELETE"
+              ],
+              "CachedMethods": [
+                "GET",
+                "HEAD"
+              ],
+              "Compress": true,
+              "CachePolicyId": {
+                "Ref": "ApiCachePolicy"
+              },
+              "OriginRequestPolicyId": {
+                "Ref": "ApiOriginPolicy"
+              },
+              "ResponseHeadersPolicyId": {
+                "Ref": "WebHeaders"
+              }
+            }
+          ],
+          "CustomErrorResponses": [
+            {
+              "ErrorCode": 400,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 403,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 404,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 405,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 414,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 416,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 500,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 501,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 502,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 503,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 504,
+              "ErrorCachingMinTTL": 0
+            }
+          ]
+        }
+      }
+    },
+    "AssetsPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "AssetsBucket"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "cloudfront.amazonaws.com"
+              },
+              "Action": "s3:GetObject",
+              "Resource": {
+                "Fn::Sub": "${AssetsBucket.Arn}/releases/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "AWS:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${WebDistribution}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DnsA": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": {
+          "Ref": "HostedZoneId"
+        },
+        "Name": {
+          "Ref": "DomainName"
+        },
+        "Type": "A",
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "WebDistribution",
+              "DomainName"
+            ]
+          },
+          "HostedZoneId": "Z2FDTNDATAQYW2",
+          "EvaluateTargetHealth": false
+        }
+      }
+    },
+    "DnsAAAA": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": {
+          "Ref": "HostedZoneId"
+        },
+        "Name": {
+          "Ref": "DomainName"
+        },
+        "Type": "AAAA",
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "WebDistribution",
+              "DomainName"
+            ]
+          },
+          "HostedZoneId": "Z2FDTNDATAQYW2",
+          "EvaluateTargetHealth": false
+        }
+      }
+    },
+    "AiDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Condition": "ProvisionAiQueueEnabled",
+      "Properties": {
+        "SqsManagedSseEnabled": true,
+        "MessageRetentionPeriod": 1209600
+      }
+    },
+    "AiQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Condition": "ProvisionAiQueueEnabled",
+      "Properties": {
+        "SqsManagedSseEnabled": true,
+        "VisibilityTimeout": 180,
+        "MessageRetentionPeriod": 86400,
+        "ReceiveMessageWaitTimeSeconds": 20,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "AiDlq",
+              "Arn"
+            ]
+          },
+          "maxReceiveCount": 3
+        }
+      }
+    },
+    "AiWorkerLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${AWS::StackName}-ai-worker"
+        },
+        "RetentionInDays": 14
+      }
+    },
+    "AiWorkerRole": {
+      "Type": "AWS::IAM::Role",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "runtime",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "AiWorkerLogs",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:ConditionCheckItem"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "GameTable",
+                      "Arn"
+                    ]
+                  },
+                  "Condition": {
+                    "ForAllValues:StringLike": {
+                      "dynamodb:LeadingKeys": [
+                        "AIJOB#*",
+                        "AIOUTBOX#*",
+                        "AIBUDGET#*",
+                        "AISLOTS#*",
+                        "ROOM#*"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sqs:ReceiveMessage",
+                    "sqs:DeleteMessage",
+                    "sqs:GetQueueAttributes"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "AiQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Fn::If": [
+                    "AiSecretConfigured",
+                    {
+                      "Effect": "Allow",
+                      "Action": [
+                        "secretsmanager:GetSecretValue"
+                      ],
+                      "Resource": {
+                        "Ref": "AiSecretArn"
+                      }
+                    },
+                    {
+                      "Ref": "AWS::NoValue"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "AiWorkerFunction": {
+      "Type": "AWS::Serverless::Function",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${AWS::StackName}-ai-worker"
+        },
+        "CodeUri": "../dist/worker",
+        "Handler": "server/ai/worker-lambda.handler",
+        "Runtime": "nodejs22.x",
+        "Architectures": [
+          "arm64"
+        ],
+        "MemorySize": 256,
+        "Timeout": 30,
+        "Role": {
+          "Fn::GetAtt": [
+            "AiWorkerRole",
+            "Arn"
+          ]
+        },
+        "Environment": {
+          "Variables": {
+            "NODE_ENV": "production",
+            "SHIFT_TABLE": {
+              "Ref": "GameTable"
+            },
+            "SHIFT_AI_WORKER_ENABLED": "false",
+            "SHIFT_AI_QUEUE_ARN": {
+              "Fn::GetAtt": [
+                "AiQueue",
+                "Arn"
+              ]
+            },
+            "SHIFT_AI_SECRET_ARN": {
+              "Ref": "AiSecretArn"
+            },
+            "SHIFT_AI_POLICY": {
+              "Ref": "AiPolicyJson"
+            }
+          }
+        }
+      }
+    },
+    "AiRelayLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${AWS::StackName}-ai-relay"
+        },
+        "RetentionInDays": 14
+      }
+    },
+    "AiRelayRole": {
+      "Type": "AWS::IAM::Role",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "runtime",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "AiRelayLogs",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "GameTable",
+                      "Arn"
+                    ]
+                  },
+                  "Condition": {
+                    "ForAllValues:StringLike": {
+                      "dynamodb:LeadingKeys": [
+                        "AIOUTBOX#*"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetRecords",
+                    "dynamodb:GetShardIterator",
+                    "dynamodb:DescribeStream",
+                    "dynamodb:ListStreams"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "${GameTable.Arn}/stream/*"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sqs:SendMessage"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::GetAtt": [
+                        "AiQueue",
+                        "Arn"
+                      ]
+                    },
+                    {
+                      "Fn::GetAtt": [
+                        "AiRelayDlq",
+                        "Arn"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "AiRelayFunction": {
+      "Type": "AWS::Serverless::Function",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${AWS::StackName}-ai-relay"
+        },
+        "CodeUri": "../dist/relay",
+        "Handler": "server/ai/relay-lambda.handler",
+        "Runtime": "nodejs22.x",
+        "Architectures": [
+          "arm64"
+        ],
+        "MemorySize": 256,
+        "Timeout": 60,
+        "Role": {
+          "Fn::GetAtt": [
+            "AiRelayRole",
+            "Arn"
+          ]
+        },
+        "Environment": {
+          "Variables": {
+            "NODE_ENV": "production",
+            "SHIFT_TABLE": {
+              "Ref": "GameTable"
+            },
+            "SHIFT_AI_RELAY_ENABLED": "false",
+            "SHIFT_AI_QUEUE_ARN": {
+              "Fn::GetAtt": [
+                "AiQueue",
+                "Arn"
+              ]
+            },
+            "SHIFT_AI_QUEUE_URL": {
+              "Ref": "AiQueue"
+            },
+            "SHIFT_AI_STREAM_ARN": {
+              "Fn::GetAtt": [
+                "GameTable",
+                "StreamArn"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "AiReconcilerLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${AWS::StackName}-ai-reconciler"
+        },
+        "RetentionInDays": 14
+      }
+    },
+    "AiReconcilerRole": {
+      "Type": "AWS::IAM::Role",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "runtime",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "AiReconcilerLogs",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:PutItem",
+                    "dynamodb:ConditionCheckItem"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "GameTable",
+                      "Arn"
+                    ]
+                  },
+                  "Condition": {
+                    "ForAllValues:StringLike": {
+                      "dynamodb:LeadingKeys": [
+                        "AIJOB#*",
+                        "AIOUTBOX#*",
+                        "AIBUDGET#*",
+                        "AISLOTS#*",
+                        "ROOM#*",
+                        "AICURSOR#RECONCILER"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:Query"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "${GameTable.Arn}/index/AiDueIndex"
+                  },
+                  "Condition": {
+                    "ForAllValues:StringEquals": {
+                      "dynamodb:LeadingKeys": [
+                        "AI#DUE"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sqs:SendMessage"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "AiQueue",
+                      "Arn"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "AiReconcilerFunction": {
+      "Type": "AWS::Serverless::Function",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${AWS::StackName}-ai-reconciler"
+        },
+        "CodeUri": "../dist/reconciler",
+        "Handler": "server/ai/reconciler-lambda.handler",
+        "Runtime": "nodejs22.x",
+        "Architectures": [
+          "arm64"
+        ],
+        "MemorySize": 256,
+        "Timeout": 60,
+        "Role": {
+          "Fn::GetAtt": [
+            "AiReconcilerRole",
+            "Arn"
+          ]
+        },
+        "Environment": {
+          "Variables": {
+            "NODE_ENV": "production",
+            "SHIFT_TABLE": {
+              "Ref": "GameTable"
+            },
+            "SHIFT_AI_RECONCILER_ENABLED": "false",
+            "SHIFT_AI_QUEUE_ARN": {
+              "Fn::GetAtt": [
+                "AiQueue",
+                "Arn"
+              ]
+            },
+            "SHIFT_AI_QUEUE_URL": {
+              "Ref": "AiQueue"
+            }
+          }
+        }
+      }
+    },
+    "AiRelayDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "SqsManagedSseEnabled": true,
+        "MessageRetentionPeriod": 1209600
+      }
+    },
+    "AiWorkerMapping": {
+      "Type": "AWS::Lambda::EventSourceMapping",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "EventSourceArn": {
+          "Fn::GetAtt": [
+            "AiQueue",
+            "Arn"
+          ]
+        },
+        "FunctionName": {
+          "Ref": "AiWorkerFunction"
+        },
+        "Enabled": false,
+        "BatchSize": 1,
+        "MaximumBatchingWindowInSeconds": 0,
+        "FunctionResponseTypes": [
+          "ReportBatchItemFailures"
+        ],
+        "ScalingConfig": {
+          "MaximumConcurrency": 2
+        }
+      }
+    },
+    "AiRelayMapping": {
+      "Type": "AWS::Lambda::EventSourceMapping",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "EventSourceArn": {
+          "Fn::GetAtt": [
+            "GameTable",
+            "StreamArn"
+          ]
+        },
+        "FunctionName": {
+          "Ref": "AiRelayFunction"
+        },
+        "Enabled": false,
+        "StartingPosition": "TRIM_HORIZON",
+        "BatchSize": 25,
+        "MaximumBatchingWindowInSeconds": 0,
+        "MaximumRetryAttempts": 3,
+        "MaximumRecordAgeInSeconds": 3600,
+        "BisectBatchOnFunctionError": true,
+        "ParallelizationFactor": 1,
+        "FunctionResponseTypes": [
+          "ReportBatchItemFailures"
+        ],
+        "FilterCriteria": {
+          "Filters": [
+            {
+              "Pattern": "{\"eventName\": [\"INSERT\"], \"dynamodb\": {\"Keys\": {\"pk\": {\"S\": [{\"prefix\": \"AIOUTBOX#\"}]}}}}"
+            }
+          ]
+        },
+        "DestinationConfig": {
+          "OnFailure": {
+            "Destination": {
+              "Fn::GetAtt": [
+                "AiRelayDlq",
+                "Arn"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "AiReconcileSchedule": {
+      "Type": "AWS::Events::Rule",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "ScheduleExpression": "rate(5 minutes)",
+        "State": "DISABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "AiReconcilerFunction",
+                "Arn"
+              ]
+            },
+            "Id": "reconcile",
+            "Input": "{}",
+            "RetryPolicy": {
+              "MaximumEventAgeInSeconds": 60,
+              "MaximumRetryAttempts": 0
+            }
+          }
+        ]
+      }
+    },
+    "AiReconcileInvokePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "AiReconcilerFunction"
+        },
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "AiReconcileSchedule",
+            "Arn"
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "Url": {
+      "Value": {
+        "Fn::Sub": "https://${DomainName}"
+      }
+    },
+    "AssetsBucket": {
+      "Value": {
+        "Ref": "AssetsBucket"
+      }
+    },
+    "CasesBucket": {
+      "Value": {
+        "Ref": "CasesBucket"
+      }
+    },
+    "GameTable": {
+      "Value": {
+        "Ref": "GameTable"
+      }
+    },
+    "DistributionId": {
+      "Value": {
+        "Ref": "WebDistribution"
+      }
+    }
+  },
+  "Conditions": {
+    "ProvisionAiQueueEnabled": {
+      "Fn::Equals": [
+        {
+          "Ref": "ProvisionAiQueue"
+        },
+        "true"
+      ]
+    },
+    "ProvisionAiWorkersEnabled": {
+      "Fn::And": [
+        {
+          "Condition": "ProvisionAiQueueEnabled"
+        },
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "ProvisionAiWorkers"
+            },
+            "true"
+          ]
+        }
+      ]
+    },
+    "AiSecretConfigured": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "AiSecretArn"
+            },
+            ""
+          ]
+        }
+      ]
+    }
+  }
+}

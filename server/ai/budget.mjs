@@ -1,0 +1,3 @@
+// Rates are USD per million tokens. Result is integer microUSD, rounded up.
+export function reserveCost({inputTokens,outputTokens,inputRate,outputRate}){for(const n of [inputTokens,outputTokens])if(!Number.isSafeInteger(n)||n<0)throw new Error('Invalid token count');for(const rate of [inputRate,outputRate])if(!Number.isFinite(rate)||rate<0)throw new Error('Approved price is required');const cost=Math.ceil(inputTokens*inputRate+outputTokens*outputRate);if(!Number.isSafeInteger(cost)||cost<=0)throw new Error('Invalid cost envelope');return cost;}
+export const PROPOSED_LIMITS=Object.freeze({inputTokens:2500,outputTokens:350,roomMicroUsd:250000,dayMicroUsd:5000000,monthMicroUsd:25000000,maxConcurrent:2});

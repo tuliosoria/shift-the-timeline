@@ -1,40 +1,48 @@
 # SHIFT: The Timeline
 
-Jogo cooperativo de investigação para celular e navegador, em desenvolvimento para o [Game Off 2026](https://itch.io/jam/game-off-2026).
+A cooperative investigation game in British English for 3–4 players. A crime is foretold; the team splits private interviews, shares evidence, connects findings and makes individual accusations.
 
-Uma visão revela a vítima, o lugar e a forma de um crime que ainda não aconteceu. A equipe tem 24 horas ficcionais para investigar, conversar com suspeitos interpretados por IA e mudar a linha do tempo sem prender inocentes.
+## Current development build
 
-## Estado do projeto
+The investigative interface follows **Analyse → Interrogate → Deduce**. It includes illustrated dossiers, a compact mobile layout, explicit sharing previews, structured team hypotheses and a confirmed end-of-round action.
 
-**Pré-produção.** Este repositório começa com o briefing e o checklist da jam. Ainda não há jogo executável, build, backend, casos completos ou submissão no itch.io. O nome é provisório.
+- Authoritative rules: 15 suspects, three rounds, one suspect per player per round, up to four questions per interview.
+- Eight-character invitations and cookie-based browser identity.
+- Private interviews and ballots. Only explicitly shared canonical answers enter the team board.
+- Correlations reference public case facts, suspect dossiers or already-shared evidence. They remain unverified player hypotheses.
+- Local drafts survive stage changes, polling and reload in the same browser context. Unsent earlier-round drafts stay labelled and recoverable rather than moving into a new interview.
+- Idempotent commands and transactional DynamoDB adapters preserve safe retries.
+- Rooms expire after six hours without actions or 24 hours from creation. Polling does not renew them.
+- Canonical dialogue only. Generative AI remains disconnected; optional AI orchestration is tested with simulations and is not activated.
 
-O primeiro objetivo é uma partida jogável de ponta a ponta com um caso, antes de expandir para os cinco cenários propostos. Engine, stack e serviços ainda não foram definidos.
+**No deployment or live AWS configuration has been performed for this UI release.** The editorial case and its solution remain private. Public screenshots and tests use synthetic content. Playtesting is still needed to assess pacing and difficulty.
 
-## Como a partida funciona
+## Local development
 
-- Pelo menos três amigos entram em uma sala pelo navegador.
-- Em cada turno, os jogadores entrevistam suspeitos em paralelo e trocam informações.
-- O número de suspeitos supera a capacidade total de entrevistas da equipe.
-- Ao final, cada jogador apresenta sua própria acusação.
-- Todos acertam: crime impedido e nenhum inocente preso. Alguns acertam: crime impedido, com inocentes presos. Ninguém acerta: o crime acontece.
+Requires Node.js 22 or newer.
 
-A relação com **SHIFT** é mudar um futuro previsto por meio da investigação e das decisões coletivas.
+```sh
+npm ci
+npm run dev:demo
+```
 
-## Documentação
+Open http://127.0.0.1:3000. This is a synthetic technical fixture, not the editorial mystery. Use three separate browser profiles or contexts to represent three players; ordinary tabs share identity.
 
-- [Briefing e decisões em aberto](docs/BRIEFING.md)
-- [Regras verificadas e checklist da jam](docs/GAME_OFF.md)
-- [Uso de IA e créditos](AI_AND_CREDITS.md)
-- [Estado das licenças](LICENSE_STATUS.md)
+For the authorised private English case, place the complete versioned module at `private/train-case.en-GB.mjs`, then run `npm run dev`. Alternatively set `SHIFT_CASE_FILE` explicitly when running `npm start`. The original-language source need not be overwritten. Private modules export `TRAIN_CASE` and `CASES`, and the entire `private/` directory is ignored by Git.
 
-## Desenvolvimento
+Without `SHIFT_TABLE`, local rooms are in memory and disappear when the server restarts. Production requires durable storage, HTTPS, origin verification and a pinned private case artefact. Changing a case version must not silently reinterpret existing rooms.
 
-Ainda não há comandos de instalação, execução ou testes. Eles deverão ser documentados junto à primeira implementação. Não publique chaves de API, dados de jogadores ou conversas privadas no repositório.
+## Verification
 
-## Game Off 2026
+```sh
+npm test
+npm run check
+npm audit --omit=dev
+npm run package
+```
 
-Prazo oficial: **1º de dezembro de 2026, 13h37 PST / 21h37 UTC / 18h37 de Brasília**. Criar este repositório não equivale a entrar na jam nem a enviar uma inscrição. O jogo precisa ser desenvolvido, testado e submetido no itch.io dentro do prazo.
+The build contains an exact allowlist of public assets, four separate Lambda bundles and third-party notices. It excludes private cases, tests, development screenshots, credentials and arbitrary files in `public/`. Previous build output is preserved under `dist.previous-*`, outside the deployment directory; never publish those folders.
 
-## Transparência
+The 18 browser illustrations total approximately 634 KiB. Rye is self-hosted with its SIL OFL notice, with system fonts used for reading and controls. No framework or new runtime service was introduced.
 
-O planejamento e a documentação receberam assistência de IA da OpenAI. As conversas com suspeitos são uma mecânica planejada e ainda não estão implementadas. Veja [AI_AND_CREDITS.md](AI_AND_CREDITS.md) para o registro atualizado.
+See [UI validation](docs/VALIDATION_UI.md), [backend English validation](docs/BACKEND_EN_GB_VALIDATION.md), [interface design](docs/UI_DESIGN.md), [deployment guidance](docs/DEPLOYMENT.md), [AI orchestration](docs/AI_ORCHESTRATION.md), [credits](AI_AND_CREDITS.md) and [licensing status](LICENSE_STATUS.md).

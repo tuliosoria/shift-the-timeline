@@ -15,3 +15,7 @@ build/
 coverage/
 *.log
 .tmp/
+private/
+.aws-sam/
+.shift-build-*
+dist.previous-*
