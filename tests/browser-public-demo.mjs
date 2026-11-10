@@ -60,14 +60,46 @@ try {
    const page=pages[1];await navigate(page,'deduce');
    await page.waitForFunction(()=>document.querySelectorAll('#source-a option[value^="clue:"]').length>=2);
    const sources=await page.locator('#source-a option[value^="clue:"]').evaluateAll(options=>options.slice(0,2).map(option=>({value:option.value,label:option.textContent})));
-   await page.selectOption('#source-a',sources[0].value);await page.selectOption('#source-b',sources[1].value);await page.selectOption('#relation','supports');
-   const hypothesis='The authorised group and the recorded visitors should be compared.';await page.fill('#hypothesis',hypothesis);await page.click('#correlation-form button');
+   const hypothesis='The authorised group and the recorded visitors should be compared.';await page.fill('#hypothesis',hypothesis);
+   await page.focus('#source-a');await page.selectOption('#source-a',sources[0].value);assert.equal(await page.locator('#source-a').evaluate(el=>el===document.activeElement),true);
+   await page.selectOption('#source-b',sources[1].value);await page.selectOption('#relation','supports');
+   assert.equal(await page.inputValue('#hypothesis'),hypothesis);
+   for(const id of ['source-preview-a','source-preview-b']){const text=await page.locator(`#${id} p`).last().textContent();assert.ok(sharedAnswers.includes(text),'Preview is exact full shared canonical answer');assert.match(await page.locator(`#${id}`).textContent(),/Shared case evidence/);}
+   const originalViewport=page.viewportSize();await page.setViewportSize({width:1440,height:900});await overflow(page);await page.screenshot({path:'/tmp/shift-recovery-deduce-preview-desktop.png',fullPage:true});
+   await page.setViewportSize({width:390,height:900});await overflow(page);await page.screenshot({path:'/tmp/shift-recovery-deduce-preview-mobile.png',fullPage:true});await page.setViewportSize(originalViewport);
+   await page.click('#correlation-form button');
    assert.match(await page.locator('#confirm-body').textContent(),/Team hypothesis/);assert.ok((await page.locator('#confirm-body').textContent()).includes(hypothesis));await confirm(page);
    const record=page.locator('.board-record.correlation').filter({hasText:hypothesis});await record.waitFor();
    assert.match(await record.textContent(),/Unverified/);await record.locator('summary').first().click();
    const expanded=await record.locator('details').first().locator('p').textContent();assert.ok(sharedAnswers.includes(expanded),'Correlation still resolves original canonical source');await overflow(page);
+   // Explicit synthetic PUBLIC-source layout fixture, not authored case evidence.
+   // It enters the in-memory store and normal API/UI path, never a DOM-only fake.
+   const syntheticId='synthetic-preview-layout';const syntheticText='Synthetic layout only\n'+'X'.repeat(300)+'\nA second visible line.';
+   const fixtureRoom=store.rooms.get(code);fixtureRoom.board.push({id:syntheticId,type:'clue',source:'Synthetic layout fixture',text:syntheticText,by:'Layout fixture',round:1});fixtureRoom.version++;
+   await page.reload();await page.locator('#source-a').waitFor();await page.selectOption('#source-a',`clue:${syntheticId}`);
+   assert.equal(await page.locator('#source-preview-a p').last().textContent(),syntheticText);
+   assert.equal(await page.locator('#source-preview-a p').last().evaluate(el=>getComputedStyle(el).whiteSpace),'pre-wrap');
+   await page.setViewportSize({width:390,height:900});await overflow(page);
+   await page.screenshot({path:'/tmp/shift-recovery-deduce-preview-synthetic-mobile.png',fullPage:true});
+   // Remove only the local fixture and restore ordinary authored-route UI state.
+   const restoredRoom=store.rooms.get(code);restoredRoom.board=restoredRoom.board.filter(entry=>entry.id!==syntheticId);restoredRoom.version++;
+   await page.reload();await page.locator('#source-a').waitFor();await page.selectOption('#source-a',sources[0].value);await page.selectOption('#source-b',sources[1].value);await page.setViewportSize(originalViewport);
+
   }
-  for(const page of pages){await navigate(page,'deduce');await page.click('[data-action="end"]');await confirm(page);}
+  // Synthetic capacity-layout fixture after all authored-route evidence was shared.
+  // This checks a long board on mobile, not player-authored note quality.
+  if(round===3){const room=store.rooms.get(code);while(room.board.length<60)room.board.push({id:`layout-note-${room.board.length}`,type:'note',text:'Synthetic team note for full-board layout.',by:'Layout fixture',round:3});room.version++;}
+  for(const page of pages){
+   if(round===3){await page.reload();await page.locator('.stepper').waitFor();}
+   await navigate(page,'deduce');
+   const progress=page.locator('.round-review');await progress.waitFor();
+   assert.match(await progress.textContent(),/Sharing answers and creating correlations are optional/);
+   assert.match(await progress.textContent(),/Answers still private/);
+   assert.equal(await page.evaluate(()=>!!(document.querySelector('.round-review').compareDocumentPosition(document.querySelector('#correlation-form'))&Node.DOCUMENT_POSITION_FOLLOWING)),true,'Round progress precedes the optional composer');
+   await overflow(page);
+   await progress.locator('[data-action="end"]').click();
+   await page.locator('#confirm-dialog[open]').waitFor();await confirm(page);
+  }
  }
  for(const page of pages){await page.locator('.review-nav').waitFor();await navigate(page,'interrogate');await page.locator('#interview-round').waitFor();await page.selectOption('#interview-round','1');assert.equal(await page.locator('#question-form').count(),0);await overflow(page);await navigate(page,'analyse');}
  // Known-answer route outcome: not a claim that an unguided player deduced it.
