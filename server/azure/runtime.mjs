@@ -1,6 +1,7 @@
 import {readFile,stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {readAzureConfig} from './config.mjs';
+import {startupStep} from './diagnostics.mjs';
 import {validateCase} from '../case-loader.mjs';
 import {DurableGame} from '../persistent-game.mjs';
 import {Sessions} from '../sessions.mjs';
@@ -13,16 +14,16 @@ import {createProvider} from '../ai/provider.mjs';
 
 export async function readPinnedCase(config) {
  const size=(await stat(config.caseFile)).size;
- if(size>200000||size<1)throw new Error('Case artifact unavailable.');
+ if(size>200000||size<1)throw Object.assign(new Error('Case artifact unavailable.'),{code:'SHIFT_CASE_SIZE'});
  const bytes=await readFile(config.caseFile);
- if(bytes.length>200000||createHash('sha256').update(bytes).digest('hex')!==config.caseHash)throw new Error('Case integrity mismatch.');
+ if(bytes.length>200000||createHash('sha256').update(bytes).digest('hex')!==config.caseHash)throw Object.assign(new Error('Case integrity mismatch.'),{code:'SHIFT_CASE_INTEGRITY'});
  return validateCase(JSON.parse(bytes.toString('utf8')));
 }
 export async function createAzureRuntime({env=process.env,store,loadCaseImpl=readPinnedCase,fetchImpl=fetch,now=Date.now}) {
- const config=readAzureConfig(env);
+ const config=await startupStep('config',()=>readAzureConfig(env));
  if(!store||typeof store.checkReady!=='function'||typeof store.cleanupExpired!=='function')throw new Error('Durable PostgreSQL store required.');
- await store.checkReady();
- const data=await loadCaseImpl(config);
+ await startupStep('database',()=>store.checkReady());
+ const data=await startupStep('case',()=>loadCaseImpl(config));
  const jobs=config.policy?new AiJobs({store,policy:config.policy,now}):null;
  // No jobs or provider are constructed unless explicitly opted in at deployment.
  const provider=jobs?createProvider({model:config.policy.model,getSecret:async()=>env.OPENAI_API_KEY,fetchImpl}):null;
