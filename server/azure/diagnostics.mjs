@@ -12,13 +12,17 @@ const codes=new Map([
  ['CERT_HAS_EXPIRED','tls_expired'],['UNABLE_TO_VERIFY_LEAF_SIGNATURE','tls_trust'],
  ['UNABLE_TO_GET_ISSUER_CERT_LOCALLY','tls_trust'],['DEPTH_ZERO_SELF_SIGNED_CERT','tls_trust'],
  ['ENOENT','file_missing'],['EACCES','file_permission'],['EADDRINUSE','port_in_use'],
- ['SHIFT_CASE_INTEGRITY','case_integrity'],['SHIFT_CASE_SIZE','case_size'],['SHIFT_TOKEN_MISSING','token_missing']
+ ['SHIFT_CASE_INTEGRITY','case_integrity'],['SHIFT_CASE_SIZE','case_size'],['SHIFT_TOKEN_MISSING','token_missing'],['SHIFT_TOKEN_TIMEOUT','token_timeout']
 ]);
 export async function startupStep(stage,run){
  try{return await run();}catch(error){if(error!==null&&(typeof error==='object'||typeof error==='function')&&!marked.has(error))marked.set(error,stages.has(stage)?stage:'runtime');throw error;}
 }
 export function startupDiagnostic(error,fallback='runtime'){
- let code;try{code=error?.code;}catch{/* Do not invoke/serialize hostile diagnostics. */}
- return {event:'azure_startup_failed',stage:marked.get(error)??(stages.has(fallback)?fallback:'runtime'),reason:typeof code==='string'?(codes.get(code)??'unknown'):'unknown'};
+ let code,message;try{code=error?.code;message=error?.message;}catch{/* Do not invoke/serialize hostile diagnostics. */}
+ const stage=marked.get(error)??(stages.has(fallback)?fallback:'runtime');
+ let reason=typeof code==='string'?(codes.get(code)??'unknown'):'unknown';
+ // Exact strings verified in pinned pg/pg-pool source; never log the message itself.
+ if(reason==='unknown'&&stage==='database'&&['timeout expired','timeout exceeded when trying to connect','Connection terminated due to connection timeout'].includes(message))reason='connection_timeout';
+ return {event:'azure_startup_failed',stage,reason};
 }
 export function reportStartupFailure(error,write=console.error){write(JSON.stringify(startupDiagnostic(error)));}
