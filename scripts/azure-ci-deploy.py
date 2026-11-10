@@ -34,12 +34,23 @@ MAX_STORED = 1_000_000_000
 ARM = f'https://management.azure.com/subscriptions/{SUBSCRIPTION}/resourceGroups/{GROUP}/providers/Microsoft.Web/sites/{APP}/extensions/onedeploy?api-version=2023-12-01'
 
 
+STAGES = frozenset(('artifact', 'storage_guard', 'upload', 'sas', 'token', 'submit', 'poll', 'release'))
+
+
 class DeploymentError(Exception):
-    """Fixed public diagnostic only; never retain a raw underlying exception."""
+    """Fixed public diagnostic only; never retain raw underlying exception text."""
+    def __init__(self, stage=None):
+        self.stage = stage if isinstance(stage, str) and stage in STAGES else 'unknown'
+        super().__init__('Deployment failed closed; review the approved integration configuration.')
 
 
-def fail():
-    raise DeploymentError('Deployment failed closed; review the approved integration configuration.') from None
+def fail(stage=None):
+    raise DeploymentError(stage) from None
+
+
+def failure_diagnostic(error):
+    stage = error.stage if type(error) is DeploymentError else 'unknown'
+    return {'event': 'azure_deploy_failed', 'stage': stage if isinstance(stage, str) and stage in STAGES else 'unknown'}
 
 
 def run_cli(args):
@@ -161,7 +172,7 @@ def enforce_storage_guard(cli, incoming):
     try:
         records = json.loads(cli(['storage', 'blob', 'list', *storage_args(),
                                   '--num-results', '5000', '--show-next-marker',
-                                  '--include', 's', 'v', '--output', 'json']))
+                                  '--include', 'sv', '--output', 'json']))
         if not isinstance(records, list) or len(records) >= 5000:
             fail()
         total = 0
@@ -244,14 +255,17 @@ def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request
            now=lambda: dt.datetime.now(dt.timezone.utc), sleep=time.sleep, clock=time.monotonic,
            release_http=release_request, health_http=health_request):
     # Validate all supplied targeting/input before any CLI/auth/network action.
-    if tuple(target) != TARGET:
-        fail()
-    data = validate_artifact(path, commit, digest)
+    stage = 'artifact'
     try:
+        if tuple(target) != TARGET:
+            fail()
+        data = validate_artifact(path, commit, digest)
+        stage = 'storage_guard'
         enforce_storage_guard(cli, len(data))
         blob = f'{commit}/{digest}.zip'
         # Snapshot bytes used for hashing: caller cannot replace artifact between
         # validation and az upload. Temporary artifact contains no tokens/SAS.
+        stage = 'upload'
         with tempfile.TemporaryDirectory(prefix='shift-release-') as directory:
             snapshot = pathlib.Path(directory) / 'release.zip'
             snapshot.write_bytes(data)
@@ -259,16 +273,20 @@ def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request
             cli(['storage', 'blob', 'upload', *storage_args(), '--name', blob,
                  '--file', str(snapshot), '--overwrite', 'false', '--if-none-match', '*',
                  '--output', 'none'])
+        stage = 'sas'
         uri = sas_url(cli, blob, now().replace(microsecond=0))
+        stage = 'token'
         token = cli(['account', 'get-access-token', '--subscription', SUBSCRIPTION,
                      '--resource', 'https://management.azure.com/', '--query', 'accessToken',
                      '--output', 'tsv']).strip()
         if not token or any(c.isspace() for c in token):
             fail()
+        stage = 'submit'
         response = http('PUT', token, {'properties': {
             'type': 'zip', 'packageUri': uri, 'clean': False, 'restart': True}})
         if response is None:
             # Empty 2xx is acceptance only. Never infer completion from old ARM history.
+            stage = 'release'
             verify_release(commit, fetch=release_http, health=health_http, sleep=sleep, clock=clock, timeout=600)
             return {'commit': commit, 'sha256': digest, 'status': 'release_verified'}
         accepted = deployment_record(response)
@@ -277,6 +295,7 @@ def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request
         if 'status' in accepted and (type(accepted['status']) is not int or accepted['status'] not in (0, 1, 2, 4)):
             fail()
         ident = accepted['id']
+        stage = 'poll'
         deadline = clock() + 600
         for _ in range(120):
             if clock() >= deadline:
@@ -289,6 +308,7 @@ def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request
             if type(status) is not int or type(complete) is not bool:
                 fail()
             if status == 4 and complete:
+                stage = 'release'
                 verify_release(commit, fetch=release_http, health=health_http, sleep=sleep, clock=clock)
                 return {'commit': commit, 'sha256': digest, 'status': 'deployment_complete'}
             if status not in (0, 1, 2) or complete:
@@ -296,7 +316,7 @@ def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request
             sleep(5)
         fail()
     except Exception:
-        fail()
+        fail(stage)
 
 
 def main():
@@ -309,8 +329,8 @@ def main():
         result = deploy(args.artifact, args.commit, args.sha256)
         print(json.dumps(result))
         return 0
-    except Exception:
-        print('Deployment failed closed. No credentials or remote diagnostics are printed.')
+    except Exception as error:
+        print(json.dumps(failure_diagnostic(error)))
         return 1
 
 

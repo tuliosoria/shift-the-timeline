@@ -167,7 +167,7 @@ activation or transferring credentials by itself.
 ## Verified-main CI deployment (explicitly enabled only after integration checks)
 
 The optional deployment job uses GitHub OIDC with the exact federated subject
-`repo:tuliosoria/shift-the-timeline:ref:refs/heads/main` and audience
+`repo:tuliosoria@22485197/shift-the-timeline@1452094336:ref:refs/heads/main` and audience
 `api://AzureADTokenExchange`. It deliberately declares **no GitHub environment**:
 there is no environment approval or environment branch-protection gate. This is
 an approved alternative to the unavailable environment-administration path, not
@@ -227,3 +227,12 @@ and health endpoints without credentials and requires the exact revision and
 readiness before reporting verification. The endpoint exposes only the revision, with no caching;
 unversioned local builds return 404. This verifies the served revision, not
 comprehensive game health or database migration correctness.
+
+
+Deployment failures print only a fixed `azure_deploy_failed` event and an allowlisted
+stage: artifact, storage_guard, upload, sas, token, submit, poll, or release. Raw
+CLI/HTTP responses, exception text, URLs, access tokens and SAS strings are never
+included. A submit/poll/release failure may follow an effective deployment; inspect
+state before another attempt rather than retrying blindly. The actual verified
+GitHub OIDC subject includes the numeric owner/repository IDs shown above, not
+the legacy name-only subject; changing the trust policy is a separate approved action.
