@@ -45,7 +45,7 @@ npm run package
 
 The build contains an exact allowlist of public assets, four separate Lambda bundles and third-party notices. It excludes private cases, tests, development screenshots, credentials and arbitrary files in `public/`. Previous build output is preserved under `dist.previous-*`, outside the deployment directory; never publish those folders.
 
-The 18 browser illustrations total approximately 634 KiB. Rye is self-hosted with its SIL OFL notice, with system fonts used for reading and controls. No framework or new runtime service was introduced.
+The 18 browser illustrations total approximately 634 KiB. Three optional 10-second atmosphere films add approximately 2.3 MiB, downloaded only when selected, plus approximately 72 KiB of static posters. The player starts muted and never autoplays on page load or during gameplay. Rye is self-hosted with its SIL OFL notice, with system fonts used for reading and controls. No framework or new runtime service was introduced.
 
 See [UI validation](docs/VALIDATION_UI.md), [backend English validation](docs/BACKEND_EN_GB_VALIDATION.md), [interface design](docs/UI_DESIGN.md), [deployment guidance](docs/DEPLOYMENT.md), [AI orchestration](docs/AI_ORCHESTRATION.md), [credits](AI_AND_CREDITS.md) and [licensing status](LICENSE_STATUS.md).
 
