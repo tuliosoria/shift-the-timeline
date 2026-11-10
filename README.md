@@ -60,3 +60,7 @@ Players should avoid `examples/public-demo.mjs` and its companion notes until af
 ### Scripted public-demo browser check
 
 `npm run test:browser` runs both synthetic recovery coverage and a three-player Chromium playthrough of the public demo. The latter uses a known authored route through ordinary UI controls, including private interviews, explicit sharing, a correlation, all-player round completion and accusations. It checks integration and privacy, not blind discovery, narrative quality or enjoyable difficulty. An unspoiled human playtest is still needed. No AI calls or hosted deployment are involved.
+
+### Azure staging migration
+
+The opt-in Azure entry point uses PostgreSQL transactions and managed identity; existing AWS deployment paths are retained. See [Azure deployment and bootstrap](docs/AZURE_DEPLOYMENT.md) for prerequisites, costs, private networking and readiness gates. `npm run package:azure` builds an allowlisted server bundle with the **public development demo only**. It does not provision resources, copy credentials or enable paid AI. Live deployment remains subject to subscription quota and validation.
