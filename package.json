@@ -17,7 +17,8 @@
     "check:case": "node scripts/check-case.mjs",
     "dev:ai": "node server/local-ai-index.mjs",
     "dev:public-demo": "SHIFT_CASE_FILE=examples/public-demo.mjs node server/index.mjs",
-    "check:public-demo": "SHIFT_CASE_FILE=examples/public-demo.mjs node scripts/check-case.mjs"
+    "check:public-demo": "SHIFT_CASE_FILE=examples/public-demo.mjs node scripts/check-case.mjs",
+    "eval:interviews": "node scripts/evaluate-interviews.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "3.1165.0",
