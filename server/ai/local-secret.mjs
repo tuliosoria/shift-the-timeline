@@ -4,7 +4,7 @@ import path from 'node:path';
 
 // No environment mutation, logging or network. The credential never reaches a client.
 export function createLocalSecretReader(filename){
- if(typeof filename!=='string'||!path.isAbsolute(filename))throw new Error('Absolute local credential path required');
+ if(typeof filename!=='string'||!path.isAbsolute(filename)||filename!==path.resolve(filename))throw new Error('Absolute local credential path required');
  return async()=>{
   let handle;
   try{
