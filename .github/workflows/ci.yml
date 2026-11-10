@@ -64,9 +64,7 @@ jobs:
       - run: node --test tests/postgres*.test.mjs
         env:
           SHIFT_POSTGRES_TEST_URL: postgres://postgres:ci-only-not-a-real-secret@localhost:5432/shift_test
-      - run: npm run package:azure
-        env:
-          SHIFT_RELEASE_COMMIT: ${{ github.sha }}
+      - run: npm run package:azure -- --release-commit "$GITHUB_SHA"
       - name: Freeze tested Azure package
         run: |
           (cd build/azure && zip -q -r ../azure-release.zip .)

@@ -1,14 +1,14 @@
 // Staging package includes only the explicitly public demo; never reads private/ or .env files.
 import {build} from 'esbuild';
 import {includePath} from './package.mjs';
+import {parseReleaseCommit} from './release-commit.mjs';
 import {mkdir,mkdtemp,readFile,writeFile,rename} from 'node:fs/promises';
 import {resolve,dirname} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {PUBLIC_ASSETS,readPublicAsset} from '../server/public-assets.mjs';
 import {validateCase} from '../server/case-loader.mjs';
 import {caseData,catalog} from '../examples/public-demo.mjs';
-const releaseCommit=process.env.SHIFT_RELEASE_COMMIT??null;
-if(releaseCommit!==null&&!/^[a-f0-9]{40}$/.test(releaseCommit))throw new Error('Invalid release commit');
+const releaseCommit=parseReleaseCommit(process.argv.slice(2));
 const root=process.cwd(),stage=await mkdtemp(resolve(root,'.shift-build-azure-'));
 validateCase({caseData,catalog});
 const result=await build({absWorkingDir:root,entryPoints:['server/azure-index.mjs'],outfile:resolve(stage,'server/azure-index.mjs'),bundle:true,define:{__SHIFT_RELEASE_COMMIT__:JSON.stringify(releaseCommit)},platform:'node',target:'node22',format:'esm',metafile:true,sourcemap:false,external:['pg-native'],banner:{js:"import {createRequire as __shiftRequire} from 'node:module';const require=__shiftRequire(import.meta.url);"}});
