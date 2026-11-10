@@ -138,10 +138,28 @@ try {
   }
  }
  for(const page of pages){await page.locator('.review-nav').waitFor();await navigate(page,'interrogate');await page.locator('#interview-round').waitFor();await page.selectOption('#interview-round','1');assert.equal(await page.locator('#question-form').count(),0);await overflow(page);await navigate(page,'analyse');}
+ // Public dossiers remain reviewable at accusation time without changing a ballot.
+ const reviewPage=pages[1],publicSuspect=caseData.suspects[0],dossierPanel=reviewPage.locator(`#vote-dossier-${publicSuspect.id}`);
+ const votesBeforeReview=actions.filter(type=>type==='vote').length;
+ await dossierPanel.locator('summary').focus();await reviewPage.keyboard.press('Enter');
+ assert.equal(await dossierPanel.evaluate(el=>el.open),true);assert.equal(await dossierPanel.locator('p').textContent(),publicSuspect.profile);
+ assert.equal(await reviewPage.locator('input[name="suspectId"]:checked').count(),0);assert.equal(await reviewPage.locator('#confirm-dialog[open]').count(),0);
+ await reviewPage.evaluate(()=>window.dossierBeforePoll=document.querySelector('.vote-dossier[open]'));store.rooms.get(code).version++;
+ await reviewPage.waitForFunction(()=>!window.dossierBeforePoll.isConnected);assert.equal(await dossierPanel.evaluate(el=>el.open),true);
+ assert.equal(await dossierPanel.locator('summary').evaluate(el=>el===document.activeElement),true);
+ await reviewPage.keyboard.press('Enter');assert.equal(await dossierPanel.evaluate(el=>el.open),false);await dossierPanel.locator('summary').click();
+ assert.equal(actions.filter(type=>type==='vote').length,votesBeforeReview);await overflow(reviewPage);
+ await reviewPage.screenshot({path:'/tmp/shift-recovery-accusation-dossier-mobile.png',fullPage:true});
+ await reviewPage.setViewportSize({width:1440,height:900});await overflow(reviewPage);await reviewPage.screenshot({path:'/tmp/shift-recovery-accusation-dossier-desktop.png',fullPage:true});await reviewPage.setViewportSize({width:390,height:900});
  // Known-answer route outcome: not a claim that an unguided player deduced it.
  for(let i=0;i<3;i++){
   const page=pages[i];await page.check(`input[name="suspectId"][value="${caseData.culpritId}"]`);
-  if(i===1){await navigate(page,'interrogate');await navigate(page,'analyse');assert.equal(await page.isChecked(`input[name="suspectId"][value="${caseData.culpritId}"]`),true);}
+  if(i===1){
+   await navigate(page,'interrogate');await navigate(page,'analyse');assert.equal(await page.isChecked(`input[name="suspectId"][value="${caseData.culpritId}"]`),true);
+   await page.locator(`#vote-dossier-${publicSuspect.id} summary`).click();assert.equal(await page.isChecked(`input[name="suspectId"][value="${caseData.culpritId}"]`),true);
+   const votesBeforeCancel=actions.filter(type=>type==='vote').length;await page.click('#vote-form button');await page.locator('#confirm-dialog[open]').waitFor();await page.click('#confirm-cancel');
+   assert.equal(actions.filter(type=>type==='vote').length,votesBeforeCancel);assert.equal(await page.isChecked(`input[name="suspectId"][value="${caseData.culpritId}"]`),true);
+  }
   await page.click('#vote-form button');await confirm(page);
  }
  for(const page of pages){await page.locator('.reveal').waitFor();assert.match(await page.locator('.reveal').textContent(),/COMPLETE VICTORY/);assert.ok((await page.locator('.reveal').textContent()).includes(caseData.solution.motive));await overflow(page);}
