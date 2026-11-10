@@ -1,6 +1,7 @@
-import {readdir,copyFile,mkdir,mkdtemp,rename,rm,readFile,writeFile} from 'node:fs/promises';
+import {PUBLIC_ASSETS,readPublicAsset} from '../server/public-assets.mjs';
+import {readdir,mkdir,mkdtemp,rename,rm,readFile,writeFile} from 'node:fs/promises';
 import {resolve,dirname,relative} from 'node:path';import {pathToFileURL} from 'node:url';import {createHash,randomUUID} from 'node:crypto';import {build} from 'esbuild';
-export function includePath(path){const parts=path.split('/');if(parts.some(p=>p.startsWith('.')||['private','tests','coverage','docs'].includes(p))||/\.(map|pem|key|log)$/.test(path)||path==='server/cases.mjs')return false;if(path.startsWith('public/'))return ['public/index.html','public/app.js','public/style.css'].includes(path);return path.startsWith('server/')&&path.endsWith('.mjs')||path.startsWith('node_modules/')||['package.json','package-lock.json'].includes(path);}
+export function includePath(path){const parts=path.split('/');if(parts.some(p=>p.startsWith('.')||['private','tests','coverage','docs'].includes(p))||/\.(map|pem|key|log)$/.test(path)||path==='server/cases.mjs')return false;if(path.startsWith('public/'))return PUBLIC_ASSETS.some(a=>'public/'+a.file===path);return path.startsWith('server/')&&path.endsWith('.mjs')||path.startsWith('node_modules/')||['package.json','package-lock.json'].includes(path);}
 export async function packageApp(root=process.cwd()){
  root=resolve(root);const output=resolve(root,'dist'),stage=await mkdtemp(resolve(root,'.shift-build-'));
  try{
@@ -14,7 +15,7 @@ export async function packageApp(root=process.cwd()){
   await writeFile(resolve(stage,target,'THIRD_PARTY_LICENSES.txt'),notices);
   expected.push(`${target}/${entry}`,`${target}/package.json`,`${target}/THIRD_PARTY_LICENSES.txt`);
   }
-  for(const name of ['index.html','app.js','style.css']){await mkdir(resolve(stage,'web'),{recursive:true});await copyFile(resolve(root,'public',name),resolve(stage,'web',name));expected.push('web/'+name);}
+  for(const asset of PUBLIC_ASSETS){const destination=resolve(stage,'web',asset.file);await mkdir(dirname(destination),{recursive:true});await writeFile(destination,await readPublicAsset(asset.file,resolve(root,'public')));expected.push('web/'+asset.file);}
   const actual=[];async function walk(dir){for(const file of await readdir(dir,{withFileTypes:true})){const path=resolve(dir,file.name);if(file.isSymbolicLink())throw new Error('Symlink in output');if(file.isDirectory())await walk(path);else actual.push(relative(stage,path));}}await walk(stage);
   if(JSON.stringify(actual.sort())!==JSON.stringify(expected.sort()))throw new Error('Package file list differs from allowlist');
   const manifest=[];for(const path of expected){const bytes=await readFile(resolve(stage,path));manifest.push({path,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});}

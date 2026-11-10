@@ -1,13 +1,22 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en-GB">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#101a24">
-<meta name="description" content="Um crime previsto. Quinze suspeitos. Vinte e quatro horas para mudar a linha do tempo. Um jogo cooperativo de investigação.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1722">
+<meta name="description" content="A crime foretold. Fifteen suspects. Three rounds to change the timeline. A cooperative investigation game.">
 <title>SHIFT: The Timeline</title>
 <link rel="stylesheet" href="/style.css">
 <script type="module" src="/app.js"></script>
 </head>
-<body><a href="#main" class="skip">Pular para o conteúdo</a><div class="grain" aria-hidden="true"></div><header id="header"></header><div id="notice" role="status" aria-live="polite"></div><main id="main" tabindex="-1"><p class="loading">Conectando à unidade temporal…</p></main><footer><span>SHIFT / THE TIMELINE</span><span>PROTÓTIPO 0.1 · UM FUTURO AINDA NÃO ESCRITO</span></footer></body>
+<body>
+<a href="#main" class="skip">Skip to the investigation</a>
+<header id="header"></header>
+<div id="notice" role="status" aria-live="polite"></div>
+<div id="storage-notice" role="status" aria-live="polite"></div>
+<div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+<main id="main" tabindex="-1"><p class="loading">Connecting to the Temporal Investigation Bureau…</p></main>
+<footer><span>SHIFT / THE TIMELINE</span><span>CANONICAL DIALOGUE PROTOTYPE · NO GENERATIVE AI IN PLAY</span></footer>
+<dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><div id="confirm-body"></div><div class="dialog-actions"><button id="confirm-cancel" class="secondary">Cancel</button><button id="confirm-accept" class="primary" data-submit>Confirm</button></div></dialog>
+</body>
 </html>

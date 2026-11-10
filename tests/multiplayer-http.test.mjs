@@ -58,6 +58,7 @@ for (const count of [3, 4]) test(`${count} isolated HTTP clients finish a privat
   if (count === 4) assert.equal((await outsider(`/api/rooms/${code}/join`, {name: 'Fifth', id: randomUUID()})).status, 400);
   await action(0, 'start');
   assert.equal((await outsider(`/api/rooms/${code}/join`, {name: 'Late', id: randomUUID()})).status, 400);
+  let replayCorrelation;
   for (let round = 1; round <= 3; round++) {
     for (let i = 0; i < count; i++) {
       await action(i, 'select', {round, suspectId: `suspect-${i + 1}`});
@@ -81,10 +82,23 @@ for (const count of [3, 4]) test(`${count} isolated HTTP clients finish a privat
         assert.equal(shared.board.length, 1);
         assert.equal(shared.board[0].text, message.answer);
         assert.ok(!JSON.stringify(shared).includes(question));
+        replayCorrelation={id:randomUUID(),body:{round:1,expectedPhase:'investigation',sources:[{kind:'clue',id:shared.board[0].id},{kind:'case',id:'place'}],relation:'related',text:'Synthetic relationship, not established evidence.'}};
+        const first=await action(0,'correlate',replayCorrelation.body,replayCorrelation.id);
+        const retry=await action(0,'correlate',replayCorrelation.body,replayCorrelation.id);
+        assert.equal(first.board.length,2);assert.equal(retry.board.length,2);assert.deepEqual(first.board[1],retry.board[1]);
+        assert.ok(!JSON.stringify(retry.board).includes(question));
       }
-      await action(i, 'end', {round});
+      if(round===1&&i===1){await action(i,'correlate',{round,expectedPhase:'investigation',sources:[{kind:'suspect',id:'suspect-1'},{kind:'suspect',id:'suspect-2'}],relation:'contradicts',text:'A second synthetic hypothesis.'});await action(i,'note',{text:'A separate synthetic team note.'});}
+      const beforeEnd=(await players[i](`/api/rooms/${code}`)).body;
+      assert.equal(beforeEnd.round,round);assert.equal(beforeEnd.phase,'investigation');
+      const afterEnd=await action(i, 'end', {round});
+      if(i===count-1){assert.equal(afterEnd.phase,round===3?'accusation':'investigation');assert.equal(afterEnd.round,Math.min(3,round+1));}
+      else{assert.equal(afterEnd.round,round);assert.equal(afterEnd.phase,'investigation');}
     }
   }
+  const lateRetry=await action(0,'correlate',replayCorrelation.body,replayCorrelation.id);
+  assert.equal(lateRetry.phase,'accusation');assert.equal(lateRetry.round,3);assert.equal(lateRetry.board.length,4);
+  assert.equal(lateRetry.board.filter(x=>x.type==='correlation').length,2);assert.ok(lateRetry.board.filter(x=>x.type==='correlation').every(x=>x.round===1));
   for (let i = 0; i < count; i++) {
     const state = await action(i, 'vote', {suspectId: count === 4 && i === count - 1 ? 'suspect-1' : 'suspect-0'});
     if (i < count - 1) {
