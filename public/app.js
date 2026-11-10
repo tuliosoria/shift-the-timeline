@@ -6,7 +6,7 @@ function newRequestId(){const bytes=new Uint8Array(16);crypto.getRandomValues(by
 const storage={get(key){try{return JSON.parse((key==='shift-session'?localStorage:sessionStorage).getItem(key));}catch{return null;}},set(key,value){try{(key==='shift-session'?localStorage:sessionStorage).setItem(key,JSON.stringify(value));}catch{notice('Storage is unavailable. Keep this tab open to retain your session.',true);}},remove(key){try{(key==='shift-session'?localStorage:sessionStorage).removeItem(key);}catch{}}};
 let tabStorage;try{tabStorage=sessionStorage;}catch{tabStorage={getItem(){throw Error('Storage unavailable');},setItem(){throw Error('Storage unavailable');}};}
 const ui=createUiState(tabStorage);
-let optionalAi=false;
+let optionalAi=false,focusVersion=0;
 // Per-question opt-in is memory-only: never saved to browser storage.
 let questionConsentKey=null;
 function currentQuestionConsentKey(){const context=uiContext(state);if(!context)return null;const draft=ui.read(context);return JSON.stringify([context,draft.question,draft.questionTopic,currentInterview()?.messages.length??0]);}
@@ -31,15 +31,23 @@ function saveDrafts(){if(!state)return;const context=uiContext(state);for(const 
 function readCorrelationForm(){return {sources:[$('#source-a')?.value,$('#source-b')?.value].map(value=>publicSources().find(s=>sourceValue(s)===value)).map(s=>s?{kind:s.kind,id:s.id}:null),relation:$('#relation')?.value||'related',text:$('#hypothesis')?.value||''};}
 async function command(path,body,entry=false){if(busy||pending)return false;saveDrafts();pending={path,body,entry,context:uiContext(state),questionTopicChoice:ui.read(uiContext(state)).questionTopic};storage.set('shift-pending',pending);if(body.type==='ask')clearQuestionConsent();return await runPending();}
 async function runPending(){
- if(busy||!pending)return false;busy=true;setBusy();const work=pending;
+ if(busy||!pending)return false;const focusBeforeBusy={composer:!!document.activeElement?.closest?.('#question-form'),version:focusVersion};busy=true;setBusy();const work=pending;
  try{
   const data=await fetchJson(work.path,{body:work.body});
   if(work.entry){session={code:data.code,playerId:data.playerId};storage.set('shift-session',session);}
   applyState(work.entry?data.state:data,{render:false});
   if(work.context){const type=work.body.type;const field=type==='ask'?'question':type==='note'?'note':type==='correlate'?'correlation':null;const sent=type==='ask'?work.body.question:type==='note'?work.body.text:{sources:work.body.sources,relation:work.body.relation,text:work.body.text};if(type==='ask'){clearQuestionConsent();const draft=ui.read(work.context);if(draft.question===sent&&draft.questionTopic===(work.questionTopicChoice??'')){ui.clearMatchingDraft(work.context,'question',sent);ui.clearMatchingDraft(work.context,'questionTopic',work.questionTopicChoice??'');}}else if(field)ui.clearMatchingDraft(work.context,field,sent);}
-  pending=null;storage.remove('shift-pending');$('#notice').textContent='';render();return true;
+  pending=null;storage.remove('shift-pending');$('#notice').textContent='';const answerFocus=completedInterviewFocus(work,focusBeforeBusy);render();if(answerFocus)document.getElementById('answer-'+answerFocus)?.focus();return true;
  }catch(error){if(error.status&&error.status<500&&error.status!==429){pending=null;storage.remove('shift-pending');notice(error.message,true);}else notice(error.status===429?error.message:'Connection lost. Your action may have arrived. Retry safely without sending it twice.',true);return false;}
  finally{busy=false;setBusy();}
+}
+function completedInterviewFocus(work,focusBeforeBusy){
+ const active=document.activeElement,composerOwnsFocus=!!active?.closest?.('#question-form');
+ // Disabling Send can blur it to body. Do not mistake a later focus move for that blur.
+ const disabledComposerBlur=focusBeforeBusy?.composer&&active===document.body&&focusVersion===focusBeforeBusy.version;
+ if(work.body.type!=='ask'||stage!=='interrogate'||historyRound!==null||!sameContext(work.context,uiContext(state))||(!composerOwnsFocus&&!disabledComposerBlur))return null;
+ const interview=currentInterview(),answer=interview?.messages.at(-1);
+ return interview?.suspectId===work.context.suspect&&interview.messages.length>=4&&answer?.question===work.body.question.trim()?answer.id:null;
 }
 function setBusy(){document.body.classList.toggle('busy',busy);document.querySelectorAll('[data-submit]').forEach(b=>b.disabled=busy||!!pending||b.dataset.locked==='true');}
 function act(type,data={}){if(pending){notice('Resolve the pending action before sending another.',true);return Promise.resolve(false);}return command(`/api/rooms/${session.code}/actions`,{id:newRequestId(),type,...data});}
@@ -122,6 +130,7 @@ function trapDialogFocus(event){if(event.key!=='Tab')return;const controls=[...$
 function resetSession(){clearQuestionConsent();if(state)ui.forget(state.code,state.me.id);else if(session)ui.forget(session.code,session.playerId);closeConfirmation(false);session=null;state=null;pending=null;lastVersion=-1;stage='analyse';selectedVote='';dossierId=null;historyRound=null;storage.remove('shift-session');storage.remove('shift-pending');history.replaceState(null,'',location.pathname);render();}
 async function poll(){if(!session||busy||pending)return;const pollingSession=session;try{if(state&&state.phase!=='reveal'&&Date.now()-lastHeartbeat>=30000){let beat;try{beat=await fetchJson(`/api/rooms/${pollingSession.code}/actions`,{body:{id:newRequestId(),type:'heartbeat'}});}catch(error){if(error.status!==400)throw error;/* A final vote can finish the game before this heartbeat arrives. Read authoritative state below. */}lastHeartbeat=Date.now();if(session!==pollingSession||busy||pending)return;if(beat&&beat.version>lastVersion)applyState(beat);}const next=await fetchJson(`/api/rooms/${pollingSession.code}?since=${lastVersion}`);if(session!==pollingSession||busy||pending)return;if(next&&next.version>lastVersion)applyState(next);if($('#notice').dataset.network){$('#notice').textContent='';delete $('#notice').dataset.network;}}catch(error){if(session!==pollingSession||busy||pending)return;if(error.status===404||error.status===401){resetSession();notice(error.status===404?'This room has expired. Create or join another investigation.':'Your identity could not be restored. Join a new investigation.',true);}else{notice('Connection interrupted. Reconnecting…',true);$('#notice').dataset.network='1';}}}
 // Browser events
+document.addEventListener('focusin',()=>{focusVersion++;});
 $('#confirm-cancel').addEventListener('click',()=>closeConfirmation());
 $('#confirm-accept').addEventListener('click',()=>confirmAction());
 $('#confirm-dialog').addEventListener('keydown',trapDialogFocus);
