@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import {azureClientAddress,normalizeClientAddress} from '../server/azure/client-address.mjs';
+import {azureClientAddress,normalizeClientAddress,normalizeAzureClientHeader} from '../server/azure/client-address.mjs';
 import {createServer} from '../server/http.mjs';
 import {createRateLimiter} from '../server/limits.mjs';
 import {MemoryStore} from '../server/storage/memory.mjs';
@@ -41,4 +41,22 @@ test('mapped IPv4 cannot bypass an existing per-address quota',async()=>{
  const request=new Request('https://shift.example/api/rooms',{method:'POST'});
  const attempt=ip=>limit({request,path:'/api/rooms',context:{sourceIp:azureClientAddress(req(['Client-IP',ip]))}});
  await attempt('192.0.2.1');await assert.rejects(()=>attempt('::ffff:c000:201'),e=>e.status===429);
+});
+
+test('Azure endpoint forms strip valid ports and canonicalize without guessing IPv6 boundaries',()=>{
+ for(const value of ['192.0.2.7:1','192.0.2.7:65535','[::ffff:c000:207]:443','[::ffff:192.0.2.7]:63546'])assert.equal(normalizeAzureClientHeader(value),'192.0.2.7');
+ assert.equal(normalizeAzureClientHeader('[2001:0db8::1]:443'),'2001:db8::1');
+ assert.equal(normalizeAzureClientHeader('2001:db8::1:443'),'2001:db8::1:443');
+ for(const value of ['192.0.2.7:0','192.0.2.7:65536','192.0.2.7:-1','192.0.2.7:+1','192.0.2.7:1.0','192.0.2.7:1e2','192.0.2.7:','192.0.2.7:000001','[::1]:0','[::1]:65536','[::1]:443 ',' [::1]:443','[::1]','[192.0.2.7]:443','[fe80::1%eth0]:443','192.0.2.7:80,192.0.2.8:90','2001:db8::1:65536'])assert.equal(normalizeAzureClientHeader(value),null,value);
+});
+test('Azure HTTP endpoint form strips port but duplicate endpoint headers fall back',async t=>{
+ assert.equal((await boundary(t,azureClientAddress,{'Client-IP':'192.0.2.7:63546'})).sourceIp,'192.0.2.7');
+ assert.equal((await boundary(t,azureClientAddress,{'Client-IP':['192.0.2.7:80','192.0.2.7:81']})).sourceIp,'127.0.0.1');
+});
+test('changing client endpoint ports cannot bypass the address quota',async()=>{
+ const limit=createRateLimiter({store:new MemoryStore(),now:()=>0,createPerHour:1});
+ const request=new Request('https://shift.example/api/rooms',{method:'POST'});
+ const attempt=value=>limit({request,path:'/api/rooms',context:{sourceIp:azureClientAddress(req(['Client-IP',value]))}});
+ await attempt('192.0.2.7:63546');
+ await assert.rejects(()=>attempt('[::ffff:192.0.2.7]:443'),e=>e.status===429);
 });
