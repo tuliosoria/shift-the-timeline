@@ -66,3 +66,4 @@ jobs:
       - run: npm run package:azure
       - run: az bicep install --version v0.44.1
       - run: az bicep build --file infra/azure/main.bicep --outfile /tmp/shift-azure.json
+      - run: az bicep build --file infra/azure/database-regional.bicep --outfile /tmp/shift-azure-regional.json
