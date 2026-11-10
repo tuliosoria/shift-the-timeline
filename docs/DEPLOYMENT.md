@@ -53,7 +53,7 @@ Restauração de backup precisa ser testada em tabela separada. Não reativar se
 
 O build produz os arquivos verificados no manifesto, distribuídos nos quatro pacotes de função e nos assets. Testes importam os handlers e verificam que worker/relay/reconciliador desligados não criam clientes nem acessam dados.
 
-A visibilidade SQS proposta é 180 segundos para worker de 30 segundos, batch size 1 e MaximumConcurrency 2. Isso não reserva capacidade Lambda nem isola os outros projetos. O relay usa stream com filtro de inserções de outbox; falhas esgotadas vão à DLQ própria. O schedule permanece desligado e não faz retry automático.
+A visibilidade SQS proposta é 180 segundos para worker de 30 segundos, batch size 1 e MaximumConcurrency 2. Isso não reserva capacidade Lambda nem isola os outros projetos. O relay usa stream com filtro de inserções de outbox; falhas esgotadas vão à DLQ própria. O schedule permanece desligado enquanto EnableAi=false. Quando ativado explicitamente, executa a cada cinco minutos, sem retry automático do evento.
 
 A política de leitura de streams segue o [exemplo oficial da AWS](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/iam-policy-example-lamda-process-dynamodb-streams.html), limitado aos streams da tabela SHIFT. Os contratos IAM ainda precisam ser exercitados na AWS real antes de afirmar que a implantação funciona.
 
@@ -71,3 +71,5 @@ A política de leitura de streams segue o [exemplo oficial da AWS](https://docs.
 Há alarmes para erros/throttles da API, erros de worker/relay e as duas filas de falha. Eles não são limite de fatura. Não há orçamento AWS automático nem desligamento financeiro garantido. O limite de chamadas da aplicação também não cobre uso externo da mesma chave.
 
 Fontes de preço/modelo para revisão operacional: https://developers.openai.com/api/docs/models/gpt-6-luna e https://developers.openai.com/api/docs/pricing. Não migrar modelo ou mudar tarifas silenciosamente.
+
+O [escopo aprovado](APPROVED_DEPLOYMENT.md) registra destino, modelo, limites, estimativa AWS e separação de credenciais para o primeiro lançamento. Isso não substitui a verificação dos recursos reais e do change set.
