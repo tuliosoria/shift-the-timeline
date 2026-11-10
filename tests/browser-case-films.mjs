@@ -1,4 +1,5 @@
 // Real media playback on the public demo; no external services or paid AI.
+// Google Chrome supplies the licensed H.264/AAC codecs absent in bundled headless Chromium.
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {createServer} from '../server/http.mjs';
@@ -16,13 +17,14 @@ api=createApi({game:new DurableGame({store,...validateCase({caseData,catalog})})
 const errors=[];
 const noOverflow=async page=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
 try{
- browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECUTABLE_PATH?{executablePath:process.env.BROWSER_EXECUTABLE_PATH}:{})});
+ browser=await chromium.launch({headless:true,...(process.env.BROWSER_EXECUTABLE_PATH?{executablePath:process.env.BROWSER_EXECUTABLE_PATH}:{channel:'chrome'})});
  const contexts=[];
  for(const width of [390,1440,320]){
   const context=await browser.newContext({viewport:{width,height:900},reducedMotion:'reduce'});contexts.push(context);
   const page=await context.newPage(),requests=[];page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.message));
   page.on('request',r=>{if(r.url().endsWith('.mp4'))requests.push(r.url());});
   await page.goto(origin);await page.locator('#create-name').waitFor();
+  assert.ok(await page.locator('#case-film-video').evaluate(v=>v.canPlayType('video/mp4; codecs="avc1.64001f, mp4a.40.2"')),'Use Google Chrome or an H.264/AAC-capable BROWSER_EXECUTABLE_PATH for the real MP4 playback test');
   await page.waitForTimeout(300);assert.equal(requests.length,0,'Static first paint never fetches films');
   await page.fill('#create-name','Film agent');await noOverflow(page);
   await page.getByRole('button',{name:'Play The night train'}).click();

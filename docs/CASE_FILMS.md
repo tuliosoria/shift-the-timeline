@@ -21,6 +21,7 @@ The existing exact public-asset allowlist includes the new player module, poster
 
 - `node --test tests/client-films.test.mjs tests/films-http.test.mjs tests/assets.test.mjs`: scene entry points, asset budgets, allowlist, byte ranges, HEAD and invalid requests.
 - `node tests/browser-case-films.mjs`: real media playback at 320, 390 and 1440 pixels under reduced motion; manual loading, muted playback, switching all three films, repeated dismissal, draft preservation, polling while the dialog is open, restored focus, and failed media.
+- The film test uses installed Google Chrome (included on the CI runner), because the bundled open-source headless Chromium omits the H.264/AAC decoders. For local runs, install Chrome or set `BROWSER_EXECUTABLE_PATH` to a browser with those codecs. A decoder assertion fails explicitly rather than skipping playback.
 - The film browser regression runs as part of `npm run test:browser` in CI alongside the existing three-player playthrough and recovery checks.
 
 No gameplay rules, case evidence, AI consent, Azure infrastructure, service settings or deployment credentials were changed.
