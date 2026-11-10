@@ -56,3 +56,7 @@ Run `npm run dev:public-demo` for a separate authored demo mystery. This does no
 Play in three or four separate browser profiles/contexts to keep player sessions isolated. The server stays on loopback by default; no hosted or phone-accessible session is created. Share interview answers deliberately and use the team board to assemble the argument.
 
 Players should avoid `examples/public-demo.mjs` and its companion notes until after playing: this public demo intentionally ships its solution in source. The HTTP game projection still withholds it until the reveal. Scripted route tests prove that specified evidence can be reached within the rules, **not** that all choices solve the case or that human playtesting has passed. See [spoiler-labelled author notes](examples/public-demo-notes.md) for the clue map and playtest questions.
+
+### Scripted public-demo browser check
+
+`npm run test:browser` runs both synthetic recovery coverage and a three-player Chromium playthrough of the public demo. The latter uses a known authored route through ordinary UI controls, including private interviews, explicit sharing, a correlation, all-player round completion and accusations. It checks integration and privacy, not blind discovery, narrative quality or enjoyable difficulty. An unspoiled human playtest is still needed. No AI calls or hosted deployment are involved.
