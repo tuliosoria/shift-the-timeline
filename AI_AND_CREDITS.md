@@ -14,6 +14,12 @@ The 15 fictional suspect portraits and three illustrated stage icons were create
 
 Browser assets are WebP derivatives with transparency, sized to 512px for portraits and 192px for stage icons. Original generated PNGs are retained separately and are not included in the deployment bundle. The 18 browser illustrations total approximately 634 KiB. Mockup previews are concept images, not screenshots proving browser behaviour.
 
+## Cinematic scene films
+
+The three 10-second atmosphere films (steam train, pocket watch and carriage corridor) were generated with Google Gemini under the project’s creative direction. They are fictional mood pieces, not canonical evidence, suspect testimony or clues.
+
+Web copies use 960×540 H.264 video and AAC audio in fast-start MP4 files. Together they are approximately 2.3 MiB, with about 72 KiB of static WebP posters. Full-resolution originals are retained separately. The player is optional, loads a film only after a click, starts muted, does not loop and pauses when the tab is hidden. Text descriptions explain the visual scenes without requiring playback.
+
 ## Typography
 
 The SHIFT wordmark uses the unmodified Rye Regular font by Sorkin Type Co, distributed under the SIL Open Font License 1.1. The original font and its copyright/licence are self-hosted in `public/assets/fonts/`; no external font request is made during play. Text and controls use system fonts.

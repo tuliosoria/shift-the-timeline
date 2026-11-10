@@ -8,6 +8,7 @@
 <title>SHIFT: The Timeline</title>
 <link rel="stylesheet" href="/style.css">
 <script type="module" src="/app.js"></script>
+<script type="module" src="/case-films.js"></script>
 </head>
 <body>
 <a href="#main" class="skip">Skip to the investigation</a>
@@ -18,5 +19,13 @@
 <main id="main" tabindex="-1"><p class="loading">Connecting to the Temporal Investigation Bureau…</p></main>
 <footer><span>SHIFT / THE TIMELINE</span><span>FIXED CASE EVIDENCE · PRIVATE INTERVIEWS</span></footer>
 <dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><div id="confirm-body"></div><div class="dialog-actions"><button id="confirm-cancel" class="secondary">Cancel</button><button id="confirm-accept" class="primary" data-submit>Confirm</button></div></dialog>
+<dialog id="film-dialog" class="film-dialog" aria-labelledby="film-title" aria-describedby="film-description">
+<div class="film-heading"><div><p class="eyebrow">A GLIMPSE OF THE TIMELINE</p><h2 id="film-title">Case films</h2></div><button id="film-close" class="secondary" type="button" autofocus>Close films</button></div>
+<video id="case-film-video" controls muted playsinline preload="none" width="960" height="540" aria-labelledby="film-title" aria-describedby="film-description"></video>
+<p id="film-description"></p>
+<p class="muted">Atmosphere only. These films contain no case evidence. Sound starts muted; use the player controls to listen.</p>
+<div class="film-choices" role="group" aria-label="Choose a scene"><button type="button" data-film-choice="train">The night train</button><button type="button" data-film-choice="pocket-watch">The pocket watch</button><button type="button" data-film-choice="corridor">The empty corridor</button></div>
+<p id="film-status" role="status" aria-live="polite"></p>
+</dialog>
 </body>
 </html>
