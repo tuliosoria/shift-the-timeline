@@ -45,6 +45,15 @@
         "true",
         "false"
       ]
+    },
+    "ProvisionAiQueue": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Description": "Optional queue scaffolding only. Does not enable AI or deploy a worker."
     }
   },
   "Rules": {
@@ -129,6 +138,14 @@
           {
             "AttributeName": "sk",
             "AttributeType": "S"
+          },
+          {
+            "AttributeName": "aiDuePk",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "aiDueSk",
+            "AttributeType": "S"
           }
         ],
         "KeySchema": [
@@ -162,6 +179,27 @@
             "Key": "Environment",
             "Value": {
               "Ref": "Environment"
+            }
+          }
+        ],
+        "StreamSpecification": {
+          "StreamViewType": "KEYS_ONLY"
+        },
+        "GlobalSecondaryIndexes": [
+          {
+            "IndexName": "AiDueIndex",
+            "KeySchema": [
+              {
+                "AttributeName": "aiDuePk",
+                "KeyType": "HASH"
+              },
+              {
+                "AttributeName": "aiDueSk",
+                "KeyType": "RANGE"
+              }
+            ],
+            "Projection": {
+              "ProjectionType": "KEYS_ONLY"
             }
           }
         ]
@@ -711,6 +749,33 @@
           "EvaluateTargetHealth": false
         }
       }
+    },
+    "AiDlq": {
+      "Type": "AWS::SQS::Queue",
+      "Condition": "ProvisionAiQueueEnabled",
+      "Properties": {
+        "SqsManagedSseEnabled": true,
+        "MessageRetentionPeriod": 1209600
+      }
+    },
+    "AiQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Condition": "ProvisionAiQueueEnabled",
+      "Properties": {
+        "SqsManagedSseEnabled": true,
+        "VisibilityTimeout": 90,
+        "MessageRetentionPeriod": 86400,
+        "ReceiveMessageWaitTimeSeconds": 20,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "AiDlq",
+              "Arn"
+            ]
+          },
+          "maxReceiveCount": 3
+        }
+      }
     }
   },
   "Outputs": {
@@ -738,6 +803,16 @@
       "Value": {
         "Ref": "WebDistribution"
       }
+    }
+  },
+  "Conditions": {
+    "ProvisionAiQueueEnabled": {
+      "Fn::Equals": [
+        {
+          "Ref": "ProvisionAiQueue"
+        },
+        "true"
+      ]
     }
   }
 }

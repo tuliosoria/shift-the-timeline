@@ -36,7 +36,9 @@ O guard bloqueia ações pela origem direta, mas a requisição ainda pode alcan
 
 A verdade e a evidência são canônicas. GPT poderá acrescentar voz ao suspeito, com entrada limitada à sua persona, pergunta e fatos autorizados. Sem solução global, votos alheios, ferramentas, web ou URLs escolhidas pelo jogador. O texto canônico permanece inalterado. Schema válido não prova ausência de alucinação; avaliações e playtest continuam necessários.
 
-Os módulos atuais de orçamento/provedor/worker estão desconectados da aplicação. Ainda faltam reserva transacional por sala/dia/mês, outbox, fila, leases/fencing persistentes, reconciliação e integração visual. Nenhuma variável de ambiente deste corte ativa chamadas GPT no jogo.
+A camada opcional agora reserva orçamento por sala/dia/mês e grava job/outbox na mesma transação da pergunta. Leases, fencing e marca de início do provedor impedem repetir uma chamada cujo resultado ficou incerto. Relay e reconciliação usam dados persistidos e índice de pendências. A interface separa narração privada de evidência canônica, que fica pronta imediatamente e é a única enviada ao quadro.
+
+Essa camada é testada por injeção com provedor falso. O runtime publicado não a instancia; nenhum worker, relay ou reconciliador ativo é implantado. Nenhuma variável de ambiente deste corte ativa chamadas GPT no jogo. Veja [estados e limites](AI_ORCHESTRATION.md).
 
 A integração futura exige projeto/modelo aprovado pelo dono da credencial, chave restrita em armazenamento seguro e limites de custo. Modelo não será escolhido pelo browser. Não se promete retenção zero: configuração `store:false` não elimina necessariamente logs de abuso do provedor.
 

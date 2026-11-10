@@ -11,7 +11,7 @@ Este corte implementa o backend canônico, sessões por cookie, armazenamento tr
 - Entrevistas privadas; quadro por compartilhamento explícito; votos privados até a revelação.
 - Persistência entre instâncias e reenvio idempotente de comandos.
 - Expiração após 6 horas sem ações ou 24 horas desde a criação. Polling não renova o prazo.
-- Contratos de provedor/orçamento/worker GPT testados com simulação, ainda sem fila durável ou integração com o jogo.
+- Jobs, outbox e orçamento transacional de IA testados com provedor falso, por injeção explícita. O runtime publicado continua canônico: não instancia essa integração nem chama GPT.
 
 Os números de turnos e perguntas continuam provisórios até playtest.
 
@@ -49,9 +49,9 @@ Testes locais não substituem integração com DynamoDB/Lambda reais, DNS/TLS, Q
 - `server/persistent-game.mjs`: transações e idempotência.
 - `server/storage/`: adaptadores de memória e DynamoDB.
 - `server/api.mjs`, `server/sessions.mjs`: HTTP, origem, cookies e autorização.
-- `server/ai/`: contratos de IA desativados e não conectados ao runtime.
+- `server/ai/`: jobs/orçamento/entrega duráveis e provedor restrito, não ativados no runtime.
 - `public/`: cliente do navegador, sem solução do caso.
 - `infra/template.json`: SAM/CloudFormation, sem aplicação automática.
 - `tests/fixtures/`: conteúdo sintético público.
 
-Veja [design](docs/BACKEND_DESIGN.md), [estado da implementação](docs/IMPLEMENTATION_PLAN.md), [implantação](docs/DEPLOYMENT.md), [validação](docs/VALIDATION.md), [créditos](AI_AND_CREDITS.md) e [licenças](LICENSE_STATUS.md).
+Veja [design](docs/BACKEND_DESIGN.md), [estado da implementação](docs/IMPLEMENTATION_PLAN.md), [implantação](docs/DEPLOYMENT.md), [validação](docs/VALIDATION.md), [orquestração de IA](docs/AI_ORCHESTRATION.md), [créditos](AI_AND_CREDITS.md) e [licenças](LICENSE_STATUS.md).

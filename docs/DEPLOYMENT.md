@@ -35,6 +35,8 @@ A versão de cfn-lint usada no CI é 1.60.0. O diretório publicável é somente
 - Habilitar novas salas somente para a homologação combinada e medir contenção/custos.
 - Rodar partida completa com 3 e 4 contextos reais, privacidade, erro/retry, reinício, expiração e rollback.
 
+O índice AiDueIndex e o stream KEYS_ONLY preparam o armazenamento para IA. ProvisionAiQueue começa false e somente descreve filas/DLQ opcionais: não cria workers, event source mappings, schedule, permissões para GPT nem habilita o runtime. A criação futura de papéis, segredos, gatilhos e alarmes exige revisão separada.
+
 Não existe uma implantação validada nem URL jogável prometida por este PR. O template pode precisar de ajustes depois da validação real. O GPT permanece desconectado; não basta fornecer uma chave para habilitá-lo.
 
 ## Rollback

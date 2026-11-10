@@ -5,7 +5,7 @@ const HOUR=3_600_000;
 const hash=x=>createHash('sha256').update(x).digest('hex');
 function identifier(id){if(typeof id!=='string'||!/[\w-]{16,100}/.test(id)||!/^[\w-]+$/.test(id)||id.length>100)throw new DomainError('Identificador inválido.');}
 export class DurableGame {
- constructor({store,caseData,catalog,now=Date.now}){this.store=store;this.caseData=caseData;this.catalog=catalog;this.now=now;}
+ constructor({store,caseData,catalog,now=Date.now,ai=null}){this.store=store;this.caseData=caseData;this.catalog=catalog;this.now=now;this.ai=ai;}
  cases(){return this.catalog;}
  engine(room){const g=new GameService({caseData:this.caseData,catalog:this.catalog,now:this.now});if(room)g.rooms.set(room.code,room);return g;}
  async load(code){if(typeof code!=='string'||!/^[A-HJ-NP-Z2-9]{8}$/.test(code.toUpperCase()))throw new DomainError('Código inválido.',404);const room=await this.store.getRoom(code.toUpperCase());if(!room||room.expiresAt<=this.now()||room.createdAt+24*HOUR<=this.now())throw new DomainError('Sala não encontrada ou expirada.',404);if(room.caseVersion!==this.caseData.version)throw new DomainError('Versão do caso indisponível.',503);return room;}
@@ -23,7 +23,8 @@ export class DurableGame {
    const p=room.players.find(p=>p.token===session);if(!p)throw new Error('Missing participant after command');
    for(const player of room.players)if(Buffer.byteLength(JSON.stringify({...player,requests:[...player.requests]}))>120_000)throw new DomainError('Limite de dados da partida.',413);
    const receipt={key,fingerprint,code:room.code,playerId:p.id,expiresAt:room.createdAt+24*HOUR};
-   try{await this.store.commitRoom({expectedVersion:before?.version??null,room,receipt});return {code:room.code,playerId:p.id,state:g.view(room.code,session)};}catch(e){if(!(e instanceof ConflictError)&&e.name!=='ConflictError')throw e;}
+   const aiWrites=this.ai&&kind==='act'&&payload.type==='ask'?await this.ai.prepareQuestion({room,player:p,receiptKey:key,caseData:this.caseData}):[];
+   try{await this.store.commitRoom({expectedVersion:before?.version??null,room,receipt,aiWrites});return {code:room.code,playerId:p.id,state:g.view(room.code,session)};}catch(e){if(!(e instanceof ConflictError)&&e.name!=='ConflictError')throw e;}
   }
   throw new DomainError('Muitas ações simultâneas. Tente novamente.',409);
  }

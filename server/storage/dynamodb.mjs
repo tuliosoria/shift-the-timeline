@@ -1,5 +1,6 @@
 import {DynamoDBClient} from '@aws-sdk/client-dynamodb';
-import {DynamoDBDocumentClient,GetCommand,PutCommand,UpdateCommand,DeleteCommand,TransactGetCommand,TransactWriteCommand} from '@aws-sdk/lib-dynamodb';
+import {DynamoDBDocumentClient,GetCommand,PutCommand,UpdateCommand,DeleteCommand,TransactGetCommand,TransactWriteCommand,QueryCommand} from '@aws-sdk/lib-dynamodb';
+import {aiPut} from './ai-codec.mjs';
 import {ConflictError} from './memory.mjs';
 const key=(pk,sk)=>({pk,sk});
 export function encodeRoom(room){
@@ -14,9 +15,18 @@ export class DynamoStore {
  async getItem(pk,sk){return (await this.client.send(new GetCommand({TableName:this.tableName,Key:key(pk,sk),ConsistentRead:true}))).Item??null;}
  async getRoom(code){const pk=`ROOM#${code}`;for(let i=0;i<4;i++){const first=await this.getItem(pk,'META');if(!first)return null;const keys=[key(pk,'META'),...first.room.playerIds.map(id=>key(pk,`PLAYER#${id}`))];const result=await this.client.send(new TransactGetCommand({TransactItems:keys.map(Key=>({Get:{TableName:this.tableName,Key}}))}));const items=result.Responses.map(r=>r.Item);if(items[0]?.version!==first.version)continue;return decodeRoom(items);}throw new ConflictError();}
  async getReceipt(id){const item=await this.getItem(`RECEIPT#${id}`,'META');return item?.receipt??null;}
- async commitRoom({expectedVersion,room,receipt}){
+ async commitRoom({expectedVersion,room,receipt,aiWrites=[]}){
   const items=encodeRoom(room);const TransactItems=items.map((Item,i)=>({Put:{TableName:this.tableName,Item,...(i===0?expectedVersion===null?{ConditionExpression:'attribute_not_exists(pk)'}:{ConditionExpression:'#version = :expected',ExpressionAttributeNames:{'#version':'version'},ExpressionAttributeValues:{':expected':expectedVersion}}:{})}}));
   TransactItems.push({Put:{TableName:this.tableName,Item:{pk:`RECEIPT#${receipt.key}`,sk:'META',ttl:Math.ceil(receipt.expiresAt/1000),receipt},ConditionExpression:'attribute_not_exists(pk)'}});
+  TransactItems.push(...aiWrites.map(w=>aiPut(this.tableName,w)));
+  try{await this.client.send(new TransactWriteCommand({TransactItems}));}catch(e){if(e.name==='TransactionCanceledException'&&e.CancellationReasons?.some(r=>r.Code==='ConditionalCheckFailed'))throw new ConflictError();throw e;}
+ }
+ async listAiDue(now,limit=25,cursor){if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new Error('Invalid reconciliation limit');const r=await this.client.send(new QueryCommand({TableName:this.tableName,IndexName:'AiDueIndex',KeyConditionExpression:'aiDuePk = :pk AND aiDueSk <= :now',ExpressionAttributeValues:{':pk':'AI#DUE',':now':`${String(now).padStart(16,'0')}#~`},Limit:limit,...(cursor?{ExclusiveStartKey:cursor}:{})}));return {keys:(r.Items??[]).map(x=>x.pk),cursor:r.LastEvaluatedKey??null};}
+ async getAi(id){return (await this.getItem(id,'AI'))?.data??null;}
+ async commitAi({writes,checks=[],room,roomCode,expectedRoomVersion}){
+  const condition={ConditionExpression:'#version = :expected',ExpressionAttributeNames:{'#version':'version'},ExpressionAttributeValues:{':expected':expectedRoomVersion}};
+  const TransactItems=room?encodeRoom(room).map((Item,i)=>({Put:{TableName:this.tableName,Item,...(i===0?condition:{})}})):roomCode?[{ConditionCheck:{TableName:this.tableName,Key:key(`ROOM#${roomCode}`,'META'),...condition}}]:[];
+  TransactItems.push(...checks.map(c=>({ConditionCheck:{TableName:this.tableName,Key:key(c.key,'AI'),ConditionExpression:'#version = :expected',ExpressionAttributeNames:{'#version':'version'},ExpressionAttributeValues:{':expected':c.expectedVersion}}})),...writes.map(w=>aiPut(this.tableName,w)));
   try{await this.client.send(new TransactWriteCommand({TransactItems}));}catch(e){if(e.name==='TransactionCanceledException'&&e.CancellationReasons?.some(r=>r.Code==='ConditionalCheckFailed'))throw new ConflictError();throw e;}
  }
  async consumeCounter(id,max,expiresAt){try{await this.client.send(new UpdateCommand({TableName:this.tableName,Key:key(`LIMIT#${id}`,'META'),UpdateExpression:'SET ttl = :ttl ADD #count :one',ConditionExpression:'attribute_not_exists(#count) OR #count < :max',ExpressionAttributeNames:{'#count':'count'},ExpressionAttributeValues:{':ttl':Math.ceil(expiresAt/1000),':one':1,':max':max}}));return true;}catch(e){if(e.name==='ConditionalCheckFailedException')return false;throw e;}}

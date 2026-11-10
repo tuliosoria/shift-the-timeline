@@ -4,7 +4,7 @@ O conceito, briefing, documentação e desenvolvimento receberam assistência de
 
 ## Durante a partida
 
-Este corte usa respostas canônicas, sem chamadas GPT. Existem contratos de provedor/orçamento/worker testados com simulação, mas ainda não estão conectados ao jogo. Não há chave de IA incluída no projeto.
+Este corte usa respostas canônicas, sem chamadas GPT. A orquestração durável de jobs/orçamento e a projeção de narração opcional são testadas com simulação, mas o runtime publicado não ativa essa integração. Não há chave de IA incluída no projeto.
 
 Na integração futura, a verdade e o resultado permanecerão no servidor. Será necessário aprovar modelo, custos, política de dados e configuração segura da credencial.
 

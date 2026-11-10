@@ -19,10 +19,13 @@
 ## Integração GPT posterior
 
 - [x] Contratos locais de orçamento, provedor restrito e worker, com provedor falso.
-- [ ] Reserva de orçamento e job/outbox na mesma transação de pergunta.
-- [ ] Fila, DLQ, relay, leases/fencing e reconciliação persistentes.
-- [ ] Testes de concorrência de orçamento e resultado incerto no provedor.
-- [ ] Integração de fala gerada na interface, mantendo evidência canônica.
+- [x] Reserva de orçamento e job/outbox na mesma transação de pergunta, com integração opcional testada.
+- [x] Leases/fencing, relay e reconciliação persistentes em código, com dependências injetadas.
+- [x] Índice de pendências, stream somente de chaves e filas/DLQ opcionais no template.
+- [ ] Runtime worker/relay/reconciliador implantável, políticas IAM e gatilhos revisados e desativados por padrão.
+- [x] Testes simulados de concorrência de orçamento, mudança de período, entrega duplicada e resultado incerto.
+- [x] Projeção privada e renderização da narração opcional separada da evidência canônica.
+- [ ] QA de navegador e aviso/consentimento de dados antes de ativar envio externo.
 - [ ] Projeto/modelo, preço e política de dados aprovados pelo dono da credencial.
 - [ ] Configuração segura e teste pago limitado, autorizado separadamente.
 
