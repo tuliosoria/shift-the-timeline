@@ -1,12 +1,12 @@
-# Orquestração de IA: código testado, execução externa desligada
+# Orquestração de IA: ativação opcional e consentida
 
-O runtime HTTP/Lambda continua somente canônico. O template mantém flags dos runtimes e gatilhos desativados. ProvisionAiWorkers descreve funções desligadas, sem transformar a API em produtora de jobs GPT. A integração opcional é exercitada por testes com provedor falso e armazenamento em memória; o adaptador DynamoDB tem testes de contrato, não testes na AWS real.
+O runtime HTTP/Lambda é canônico por padrão. O template mantém EnableAi=false. ProvisionAiWorkers descreve as funções; o interruptor separado EnableAi ativa conjuntamente produtor, runtimes e gatilhos após aprovação operacional. Mesmo habilitado, só a pergunta com aiConsent=true admite um job. A integração opcional é exercitada por testes com provedor falso e armazenamento em memória; o adaptador DynamoDB tem testes de contrato, não testes na AWS real.
 
 ## Pergunta e orçamento
 
-A pergunta produz evidência canônica imediatamente. Quando um repositório AiJobs é injetado explicitamente, a mesma transação grava pergunta, recibo idempotente, job, outbox e três reservas: sala, dia UTC e mês UTC. Concorrentes disputam as versões dos contadores; orçamento insuficiente mantém a resposta canônica sem criar job. Cada contador recebe uma guarda de inicialização na mesma transação: se um contador já usado desaparecer, a guarda impede recriar o saldo como zero. Antes de iniciar, as três reservas e guardas são verificadas e suas versões condicionam a mudança de estado. Falha na leitura do orçamento também desativa a narração daquela pergunta.
+A pergunta produz evidência canônica imediatamente. Quando um repositório AiJobs está habilitado explicitamente e a pergunta tem consentimento booleano true, a mesma transação grava pergunta, recibo idempotente, job, outbox e três reservas: sala, dia UTC e mês UTC. Concorrentes disputam as versões dos contadores; orçamento insuficiente mantém a resposta canônica sem criar job. Cada contador recebe uma guarda de inicialização na mesma transação: se um contador já usado desaparecer, a guarda impede recriar o saldo como zero. Antes de iniciar, as três reservas e guardas são verificadas e suas versões condicionam a mudança de estado. Falha na leitura do orçamento também desativa a narração daquela pergunta.
 
-Os valores atuais são propostas, não autorização de gasto: US$0,25/sala, US$5/dia, US$25/mês, até duas chamadas locais em execução. A reserva considera 2.500 tokens de entrada e 350 de saída, em microdólares inteiros. Modelo e tarifas ficam fixados no job; um provedor com outro modelo é recusado antes da chamada.
+O escopo aprovado em 10 de novembro de 2026 usa US$0,25/sala, US$5/dia e US$25/mês, com até duas chamadas locais em execução. Consulte [escopo aprovado e condições de implantação](APPROVED_DEPLOYMENT.md); os contadores não garantem o total da fatura do provedor. A reserva considera 2.500 tokens de entrada e 350 de saída, em microdólares inteiros. Modelo e tarifas ficam fixados no job; um provedor com outro modelo é recusado antes da chamada.
 
 O saldo representa uso liquidado mais reservas ainda não liberadas. Conclusão com uso conhecido devolve a diferença. Expiração anterior ao marcador de início devolve toda a reserva. Resultado incerto depois do início mantém a reserva inteira, mesmo que o jogador receba apenas o texto canônico. Isso evita gastar novamente um valor que o provedor pode ter consumido.
 
@@ -36,15 +36,15 @@ O índice esparso AiDueIndex permite consultar pendências por prazo, com limite
 
 Somente o dono da entrevista recebe narração. A interface escapa o texto e o identifica como gerado por IA, não como evidência. Compartilhar usa exclusivamente a evidência canônica. O contexto do provedor contém somente persona autorizada, pergunta e resposta canônica daquela pergunta, sem solução global ou transcrição de outro jogador.
 
-Schema e limites de tamanho não provam consistência narrativa nem eliminam alucinação ou prompt injection. É necessário avaliar o modelo e avisar os jogadores sobre envio de texto ao provedor antes da ativação. store:false não equivale a retenção zero.
+Schema e limites de tamanho não provam consistência narrativa nem eliminam alucinação ou prompt injection. A interface avisa e pede autorização opcional por entrevista; não persiste essa autorização. É necessário avaliar o modelo antes da ativação. store:false não equivale a retenção zero.
 
 ## O que falta para ativar
 
-1. Aprovar com o dono da credencial projeto, modelo/versionamento, tarifas, limites e política de dados.
-2. Aviso/consentimento dos jogadores para o envio externo, pedindo codinomes e ausência de dados pessoais.
+1. Conferir que projeto, modelo, tarifas, limites e política de dados correspondem ao escopo aprovado. Mudanças materiais exigem nova aprovação.
+2. Verificar o aviso/consentimento implementado para envio externo. Pedir codinomes e ausência de dados pessoais; ausência de consentimento mantém evidência canônica sem job, reserva ou chamada.
 3. Validar em homologação os runtimes e políticas declarados. O worker usa ações condicionais DynamoDB, incluindo ConditionCheckItem; relay lê/escreve somente outbox e recebe chaves do stream; reconciliador usa o índice e os registros necessários à liquidação. Somente o worker pode receber permissão condicional para o ARN GPT exato. Nenhuma dessas permissões foi aplicada. Configurar alarmes e revisar ativação separadamente.
 4. Testes reais DynamoDB/SQS/Lambda, capacidade regional, recuperação e avaliação narrativa.
-5. Configuração segura da credencial e teste pago limitado, com autorização específica.
+5. Configuração segura da credencial real e teste pago limitado dentro do escopo e orçamento aprovados.
 
 Não há chave, criação de segredo, aumento de quota, deploy ou chamada real de IA neste desenvolvimento.
 
@@ -57,3 +57,5 @@ Relay e reconciliador não exigem configuração de modelo nem de segredo. Usam 
 IAM é delimitado por tabela/índice/stream/fila e prefixos das partições. Os papéis novos não têm acesso ao bucket do caso, sessões ou credencial de origem. O worker pode receber GetSecretValue somente no ARN configurado; ARN vazio não concede essa permissão e uma regra do template recusa o mesmo ARN para GPT e origem da API. Segredo com chave KMS própria exigirá revisão específica, sem concessão genérica de decrypt.
 
 Os runtimes não imprimem eventos, prompts, conteúdo de segredo ou mensagens originais de erros. Falhas de inicialização são genéricas e uma invocação posterior pode tentar inicializar novamente. Isso não equivale a observabilidade completa: alarmes, métricas operacionais e resposta à DLQ precisam ser combinados antes da ativação.
+
+A API recebe somente a política de preços/limites. Somente o worker tem acesso condicional ao segredo OpenAI exato. Um retry preserva o consentimento e a identidade originais da pergunta; mudar o corpo com a mesma ID é conflito. A capacidade pública ai_optional não informa chave, ARN, projeto, política ou modelo.

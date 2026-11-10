@@ -75,6 +75,15 @@
       "Default": "",
       "MaxLength": 4096,
       "Description": "Future explicitly approved complete model, rate and limit configuration. Not a credential; empty until approved."
+    },
+    "EnableAi": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Description": "Activate optional player-consented narration only after approving the exact credential, prices and limits."
     }
   },
   "Rules": {
@@ -146,6 +155,70 @@
             ]
           },
           "AssertDescription": "GPT credentials and API origin verification must use separate secrets."
+        }
+      ]
+    },
+    "AiActivationRequiresConfiguration": {
+      "RuleCondition": {
+        "Fn::Equals": [
+          {
+            "Ref": "EnableAi"
+          },
+          "true"
+        ]
+      },
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "ProvisionAiQueue"
+              },
+              "true"
+            ]
+          },
+          "AssertDescription": "AI activation requires ProvisionAiQueue."
+        },
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "ProvisionAiWorkers"
+              },
+              "true"
+            ]
+          },
+          "AssertDescription": "AI activation requires ProvisionAiWorkers."
+        },
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "AiSecretArn"
+                  },
+                  ""
+                ]
+              }
+            ]
+          },
+          "AssertDescription": "AI activation requires an explicitly approved AiSecretArn."
+        },
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "AiPolicyJson"
+                  },
+                  ""
+                ]
+              }
+            ]
+          },
+          "AssertDescription": "AI activation requires an explicitly approved AiPolicyJson."
         }
       ]
     }
@@ -357,7 +430,12 @@
             "SHIFT_ALLOW_NEW_ROOMS": {
               "Ref": "AllowNewRooms"
             },
-            "SHIFT_AI_ENABLED": "false"
+            "SHIFT_AI_ENABLED": {
+              "Ref": "EnableAi"
+            },
+            "SHIFT_AI_POLICY": {
+              "Ref": "AiPolicyJson"
+            }
           }
         },
         "Policies": [
@@ -988,7 +1066,9 @@
             "SHIFT_TABLE": {
               "Ref": "GameTable"
             },
-            "SHIFT_AI_WORKER_ENABLED": "false",
+            "SHIFT_AI_WORKER_ENABLED": {
+              "Ref": "EnableAi"
+            },
             "SHIFT_AI_QUEUE_ARN": {
               "Fn::GetAtt": [
                 "AiQueue",
@@ -1135,7 +1215,9 @@
             "SHIFT_TABLE": {
               "Ref": "GameTable"
             },
-            "SHIFT_AI_RELAY_ENABLED": "false",
+            "SHIFT_AI_RELAY_ENABLED": {
+              "Ref": "EnableAi"
+            },
             "SHIFT_AI_QUEUE_ARN": {
               "Fn::GetAtt": [
                 "AiQueue",
@@ -1287,7 +1369,9 @@
             "SHIFT_TABLE": {
               "Ref": "GameTable"
             },
-            "SHIFT_AI_RECONCILER_ENABLED": "false",
+            "SHIFT_AI_RECONCILER_ENABLED": {
+              "Ref": "EnableAi"
+            },
             "SHIFT_AI_QUEUE_ARN": {
               "Fn::GetAtt": [
                 "AiQueue",
@@ -1322,7 +1406,13 @@
         "FunctionName": {
           "Ref": "AiWorkerFunction"
         },
-        "Enabled": false,
+        "Enabled": {
+          "Fn::If": [
+            "AiEnabled",
+            true,
+            false
+          ]
+        },
         "BatchSize": 1,
         "MaximumBatchingWindowInSeconds": 0,
         "FunctionResponseTypes": [
@@ -1346,7 +1436,13 @@
         "FunctionName": {
           "Ref": "AiRelayFunction"
         },
-        "Enabled": false,
+        "Enabled": {
+          "Fn::If": [
+            "AiEnabled",
+            true,
+            false
+          ]
+        },
         "StartingPosition": "TRIM_HORIZON",
         "BatchSize": 25,
         "MaximumBatchingWindowInSeconds": 0,
@@ -1381,7 +1477,13 @@
       "Condition": "ProvisionAiWorkersEnabled",
       "Properties": {
         "ScheduleExpression": "rate(5 minutes)",
-        "State": "DISABLED",
+        "State": {
+          "Fn::If": [
+            "AiEnabled",
+            "ENABLED",
+            "DISABLED"
+          ]
+        },
         "Targets": [
           {
             "Arn": {
@@ -1415,6 +1517,142 @@
             "Arn"
           ]
         }
+      }
+    },
+    "ApiErrorAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Errors",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "ApiFunction"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "ApiThrottleAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Throttles",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "ApiFunction"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "AiWorkerErrorAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Errors",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "AiWorkerFunction"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      },
+      "Condition": "ProvisionAiWorkersEnabled"
+    },
+    "AiRelayErrorAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Errors",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "AiRelayFunction"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      },
+      "Condition": "ProvisionAiWorkersEnabled"
+    },
+    "AiDeadLetterAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Condition": "ProvisionAiQueueEnabled",
+      "Properties": {
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "AiDlq",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "AiRelayDeadLetterAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Condition": "ProvisionAiWorkersEnabled",
+      "Properties": {
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "AiRelayDlq",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
       }
     }
   },
@@ -1479,6 +1717,14 @@
             ""
           ]
         }
+      ]
+    },
+    "AiEnabled": {
+      "Fn::Equals": [
+        {
+          "Ref": "EnableAi"
+        },
+        "true"
       ]
     }
   }

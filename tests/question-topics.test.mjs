@@ -73,7 +73,7 @@ test('explicit and inferred duplicate topics reject without using a question or 
 });
 test('distinct-id concurrent duplicate questions commit once and reserve only one AI job/budget',async()=>{
  const {harness}=await import('./helpers/ai.mjs');const h=await harness();
- const commands=[randomUUID(),randomUUID()].map(id=>({id,type:'ask',round:1,question:'Tell me a clue.',topic:'clue'}));
+ const commands=[randomUUID(),randomUUID()].map(id=>({id,type:'ask',round:1,question:'Tell me a clue.',topic:'clue',aiConsent:true}));
  const results=await Promise.allSettled(commands.map(action=>h.game.act(h.code,'session-A',action)));
  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
  const rejected=results.find(r=>r.status==='rejected');assert.equal(rejected.reason.status,409);assert.match(rejected.reason.message,/already covered/);

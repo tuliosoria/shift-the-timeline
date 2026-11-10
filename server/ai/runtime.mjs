@@ -3,7 +3,7 @@ import {SecretsManagerClient,GetSecretValueCommand} from '@aws-sdk/client-secret
 import {DynamoStore} from '../storage/dynamodb.mjs';
 import {ConflictError} from '../storage/memory.mjs';
 import {AiJobs} from './jobs.mjs';
-import {PROPOSED_LIMITS,reserveCost} from './budget.mjs';
+import {parseAiPolicy} from './policy.mjs';
 import {createProvider} from './provider.mjs';
 import {createQueueHandler,createStreamHandler} from './delivery.mjs';
 const CURSOR='AICURSOR#RECONCILER',KINDS=['worker','relay','reconciler'];
@@ -15,11 +15,7 @@ function config(kind,env){
  if(kind==='relay'){const prefix=`arn:aws:dynamodb:us-east-1:${queue[1]}:table/${env.SHIFT_TABLE}/stream/`;if(!env.SHIFT_AI_STREAM_ARN?.startsWith(prefix)||!/^[0-9T:.-]+$/.test(env.SHIFT_AI_STREAM_ARN.slice(prefix.length)))throw new Error('Invalid stream ARN configuration');result.streamArn=env.SHIFT_AI_STREAM_ARN;}
  if(kind==='worker'){
   const prefix=`arn:aws:secretsmanager:us-east-1:${queue[1]}:secret:`;if(!env.SHIFT_AI_SECRET_ARN?.startsWith(prefix)||!/^[A-Za-z0-9/_+=.@-]{1,512}$/.test(env.SHIFT_AI_SECRET_ARN.slice(prefix.length)))throw new Error('Invalid secret ARN configuration');result.secretArn=env.SHIFT_AI_SECRET_ARN;
-  let p;try{p=JSON.parse(env.SHIFT_AI_POLICY);}catch{throw new Error('Invalid AI policy configuration');}
-  const keys=['model','inputRate','outputRate',...Object.keys(PROPOSED_LIMITS)];if(!p||Array.isArray(p)||Object.keys(p).length!==keys.length||keys.some(k=>!Object.hasOwn(p,k))||typeof p.model!=='string'||!/^[A-Za-z0-9._:-]{1,100}$/.test(p.model))throw new Error('Invalid complete AI policy');
-  if(p.inputTokens!==2500||p.outputTokens!==350)throw new Error('Invalid AI policy token envelope');
-  for(const k of ['roomMicroUsd','dayMicroUsd','monthMicroUsd','maxConcurrent'])if(!Number.isSafeInteger(p[k])||p[k]<1||p[k]>PROPOSED_LIMITS[k])throw new Error('Invalid AI policy limit');
-  reserveCost(p);result.policy=Object.freeze(p);
+  result.policy=parseAiPolicy(env.SHIFT_AI_POLICY);
  }
  return Object.freeze(result);
 }

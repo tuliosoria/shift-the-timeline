@@ -13,7 +13,7 @@
     "check": "node scripts/check.mjs",
     "package": "node scripts/package.mjs",
     "dev:demo": "SHIFT_CASE_FILE=tests/fixtures/case.mjs node server/index.mjs",
-    "test:browser": "node tests/browser-recovery.mjs",
+    "test:browser": "node tests/browser-recovery.mjs && node tests/browser-ai-consent.mjs",
     "check:case": "node scripts/check-case.mjs"
   },
   "dependencies": {

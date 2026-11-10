@@ -1,4 +1,4 @@
-# Implantação AWS: ainda não executada
+# Implantação AWS e ativação controlada
 
 O template usa SAM/CloudFormation em `us-east-1`. Não há workflow de deploy, credencial AWS, chave GPT ou geração de segredos neste repositório. CI só testa, audita e empacota.
 
@@ -35,11 +35,11 @@ A versão de cfn-lint usada no CI é 1.60.0. O diretório publicável é somente
 - Habilitar novas salas somente para a homologação combinada e medir contenção/custos.
 - Rodar partida completa com 3 e 4 contextos reais, privacidade, erro/retry, reinício, expiração e rollback.
 
-O índice AiDueIndex e o stream KEYS_ONLY preparam o armazenamento para IA. ProvisionAiQueue e ProvisionAiWorkers começam false; workers exigem filas. Se provisionados futuramente, os três runtimes ainda terão flags false, mapeamentos Enabled=false e schedule DISABLED. AiSecretArn começa vazio e não concede leitura GPT; preencher um ARN em um change set futuro concede acesso somente ao papel do worker e exige autorização específica. AiPolicyJson é configuração de modelo/tarifas/limites, nunca uma chave.
+O índice AiDueIndex e o stream KEYS_ONLY suportam os jobs privados de IA. ProvisionAiQueue e ProvisionAiWorkers começam false; workers exigem filas. EnableAi começa false e controla conjuntamente produtor, três runtimes, mapeamentos e schedule. Provisionar recursos não ativa chamadas. A regra de configuração exige filas, workers, ARN de credencial e política quando EnableAi=true. AiSecretArn começa vazio e não concede leitura GPT; preencher um ARN em um change set futuro concede acesso somente ao papel do worker e exige autorização específica. AiPolicyJson é configuração de modelo/tarifas/limites, nunca uma chave.
 
-A API continua canônica e não produz jobs. Não altere flags ou gatilhos para tentar ativar IA sem concluir aviso/consentimento, aprovação do dono da credencial, integração da admissão e homologação. Não há passo automático que aplique IAM ou habilite execução.
+A API só produz jobs com EnableAi=true e aiConsent=true na pergunta específica. /api/cases expõe dialogueMode=ai_optional quando a opção está habilitada; ausência/false/valores não booleanos não admitem jobs. A interface mantém o consentimento desmarcado a cada entrevista/recarregamento, informa o envio à OpenAI e permite jogar de forma canônica. Complete a aprovação do dono da credencial e a homologação antes de ativar. Não há passo automático que aplique IAM ou habilite execução.
 
-Não existe uma implantação validada nem URL jogável prometida por este PR. O template pode precisar de ajustes depois da validação real. O GPT permanece desconectado; não basta fornecer uma chave para habilitá-lo.
+Não existe uma implantação validada nem URL jogável prometida por este PR. O template pode precisar de ajustes depois da validação real. O GPT permanece desligado por padrão; uma configuração declarada não comprova implantação nem autorização de gasto.
 
 ## Rollback
 
@@ -51,8 +51,25 @@ Restauração de backup precisa ser testada em tabela separada. Não reativar se
 
 ## Verificação dos runtimes desligados
 
-O build produz 15 arquivos verificados no manifesto, distribuídos nos quatro pacotes de função e nos assets. Testes importam os handlers e verificam que worker/relay/reconciliador desligados não criam clientes nem acessam dados.
+O build produz os arquivos verificados no manifesto, distribuídos nos quatro pacotes de função e nos assets. Testes importam os handlers e verificam que worker/relay/reconciliador desligados não criam clientes nem acessam dados.
 
-A visibilidade SQS proposta é 180 segundos para worker de 30 segundos, batch size 1 e MaximumConcurrency 2. Isso não reserva capacidade Lambda nem isola os outros projetos. O relay usa stream com filtro de inserções de outbox; falhas esgotadas vão à DLQ própria. O schedule permanece desligado e não faz retry automático.
+A visibilidade SQS proposta é 180 segundos para worker de 30 segundos, batch size 1 e MaximumConcurrency 2. Isso não reserva capacidade Lambda nem isola os outros projetos. O relay usa stream com filtro de inserções de outbox; falhas esgotadas vão à DLQ própria. O schedule permanece desligado enquanto EnableAi=false. Quando ativado explicitamente, executa a cada cinco minutos, sem retry automático do evento.
 
 A política de leitura de streams segue o [exemplo oficial da AWS](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/iam-policy-example-lamda-process-dynamodb-streams.html), limitado aos streams da tabela SHIFT. Os contratos IAM ainda precisam ser exercitados na AWS real antes de afirmar que a implantação funciona.
+
+## Checklist de lançamento
+
+1. Verificar o commit e CI, conta/região, cota e ausência de conflito DNS. Inspecionar apenas metadados de credenciais, sem imprimir valores ou ambientes Lambda.
+2. Aprovar os recursos e gastos, segredo de origem separado, alvo exato do segredo OpenAI e acesso restrito do worker. A credencial deve entrar por um canal seguro; nunca em chat, Git, parâmetros CloudFormation ou comandos com valores.
+3. Empacotar cada função com seu diretório, publicar somente dist/web no bucket de assets e o JSON privado no bucket de casos. Ambos devem coincidir com hashes locais.
+4. Criar/revisar change set com AllowNewRooms=false e EnableAi=false. Conferir IAM, recursos substituídos e DNS antes de executar.
+5. Verificar HTTPS, headers, saúde e rejeição de acesso direto à origem. Testar armazenamento real e jogo completo com três/quatro sessões independentes. Não registrar corpos privados.
+6. Aprovar modelo e tarifas verificadas. Para gpt-6-luna, o provedor fixa reasoning.effort=none e service_tier=default. A política deve reservar entrada com tarifa conservadora que cubra eventual cache write; não contar descontos esperados.
+7. Só então aplicar EnableAi=true, verificar um teste pago limitado e manter fallback canônico se o provedor falhar. Verificar opt-out, privacidade, repetição, DLQ, reconciliação e orçamento.
+8. Liberar novas salas e confirmar a URL. Os alarmes declarados ficam no console AWS, sem destinatários externos e sem promessa de monitoramento automático.
+
+Há alarmes para erros/throttles da API, erros de worker/relay e as duas filas de falha. Eles não são limite de fatura. Não há orçamento AWS automático nem desligamento financeiro garantido. O limite de chamadas da aplicação também não cobre uso externo da mesma chave.
+
+Fontes de preço/modelo para revisão operacional: https://developers.openai.com/api/docs/models/gpt-6-luna e https://developers.openai.com/api/docs/pricing. Não migrar modelo ou mudar tarifas silenciosamente.
+
+O [escopo aprovado](APPROVED_DEPLOYMENT.md) registra destino, modelo, limites, estimativa AWS e separação de credenciais para o primeiro lançamento. Isso não substitui a verificação dos recursos reais e do change set.

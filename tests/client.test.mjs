@@ -41,7 +41,7 @@ test('a late poll cannot roll back confirmed actions or replace a different room
 test('rejected question and note submissions keep the unsent draft',async()=>{
  for(const [formId,fieldName,selector] of [['question-form','question','#question'],['note-form','text','#note']]){
   const field={value:'Draft that was not sent'};let handler;
-  const sandbox={document:{addEventListener(event,fn){handler=fn;}},topicLabels:{},busy:false,pending:null,state:{round:1},act:async()=>false,$:()=>field,FormData:class{*[Symbol.iterator](){yield [fieldName,field.value];}},Object};
+  const sandbox={document:{addEventListener(event,fn){handler=fn;}},topicLabels:{},hasAiConsent:()=>false,busy:false,pending:null,state:{round:1},act:async()=>false,$:()=>field,FormData:class{*[Symbol.iterator](){yield [fieldName,field.value];}},Object};
   vm.runInNewContext(source.slice(source.indexOf("document.addEventListener('submit'"),source.indexOf("document.addEventListener('input'")),sandbox);
   await handler({preventDefault(){},target:{id:formId}});
   assert.equal(field.value,'Draft that was not sent',selector);

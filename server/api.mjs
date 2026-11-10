@@ -11,7 +11,7 @@ export function createApi({game,sessions,allowedOrigin,rateLimit}){
   await rateLimit({request,path,context});
   const body=request.method==='POST'?await bodyOf(request):null;
   if(path==='/api/health'&&request.method==='GET')return reply(200,{ok:true});
-  if(path==='/api/cases'&&request.method==='GET')return reply(200,{cases:game.cases(),dialogueMode:'canonical',persistence:'durable',roomLifetimeHours:6,roomAbsoluteHours:24});
+  if(path==='/api/cases'&&request.method==='GET')return reply(200,{cases:game.cases(),dialogueMode:game.ai?'ai_optional':'canonical',persistence:'durable',roomLifetimeHours:6,roomAbsoluteHours:24});
   if(path==='/api/session'&&request.method==='POST'){try{const s=await sessions.renew(cookie);return reply(200,{ok:true,expiresAt:s.expiresAt},{'Set-Cookie':s.cookie});}catch(e){if(!(e instanceof DomainError))throw e;const s=await sessions.create();return reply(201,{ok:true,expiresAt:s.expiresAt},{'Set-Cookie':s.cookie});}}
   if(path==='/api/session/logout'&&request.method==='POST')return reply(200,{ok:true},{'Set-Cookie':await sessions.revoke(cookie)});
   if(path==='/api/rooms'&&request.method==='POST'){const s=await sessions.renew(cookie);return reply(201,await game.create(s.hash,body.name,body.caseId,body.requestId??body.id),{'Set-Cookie':s.cookie});}
