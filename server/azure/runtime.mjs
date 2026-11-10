@@ -2,6 +2,7 @@ import {readFile,stat} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {readAzureConfig} from './config.mjs';
 import {startupStep} from './diagnostics.mjs';
+import {releaseResponse} from './release.mjs';
 import {validateCase} from '../case-loader.mjs';
 import {DurableGame} from '../persistent-game.mjs';
 import {Sessions} from '../sessions.mjs';
@@ -55,6 +56,7 @@ export async function createAzureRuntime({env=process.env,store,loadCaseImpl=rea
  };
  const stop=async()=>{stopped=true;if(timer)clearInterval(timer);if(maintenanceTimer)clearInterval(maintenanceTimer);timer=null;maintenanceTimer=null;await Promise.all([running,maintenance]);};
  const handler=async(request,context)=>{
+  if(new URL(request.url).pathname==='/api/release')return releaseResponse(request);
   if(new URL(request.url).pathname==='/healthz'){
    if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405,headers:HEADERS});
    try{await store.checkReady();return new Response(request.method==='HEAD'?null:'ok',{headers:{...HEADERS,'Content-Type':'text/plain'}});}
