@@ -92,7 +92,7 @@ export async function evaluateEvidenceIsolation(){
  assert.equal(privateView.me.interviews[0].messages[0].narration.text,invented);
  const {client}=clientHarness(clientState());
  const rendered=client.renderNarration(privateView.me.interviews[0].messages[0]);
- assert.match(rendered,/AI NARRATION · NOT EVIDENCE/);assert.match(rendered,/&lt;img src=x onerror=alert\(1\)&gt;/);assert.equal(rendered.includes('<img'),false);
+ assert.match(rendered,/AI VOICE · NOT EVIDENCE/);assert.match(rendered,/may invent or contradict facts/);assert.match(rendered,/role="note" aria-label="Unverified AI voice"/);assert.match(rendered,/&lt;img src=x onerror=alert\(1\)&gt;/);assert.equal(rendered.includes('<img'),false);
  assert.equal(rendered.includes(canonical),false);
  const peer=await h.game.view(h.code,'session-B');assert.equal(JSON.stringify(peer).includes(invented),false);
  await h.game.act(h.code,'session-A',{type:'share',messageId:message.id,id:id()});
