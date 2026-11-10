@@ -10,7 +10,7 @@ test('voice polish retains exact scoped context and operational/provider control
  await provider(context);assert.deepEqual(JSON.parse(payload.input[1].content),{persona:context.persona,canonical:context.canonical,question:context.question});
  assert.equal(payload.input.length,2);assert.equal(payload.store,false);assert.equal(payload.model,'synthetic-model');assert.equal(payload.max_output_tokens,350);assert.equal(payload.service_tier,'default');assert.deepEqual(payload.prompt_cache_options,{mode:'explicit'});
  assert.equal(payload.text.format.strict,true);assert.deepEqual(payload.text.format.schema.required,['voice']);
- for(const instruction of ['only canonical for facts','unsupported premises or accusations','No history is supplied','Canonical evidence stays separate and unchanged'])assert.ok(payload.input[0].content.includes(instruction));
+ for(const instruction of ['turn a predicted event into a completed act','only canonical for facts','unsupported premises or accusations','No history is supplied','Canonical evidence stays separate and unchanged'])assert.ok(payload.input[0].content.includes(instruction));
 });
 test('all public-demo canonical topics fit unchanged conservative envelope with maximal ASCII question',async()=>{
  let calls=0;const provider=createProvider({model:'synthetic-model',getSecret:async()=>'synthetic-test-only',fetchImpl:async(url,options)=>{calls++;assert.ok(Buffer.byteLength(JSON.stringify(JSON.parse(options.body).input))<=2000);return reply();}});
