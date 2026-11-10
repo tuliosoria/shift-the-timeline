@@ -53,3 +53,30 @@ Computed design-token contrast met the stated target: primary text/panel 13.56:1
 ## Remaining validation limits
 
 Chrome testing is not Safari, iOS keyboard, screen-reader or comprehensive assistive-technology certification. No live DynamoDB/Lambda/DNS/TLS test, deployment or competition-rule audit is claimed. A multi-person editorial playtest and competition submission review remain separate steps.
+
+## Connection recovery follow-up
+
+A connected client sends a presence heartbeat every 30 seconds. Heartbeats do not
+extend the six-hour idle or 24-hour absolute room lifetime. Another participant
+may explicitly claim the host role after 120 seconds without host contact. The
+old host stays in the game, retaining private interviews and any accusation.
+
+During accusation, a host who has voted may explicitly finish with abstentions
+only when every missing voter has been out of contact for 120 seconds, measured
+no earlier than accusation start. Missing choices stay null, cannot create a
+complete victory, and never count as innocent arrests. Concurrent renewed
+presence or votes are rechecked transactionally. Background browser suspension
+can look like disconnection; users are told to keep the page connected.
+
+Fake-clock engine/durable tests cover premature recovery, renewed presence,
+legacy rooms, retries, races, expiry and result scoring. Client regressions cover
+confirmation, heartbeat cadence and abstention wording. A synthetic Chromium
+recovery flow is included in CI; see its run for actual browser execution status.
+No live AWS or editorial-case playtest is implied by these checks.
+
+Heartbeats still create normal durable idempotency receipts (one per request,
+retained until the room's absolute 24-hour deadline; DynamoDB TTL deletion is
+asynchronous). They do not grow the per-player engine request map. The local
+MemoryStore is a development adapter and does not prune receipt rows. This is
+not a constant-storage presence service; receipt volume and write costs must be
+reviewed before production, or replaced with a dedicated coalesced presence path.

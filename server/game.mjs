@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 export const CONFIG = Object.freeze({minPlayers:3,maxPlayers:4,rounds:3,maxQuestions:4,roomLifetimeHours:6});
+export const RECOVERY_DELAY_MS=120_000;
 const TTL=CONFIG.roomLifetimeHours*60*60*1000;
 const TOPICS=['alibi','motive','clue','relationship'];
 export class DomainError extends Error { constructor(message,status=400){super(message);this.status=status;} }
@@ -36,15 +37,33 @@ export class GameService {
   room(code){this.prune();if(typeof code!=='string')fail('Invalid room code.');const room=this.rooms.get(code.toUpperCase());if(!room)fail('Room not found or expired.',404);return room;}
   player(room,token){const player=room.players.find(p=>p.token===token);if(!player)fail('Your session is not valid for this room.',401);return player;}
   entry(key,fingerprint,create){requestId(key);this.prune();const prior=this.entries.get(key);if(prior){if(prior.fingerprint!==fingerprint)fail('Request identifier reused with different data.',409);return this.entryView(prior);}if(this.entries.size>=1200)fail('Server busy. Please try again later.',503);const value=create();this.entries.set(key,{...value,fingerprint});return this.entryView(value);}
-  entryView(value){const room=this.room(value.code),p=this.player(room,value.token);room.touchedAt=this.now();return {code:room.code,token:p.token,playerId:p.id,state:this.snapshot(room,p)};}
+  entryView(value){const room=this.room(value.code),p=this.player(room,value.token);this.initializeActivity(room);p.lastSeenAt=this.now();room.touchedAt=this.now();return {code:room.code,token:p.token,playerId:p.id,state:this.snapshot(room,p)};}
   create(name,caseId,key){name=text(name,'Name',24);if(caseId!==this.caseData.id)fail('This case is not available yet.');return this.entry(key,JSON.stringify(['create',name,caseId]),()=>{if(this.rooms.size>=200)fail('Server busy. Please try again later.',503);let code;do{code=Array.from(randomBytes(8),b=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b%32]).join('');}while(this.rooms.has(code));const player=this.newPlayer(name);const room={code,caseId,hostId:player.id,players:[player],phase:'lobby',round:0,board:[],createdAt:this.now(),touchedAt:this.now(),version:1};this.rooms.set(code,room);return {code,token:player.token};});}
-  join(code,name,key){name=text(name,'Name',24);code=text(code,'Code',8).toUpperCase();return this.entry(key,JSON.stringify(['join',code,name]),()=>{const room=this.room(code);if(room.phase!=='lobby')fail('This game has already started. Reconnect using your original tab.');if(room.players.length>=CONFIG.maxPlayers)fail('Room full: maximum of 4 agents.');if(room.players.some(p=>p.name.toLocaleLowerCase()===name.toLocaleLowerCase()))fail('That name is already in use in this room.');const p=this.newPlayer(name);room.players.push(p);room.version++;room.touchedAt=this.now();return {code,token:p.token};});}
-  newPlayer(name){return {id:randomUUID(),name,token:randomBytes(32).toString('hex'),interviews:[],vote:null,requests:new Map()};}
+  join(code,name,key){name=text(name,'Name',24);code=text(code,'Code',8).toUpperCase();return this.entry(key,JSON.stringify(['join',code,name]),()=>{const room=this.room(code);if(room.phase!=='lobby')fail('This game has already started. Reconnect using your original tab.');if(room.players.length>=CONFIG.maxPlayers)fail('Room full: maximum of 4 agents.');if(room.players.some(p=>p.name.toLocaleLowerCase()===name.toLocaleLowerCase()))fail('That name is already in use in this room.');const p=this.newPlayer(name);this.initializeActivity(room);room.players.push(p);room.version++;room.touchedAt=this.now();return {code,token:p.token};});}
+  newPlayer(name){return {id:randomUUID(),name,token:randomBytes(32).toString('hex'),lastSeenAt:this.now(),interviews:[],vote:null,requests:new Map()};}
   view(code,token){const room=this.room(code),p=this.player(room,token);return this.snapshot(room,p);}
-  snapshot(room,me){const current=p=>p.interviews.find(i=>i.round===room.round);return {code:room.code,version:room.version,phase:room.phase,round:room.round,remainingHours:room.phase==='lobby'?24:room.phase==='investigation'?24-(room.round-1)*8:0,config:CONFIG,case:{id:this.caseData.id,title:this.caseData.title,victim:this.caseData.victim,place:this.caseData.place,method:this.caseData.method,prediction:this.caseData.prediction},suspects:this.caseData.suspects.map(publicSuspect),players:room.players.map(p=>({id:p.id,name:p.name,host:p.id===room.hostId,ready:!!current(p)?.closed,selectedSuspectId:current(p)?.suspectId??null,voteSubmitted:!!p.vote})),me:{id:me.id,name:me.name,host:me.id===room.hostId,interviews:structuredClone(me.interviews),vote:me.vote},board:structuredClone(room.board),...(room.phase==='reveal'?{result:this.result(room)}:{})};}
-  result(room){const correct=room.players.filter(p=>p.vote===this.caseData.culpritId).length;return {outcome:correct===room.players.length?'complete':correct>0?'partial':'defeat',correct,total:room.players.length,innocentArrests:new Set(room.players.filter(p=>p.vote!==this.caseData.culpritId).map(p=>p.vote)).size,culpritId:this.caseData.culpritId,solution:structuredClone(this.caseData.solution),votes:room.players.map(p=>({playerId:p.id,suspectId:p.vote,correct:p.vote===this.caseData.culpritId}))};}
+  initializeActivity(room){for(const p of room.players)if(!Number.isFinite(p.lastSeenAt))p.lastSeenAt=room.touchedAt;if(room.phase==='accusation'&&!Number.isFinite(room.accusationStartedAt))room.accusationStartedAt=room.touchedAt;}
+  lastSeen(room,player){return Number.isFinite(player.lastSeenAt)?player.lastSeenAt:room.touchedAt;}
+  hostRecoverable(room){const host=room.players.find(p=>p.id===room.hostId);return room.phase!=='reveal'&&!!host&&this.now()-this.lastSeen(room,host)>=RECOVERY_DELAY_MS;}
+  canFinalizeAccusations(room,player){
+    if(room.phase!=='accusation'||room.hostId!==player.id||!player.vote)return false;
+    const missing=room.players.filter(p=>!p.vote),started=Number.isFinite(room.accusationStartedAt)?room.accusationStartedAt:room.touchedAt;
+    return missing.length>0&&missing.every(p=>this.now()-Math.max(this.lastSeen(room,p),started)>=RECOVERY_DELAY_MS);
+  }
+  snapshot(room,me){const current=p=>p.interviews.find(i=>i.round===room.round);return {code:room.code,version:room.version,phase:room.phase,round:room.round,hostRecoverable:this.hostRecoverable(room),canFinalizeAccusations:this.canFinalizeAccusations(room,me),remainingHours:room.phase==='lobby'?24:room.phase==='investigation'?24-(room.round-1)*8:0,config:CONFIG,case:{id:this.caseData.id,title:this.caseData.title,victim:this.caseData.victim,place:this.caseData.place,method:this.caseData.method,prediction:this.caseData.prediction},suspects:this.caseData.suspects.map(publicSuspect),players:room.players.map(p=>({id:p.id,name:p.name,host:p.id===room.hostId,ready:!!current(p)?.closed,selectedSuspectId:current(p)?.suspectId??null,voteSubmitted:!!p.vote})),me:{id:me.id,name:me.name,host:me.id===room.hostId,interviews:structuredClone(me.interviews),vote:me.vote},board:structuredClone(room.board),...(room.phase==='reveal'?{result:this.result(room)}:{})};}
+  result(room){const correct=room.players.filter(p=>p.vote===this.caseData.culpritId).length;return {outcome:correct===room.players.length?'complete':correct>0?'partial':'defeat',correct,total:room.players.length,abstentions:room.players.filter(p=>!p.vote).length,innocentArrests:new Set(room.players.filter(p=>p.vote&&p.vote!==this.caseData.culpritId).map(p=>p.vote)).size,culpritId:this.caseData.culpritId,solution:structuredClone(this.caseData.solution),votes:room.players.map(p=>({playerId:p.id,suspectId:p.vote,correct:p.vote===this.caseData.culpritId}))};}
   act(code,token,action){if(!action||typeof action!=='object'||Array.isArray(action))fail('Invalid action.');requestId(action.id);const room=this.room(code),player=this.player(room,token),fingerprint=JSON.stringify(action);const prior=player.requests.get(action.id);if(prior){if(prior!==fingerprint)fail('Request identifier reused with different data.',409);return this.snapshot(room,player);}const host=()=>{if(player.id!==room.hostId)fail('Only the host can do this.',403);};const phase=want=>{if(room.phase!==want)fail('Action unavailable in this phase.');};const round=()=>{phase('investigation');if(action.round!==room.round)fail('The round has changed. Refresh the room.',409);};const interview=()=>{round();const i=player.interviews.find(i=>i.round===room.round);if(!i)fail('Choose a suspect first.');if(i.closed)fail('Interview already closed.');return i;};const suspect=id=>{const s=this.caseData.suspects.find(s=>s.id===id);if(!s)fail('Invalid suspect.');return s;};
     switch(action.type){
+      case 'heartbeat':if(room.phase==='reveal')fail('This game has finished.');break;
+      case 'claimHost':
+        if(action.confirmed!==true)fail('Confirm that you want to become the host.');
+        if(player.id===room.hostId||!this.hostRecoverable(room))fail('The host is still active or this game has finished.',409);
+        room.hostId=player.id;break;
+      case 'finalizeAccusations':
+        host();phase('accusation');
+        if(action.confirmed!==true)fail('Confirm that absent players will have no accusation recorded.');
+        if(!this.canFinalizeAccusations(room,player))fail('Submit your accusation first and wait until every missing voter has been inactive for 120 seconds in this phase.',409);
+        room.phase='reveal';break;
       case 'start':host();phase('lobby');if(room.players.length<CONFIG.minPlayers)fail('At least 3 players are required.');room.phase='investigation';room.round=1;break;
       case 'select':round();suspect(action.suspectId);if(player.interviews.some(i=>i.round===room.round))fail('You have already chosen a person for this round.');player.interviews.push({round:room.round,suspectId:action.suspectId,opening:suspect(action.suspectId).opening,messages:[],closed:false});break;
       case 'ask':{const i=interview();if(i.messages.length>=CONFIG.maxQuestions)fail('Limit of 4 questions for this interview.');const question=text(action.question,'Question',300);if(action.topic!==undefined&&!TOPICS.includes(action.topic))fail('Invalid question topic.');const topic=action.topic??inferTopic(question);i.messages.push({id:randomUUID(),question,topic,answer:suspect(i.suspectId).responses[topic]});break;}
@@ -56,7 +75,10 @@ export class GameService {
       case 'vote':phase('accusation');suspect(action.suspectId);if(player.vote)fail('Your accusation has already been recorded.');player.vote=action.suspectId;if(room.players.every(p=>p.vote))room.phase='reveal';break;
       default:fail('Unknown action.');
     }
-    player.requests.set(action.id,fingerprint);room.version++;room.touchedAt=this.now();return this.snapshot(room,player);
+    this.initializeActivity(room);player.lastSeenAt=this.now();room.version++;
+    // Heartbeats prove presence without growing the per-player command map or extending room life.
+    if(action.type!=='heartbeat'){player.requests.set(action.id,fingerprint);room.touchedAt=this.now();}
+    return this.snapshot(room,player);
   }
-  nextRound(room){if(room.round===CONFIG.rounds)room.phase='accusation';else room.round++;}
+  nextRound(room){if(room.round===CONFIG.rounds){room.phase='accusation';room.accusationStartedAt=this.now();}else room.round++;}
 }

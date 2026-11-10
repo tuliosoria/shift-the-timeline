@@ -18,7 +18,7 @@ export class DurableGame {
    const prior=await this.prior(key,fingerprint,session);if(prior)return prior;
    const before=code?await this.load(code):null;const g=this.engine(before?structuredClone(before):null);
    let result;try{result=run(g,before);}catch(error){const concurrent=await this.prior(key,fingerprint,session);if(concurrent)return concurrent;throw error;}const room=g.rooms.get(result.code??code?.toUpperCase());
-   room.caseVersion=this.caseData.version;room.schemaVersion=1;room.expiresAt=Math.min(room.createdAt+24*HOUR,this.now()+6*HOUR);
+   room.caseVersion=this.caseData.version;room.schemaVersion=1;room.expiresAt=kind==='act'&&payload.type==='heartbeat'?before.expiresAt:Math.min(room.createdAt+24*HOUR,this.now()+6*HOUR);
    // Entries are receipt-scoped in durable storage, never persisted bearer tokens.
    const p=room.players.find(p=>p.token===session);if(!p)throw new Error('Missing participant after command');
    for(const player of room.players)if(Buffer.byteLength(JSON.stringify({...player,requests:[...player.requests]}))>120_000)throw new DomainError('Game data limit reached.',413);
