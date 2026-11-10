@@ -22,3 +22,5 @@ dialog{max-width:min(560px,calc(100vw - 32px));width:100%;max-height:calc(100dvh
 .source-preview{min-width:0;overflow-wrap:anywhere}.source-preview p{white-space:pre-wrap}
 
 .vote-card{min-width:0}.vote-dossier{margin-top:4px;padding:0 13px;border:1px solid var(--line);border-radius:8px;background:#172633}.vote-dossier summary{font-size:14px;color:var(--gold)}.vote-dossier p{font-size:14px;overflow-wrap:anywhere;white-space:pre-wrap}
+
+.case-debrief{margin:2rem 0;padding:1rem;border:1px solid var(--line);border-radius:12px;min-width:0}.case-debrief>summary{font-weight:700}.case-debrief p{white-space:pre-wrap;overflow-wrap:anywhere}.debrief-interview{margin:1rem 0;padding:1rem;border:1px solid var(--line);border-radius:8px}.debrief-interview article+article{border-top:1px solid var(--line);margin-top:1rem;padding-top:1rem}
