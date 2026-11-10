@@ -1,40 +1,57 @@
 # SHIFT: The Timeline
 
-Jogo cooperativo de investigação para celular e navegador, em desenvolvimento para o [Game Off 2026](https://itch.io/jam/game-off-2026).
+Jogo cooperativo de investigação em português para 3–4 pessoas. Um crime é previsto; a equipe divide entrevistas privadas, compartilha pistas e faz acusações individuais.
 
-Uma visão revela a vítima, o lugar e a forma de um crime que ainda não aconteceu. A equipe tem 24 horas ficcionais para investigar, conversar com suspeitos interpretados por IA e mudar a linha do tempo sem prender inocentes.
+## Estado deste desenvolvimento
 
-## Estado do projeto
+Este corte implementa o backend canônico, sessões por cookie, armazenamento transacional DynamoDB e infraestrutura AWS declarativa. **Não houve deploy. A IA GPT não está conectada.** O caso editorial e sua solução não são publicados neste repositório.
 
-**Pré-produção.** Este repositório começa com o briefing e o checklist da jam. Ainda não há jogo executável, build, backend, casos completos ou submissão no itch.io. O nome é provisório.
+- Regras autoritativas: 15 suspeitos, 3 turnos, até 4 perguntas por entrevista.
+- Convite de oito caracteres; uma identidade por navegador e sala.
+- Entrevistas privadas; quadro por compartilhamento explícito; votos privados até a revelação.
+- Persistência entre instâncias e reenvio idempotente de comandos.
+- Expiração após 6 horas sem ações ou 24 horas desde a criação. Polling não renova o prazo.
+- Contratos de provedor/orçamento/worker GPT testados com simulação, ainda sem fila durável ou integração com o jogo.
 
-O primeiro objetivo é uma partida jogável de ponta a ponta com um caso, antes de expandir para os cinco cenários propostos. Engine, stack e serviços ainda não foram definidos.
+Os números de turnos e perguntas continuam provisórios até playtest.
 
-## Como a partida funciona
+## Desenvolvimento local
 
-- Pelo menos três amigos entram em uma sala pelo navegador.
-- Em cada turno, os jogadores entrevistam suspeitos em paralelo e trocam informações.
-- O número de suspeitos supera a capacidade total de entrevistas da equipe.
-- Ao final, cada jogador apresenta sua própria acusação.
-- Todos acertam: crime impedido e nenhum inocente preso. Alguns acertam: crime impedido, com inocentes presos. Ninguém acerta: o crime acontece.
+Requer Node.js 22+.
 
-A relação com **SHIFT** é mudar um futuro previsto por meio da investigação e das decisões coletivas.
+```sh
+npm ci
+SHIFT_CASE_FILE=tests/fixtures/case.mjs npm start
+```
 
-## Documentação
+Abra http://127.0.0.1:3000. Esse comando usa um **caso sintético técnico**, não um mistério pronto para jogar. Use três contextos/perfis de navegador separados para representar três pessoas. Abas do mesmo navegador compartilham identidade.
 
-- [Briefing e decisões em aberto](docs/BRIEFING.md)
-- [Regras verificadas e checklist da jam](docs/GAME_OFF.md)
-- [Uso de IA e créditos](AI_AND_CREDITS.md)
-- [Estado das licenças](LICENSE_STATUS.md)
+Para usar um caso editorial autorizado, configure `SHIFT_CASE_FILE` apontando para um arquivo privado que exporte `TRAIN_CASE` e `CASES`. A pasta `private/` é ignorada pelo Git. Não coloque roteiros privados no código do navegador.
 
-## Desenvolvimento
+Sem `SHIFT_TABLE`, o modo local usa memória e perde salas no reinício. Produção recusa memória: exige DynamoDB, origem HTTPS, verificação de origem e artefato privado do caso com SHA-256 fixado.
 
-Ainda não há comandos de instalação, execução ou testes. Eles deverão ser documentados junto à primeira implementação. Não publique chaves de API, dados de jogadores ou conversas privadas no repositório.
+## Verificações
 
-## Game Off 2026
+```sh
+npm test
+npm run check
+npm audit
+npm run package
+```
 
-Prazo oficial: **1º de dezembro de 2026, 13h37 PST / 21h37 UTC / 18h37 de Brasília**. Criar este repositório não equivale a entrar na jam nem a enviar uma inscrição. O jogo precisa ser desenvolvido, testado e submetido no itch.io dentro do prazo.
+O pacote é criado do zero e contém somente assets públicos, bundle Lambda e avisos de terceiros. Saídas anteriores ficam em `dist.previous-*`, fora do diretório a publicar. Nunca publique essas pastas.
 
-## Transparência
+Testes locais não substituem integração com DynamoDB/Lambda reais, DNS/TLS, QA de navegador ou playtest.
 
-O planejamento e a documentação receberam assistência de IA da OpenAI. As conversas com suspeitos são uma mecânica planejada e ainda não estão implementadas. Veja [AI_AND_CREDITS.md](AI_AND_CREDITS.md) para o registro atualizado.
+## Estrutura
+
+- `server/game.mjs`: regras de jogo e projeções privadas.
+- `server/persistent-game.mjs`: transações e idempotência.
+- `server/storage/`: adaptadores de memória e DynamoDB.
+- `server/api.mjs`, `server/sessions.mjs`: HTTP, origem, cookies e autorização.
+- `server/ai/`: contratos de IA desativados e não conectados ao runtime.
+- `public/`: cliente do navegador, sem solução do caso.
+- `infra/template.json`: SAM/CloudFormation, sem aplicação automática.
+- `tests/fixtures/`: conteúdo sintético público.
+
+Veja [design](docs/BACKEND_DESIGN.md), [estado da implementação](docs/IMPLEMENTATION_PLAN.md), [implantação](docs/DEPLOYMENT.md), [validação](docs/VALIDATION.md), [créditos](AI_AND_CREDITS.md) e [licenças](LICENSE_STATUS.md).

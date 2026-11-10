@@ -1,17 +1,17 @@
 # Uso de IA e créditos
 
-## Estado inicial
+O conceito, briefing, documentação e desenvolvimento receberam assistência de IA da OpenAI em novembro de 2026, a partir da direção criativa do projeto. O backend passou por testes automatizados e revisão de código. Isso não substitui playtest ou revisão editorial.
 
-A organização do conceito, o briefing e esta documentação receberam assistência de IA da OpenAI em novembro de 2026, a partir da direção criativa fornecida para o projeto.
+## Durante a partida
 
-Não há código de jogo nem assets de produção neste commit inicial. Estudos visuais gerados por IA foram explorados separadamente e não estão incluídos no repositório. Não devem ser apresentados como screenshots de um jogo implementado.
+Este corte usa respostas canônicas, sem chamadas GPT. Existem contratos de provedor/orçamento/worker testados com simulação, mas ainda não estão conectados ao jogo. Não há chave de IA incluída no projeto.
 
-## IA durante a partida
+Na integração futura, a verdade e o resultado permanecerão no servidor. Será necessário aprovar modelo, custos, política de dados e configuração segura da credencial.
 
-Entrevistas com suspeitos interpretados por IA são uma mecânica planejada. Provedor, modelo, custos, política de dados e implementação ainda serão definidos. A verdade do caso deve ser fixada antes da partida e validada no servidor, sem depender da IA para decidir culpado ou pontuação.
+## Assets e dependências
 
-## Atualização antes da submissão
+A interface usa HTML/CSS e formas tipográficas, sem assets de terceiros ou imagens de produção. Estudos visuais explorados separadamente não são screenshots desta implementação.
 
-Registrar ferramentas utilizadas, partes assistidas ou geradas e revisões realizadas. Se arte, áudio, código ou texto assistido por IA entrar na build, incluir essa informação e preencher a declaração exigida pelo Game Off e pelo itch.io.
+O backend usa AWS SDK v3; esbuild é ferramenta de build. Consulte as versões fixadas no package-lock e os avisos/licenças dessas dependências. A distribuição deve preservar seus avisos. O caso editorial e sua solução ficam fora deste repositório.
 
-Para materiais de terceiros, registrar autor, fonte, licença, alterações e atribuições exigidas. Não adicionar assets sem direito de uso.
+Antes da submissão, atualizar a declaração de IA exigida pela jam e registrar ferramentas, contribuições, revisões e materiais efetivamente distribuídos.

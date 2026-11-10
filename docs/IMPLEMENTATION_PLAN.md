@@ -1,0 +1,34 @@
+# Estado da implementação
+
+## Primeiro corte: backend canônico durável
+
+- [x] Isolar o caso editorial e usar fixture sintética pública.
+- [x] Regras autoritativas e projeções privadas.
+- [x] Transações, controle de versão e idempotência entre instâncias.
+- [x] Sessões por cookie, expiração, renovação explícita e logout.
+- [x] Cliente com convite de oito caracteres, retomada e polling adaptado.
+- [x] Adaptadores HTTP local e Lambda.
+- [x] Limites duráveis e verificação de origem.
+- [x] Template SAM/CloudFormation sem deploy ou alteração de quota.
+- [x] Empacotamento novo, imutável e com manifesto completo.
+- [x] Revisão independente de código e correções testadas.
+- [ ] CI remoto e validação completa do CloudFormation.
+- [ ] Testes reais DynamoDB/Lambda e QA de navegador.
+- [ ] Deploy de homologação, teste de capacidade e rollback.
+
+## Integração GPT posterior
+
+- [x] Contratos locais de orçamento, provedor restrito e worker, com provedor falso.
+- [ ] Reserva de orçamento e job/outbox na mesma transação de pergunta.
+- [ ] Fila, DLQ, relay, leases/fencing e reconciliação persistentes.
+- [ ] Testes de concorrência de orçamento e resultado incerto no provedor.
+- [ ] Integração de fala gerada na interface, mantendo evidência canônica.
+- [ ] Projeto/modelo, preço e política de dados aprovados pelo dono da credencial.
+- [ ] Configuração segura e teste pago limitado, autorizado separadamente.
+
+## Antes do público
+
+- [ ] Política de abandono sem voto inventado e experiência de logout/recuperação.
+- [ ] Capacidade regional verificada; nenhum aumento automático.
+- [ ] Licenças, retenção, alertas, custos, DNS/TLS e permissões revisados.
+- [ ] Playtests com 3 e 4 pessoas e avaliação de consistência narrativa.

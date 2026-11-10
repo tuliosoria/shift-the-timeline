@@ -1,0 +1,744 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Transform": "AWS::Serverless-2016-10-31",
+  "Description": "SHIFT canonical durable beta. Declarative only: no deploy or credentials are included.",
+  "Parameters": {
+    "Environment": {
+      "Type": "String",
+      "Default": "staging",
+      "AllowedValues": [
+        "staging",
+        "production"
+      ]
+    },
+    "DomainName": {
+      "Type": "String",
+      "Default": "shift.terminalufo.com",
+      "AllowedPattern": "^shift(-staging)?\\.terminalufo\\.com$"
+    },
+    "HostedZoneId": {
+      "Type": "String",
+      "AllowedPattern": "^Z[A-Z0-9]+$"
+    },
+    "OriginSecretArn": {
+      "Type": "String",
+      "AllowedPattern": "^arn:aws:secretsmanager:us-east-1:[0-9]{12}:secret:.+$",
+      "Description": "Existing separately approved origin-verification secret with JSON token; never the GPT key."
+    },
+    "CaseKey": {
+      "Type": "String",
+      "Default": "cases/train-v1.json",
+      "AllowedPattern": "^cases/[A-Za-z0-9_.-]+\\.json$"
+    },
+    "CaseSha256": {
+      "Type": "String",
+      "AllowedPattern": "^[a-f0-9]{64}$"
+    },
+    "ReleaseId": {
+      "Type": "String",
+      "AllowedPattern": "^[a-f0-9]{7,64}$"
+    },
+    "AllowNewRooms": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": [
+        "true",
+        "false"
+      ]
+    }
+  },
+  "Rules": {
+    "UseUsEast1": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "AWS::Region"
+              },
+              "us-east-1"
+            ]
+          },
+          "AssertDescription": "CloudFront certificate and WAF require us-east-1."
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "AssetsBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        }
+      }
+    },
+    "CasesBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        }
+      }
+    },
+    "GameTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "pk",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "sk",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "pk",
+            "KeyType": "HASH"
+          },
+          {
+            "AttributeName": "sk",
+            "KeyType": "RANGE"
+          }
+        ],
+        "SSESpecification": {
+          "SSEEnabled": true
+        },
+        "TimeToLiveSpecification": {
+          "AttributeName": "ttl",
+          "Enabled": true
+        },
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true,
+          "RecoveryPeriodInDays": 7
+        },
+        "DeletionProtectionEnabled": true,
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": "SHIFT"
+          },
+          {
+            "Key": "Environment",
+            "Value": {
+              "Ref": "Environment"
+            }
+          }
+        ]
+      }
+    },
+    "ApiLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/shift/${AWS::StackName}/api-access"
+        },
+        "RetentionInDays": 14
+      }
+    },
+    "FunctionLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${AWS::StackName}-api"
+        },
+        "RetentionInDays": 14
+      }
+    },
+    "HttpApi": {
+      "Type": "AWS::Serverless::HttpApi",
+      "Properties": {
+        "StageName": "$default",
+        "DefaultRouteSettings": {
+          "ThrottlingBurstLimit": 30,
+          "ThrottlingRateLimit": 20
+        },
+        "AccessLogSettings": {
+          "DestinationArn": {
+            "Fn::GetAtt": [
+              "ApiLogs",
+              "Arn"
+            ]
+          },
+          "Format": "{\"requestId\":\"$context.requestId\",\"route\":\"$context.routeKey\",\"status\":\"$context.status\"}"
+        }
+      }
+    },
+    "ApiFunction": {
+      "Type": "AWS::Serverless::Function",
+      "DependsOn": "FunctionLogs",
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${AWS::StackName}-api"
+        },
+        "CodeUri": "../dist/api",
+        "Handler": "server/lambda.handler",
+        "Runtime": "nodejs22.x",
+        "Architectures": [
+          "arm64"
+        ],
+        "MemorySize": 256,
+        "Timeout": 10,
+        "Environment": {
+          "Variables": {
+            "NODE_ENV": "production",
+            "SHIFT_ORIGIN": {
+              "Fn::Sub": "https://${DomainName}"
+            },
+            "SHIFT_TABLE": {
+              "Ref": "GameTable"
+            },
+            "SHIFT_CASE_BUCKET": {
+              "Ref": "CasesBucket"
+            },
+            "SHIFT_CASE_KEY": {
+              "Ref": "CaseKey"
+            },
+            "SHIFT_CASE_SHA256": {
+              "Ref": "CaseSha256"
+            },
+            "SHIFT_ORIGIN_SECRET_ARN": {
+              "Ref": "OriginSecretArn"
+            },
+            "SHIFT_ALLOW_NEW_ROOMS": {
+              "Ref": "AllowNewRooms"
+            },
+            "SHIFT_AI_ENABLED": "false"
+          }
+        },
+        "Policies": [
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "dynamodb:GetItem",
+                  "dynamodb:PutItem",
+                  "dynamodb:UpdateItem",
+                  "dynamodb:DeleteItem"
+                ],
+                "Resource": {
+                  "Fn::GetAtt": [
+                    "GameTable",
+                    "Arn"
+                  ]
+                }
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject"
+                ],
+                "Resource": {
+                  "Fn::Sub": "${CasesBucket.Arn}/${CaseKey}"
+                }
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "secretsmanager:GetSecretValue"
+                ],
+                "Resource": {
+                  "Ref": "OriginSecretArn"
+                }
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents"
+                ],
+                "Resource": {
+                  "Fn::Sub": "${FunctionLogs.Arn}:*"
+                }
+              }
+            ]
+          }
+        ],
+        "Events": {
+          "Proxy": {
+            "Type": "HttpApi",
+            "Properties": {
+              "ApiId": {
+                "Ref": "HttpApi"
+              },
+              "Path": "/{proxy+}",
+              "Method": "ANY"
+            }
+          }
+        }
+      }
+    },
+    "Certificate": {
+      "Type": "AWS::CertificateManager::Certificate",
+      "Properties": {
+        "DomainName": {
+          "Ref": "DomainName"
+        },
+        "ValidationMethod": "DNS",
+        "DomainValidationOptions": [
+          {
+            "DomainName": {
+              "Ref": "DomainName"
+            },
+            "HostedZoneId": {
+              "Ref": "HostedZoneId"
+            }
+          }
+        ]
+      }
+    },
+    "OAC": {
+      "Type": "AWS::CloudFront::OriginAccessControl",
+      "Properties": {
+        "OriginAccessControlConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-assets"
+          },
+          "OriginAccessControlOriginType": "s3",
+          "SigningBehavior": "always",
+          "SigningProtocol": "sigv4"
+        }
+      }
+    },
+    "ApiCachePolicy": {
+      "Type": "AWS::CloudFront::CachePolicy",
+      "Properties": {
+        "CachePolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-api-no-cache"
+          },
+          "MinTTL": 0,
+          "DefaultTTL": 0,
+          "MaxTTL": 0,
+          "ParametersInCacheKeyAndForwardedToOrigin": {
+            "CookiesConfig": {
+              "CookieBehavior": "none"
+            },
+            "HeadersConfig": {
+              "HeaderBehavior": "none"
+            },
+            "QueryStringsConfig": {
+              "QueryStringBehavior": "none"
+            },
+            "EnableAcceptEncodingGzip": false,
+            "EnableAcceptEncodingBrotli": false
+          }
+        }
+      }
+    },
+    "ApiOriginPolicy": {
+      "Type": "AWS::CloudFront::OriginRequestPolicy",
+      "Properties": {
+        "OriginRequestPolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-api-origin"
+          },
+          "CookiesConfig": {
+            "CookieBehavior": "all"
+          },
+          "HeadersConfig": {
+            "HeaderBehavior": "whitelist",
+            "Headers": [
+              "Origin",
+              "Content-Type",
+              "Sec-Fetch-Site",
+              "CloudFront-Viewer-Address"
+            ]
+          },
+          "QueryStringsConfig": {
+            "QueryStringBehavior": "all"
+          }
+        }
+      }
+    },
+    "WebHeaders": {
+      "Type": "AWS::CloudFront::ResponseHeadersPolicy",
+      "Properties": {
+        "ResponseHeadersPolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${AWS::StackName}-security"
+          },
+          "SecurityHeadersConfig": {
+            "ContentTypeOptions": {
+              "Override": true
+            },
+            "FrameOptions": {
+              "FrameOption": "DENY",
+              "Override": true
+            },
+            "ReferrerPolicy": {
+              "ReferrerPolicy": "no-referrer",
+              "Override": true
+            },
+            "StrictTransportSecurity": {
+              "AccessControlMaxAgeSec": 31536000,
+              "IncludeSubdomains": false,
+              "Preload": false,
+              "Override": true
+            },
+            "ContentSecurityPolicy": {
+              "ContentSecurityPolicy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+              "Override": true
+            }
+          }
+        }
+      }
+    },
+    "WebAcl": {
+      "Type": "AWS::WAFv2::WebACL",
+      "Properties": {
+        "Scope": "CLOUDFRONT",
+        "DefaultAction": {
+          "Allow": {}
+        },
+        "VisibilityConfig": {
+          "CloudWatchMetricsEnabled": true,
+          "MetricName": {
+            "Fn::Sub": "${AWS::StackName}-web"
+          },
+          "SampledRequestsEnabled": false
+        },
+        "Rules": [
+          {
+            "Name": "request-rate",
+            "Priority": 1,
+            "Action": {
+              "Block": {}
+            },
+            "Statement": {
+              "RateBasedStatement": {
+                "Limit": 1000,
+                "AggregateKeyType": "IP",
+                "EvaluationWindowSec": 300
+              }
+            },
+            "VisibilityConfig": {
+              "CloudWatchMetricsEnabled": true,
+              "MetricName": {
+                "Fn::Sub": "${AWS::StackName}-rate"
+              },
+              "SampledRequestsEnabled": false
+            }
+          }
+        ]
+      }
+    },
+    "WebDistribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Enabled": true,
+          "IPV6Enabled": true,
+          "HttpVersion": "http2and3",
+          "PriceClass": "PriceClass_100",
+          "DefaultRootObject": "index.html",
+          "Aliases": [
+            {
+              "Ref": "DomainName"
+            }
+          ],
+          "ViewerCertificate": {
+            "AcmCertificateArn": {
+              "Ref": "Certificate"
+            },
+            "SslSupportMethod": "sni-only",
+            "MinimumProtocolVersion": "TLSv1.2_2021"
+          },
+          "WebACLId": {
+            "Fn::GetAtt": [
+              "WebAcl",
+              "Arn"
+            ]
+          },
+          "Origins": [
+            {
+              "Id": "assets",
+              "DomainName": {
+                "Fn::GetAtt": [
+                  "AssetsBucket",
+                  "RegionalDomainName"
+                ]
+              },
+              "OriginPath": {
+                "Fn::Sub": "/releases/${ReleaseId}"
+              },
+              "OriginAccessControlId": {
+                "Fn::GetAtt": [
+                  "OAC",
+                  "Id"
+                ]
+              },
+              "S3OriginConfig": {
+                "OriginAccessIdentity": ""
+              }
+            },
+            {
+              "Id": "api",
+              "DomainName": {
+                "Fn::Sub": "${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+              },
+              "CustomOriginConfig": {
+                "OriginProtocolPolicy": "https-only",
+                "OriginSSLProtocols": [
+                  "TLSv1.2"
+                ]
+              },
+              "OriginCustomHeaders": [
+                {
+                  "HeaderName": "X-Shift-Origin",
+                  "HeaderValue": {
+                    "Fn::Sub": "{{resolve:secretsmanager:${OriginSecretArn}:SecretString:token}}"
+                  }
+                }
+              ]
+            }
+          ],
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "assets",
+            "ViewerProtocolPolicy": "redirect-to-https",
+            "AllowedMethods": [
+              "GET",
+              "HEAD"
+            ],
+            "CachedMethods": [
+              "GET",
+              "HEAD"
+            ],
+            "Compress": true,
+            "MinTTL": 0,
+            "DefaultTTL": 60,
+            "MaxTTL": 300,
+            "ForwardedValues": {
+              "QueryString": false,
+              "Cookies": {
+                "Forward": "none"
+              }
+            },
+            "ResponseHeadersPolicyId": {
+              "Ref": "WebHeaders"
+            }
+          },
+          "CacheBehaviors": [
+            {
+              "PathPattern": "/api/*",
+              "TargetOriginId": "api",
+              "ViewerProtocolPolicy": "https-only",
+              "AllowedMethods": [
+                "GET",
+                "HEAD",
+                "OPTIONS",
+                "PUT",
+                "PATCH",
+                "POST",
+                "DELETE"
+              ],
+              "CachedMethods": [
+                "GET",
+                "HEAD"
+              ],
+              "Compress": true,
+              "CachePolicyId": {
+                "Ref": "ApiCachePolicy"
+              },
+              "OriginRequestPolicyId": {
+                "Ref": "ApiOriginPolicy"
+              },
+              "ResponseHeadersPolicyId": {
+                "Ref": "WebHeaders"
+              }
+            }
+          ],
+          "CustomErrorResponses": [
+            {
+              "ErrorCode": 400,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 403,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 404,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 405,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 414,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 416,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 500,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 501,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 502,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 503,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 504,
+              "ErrorCachingMinTTL": 0
+            }
+          ]
+        }
+      }
+    },
+    "AssetsPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "AssetsBucket"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "cloudfront.amazonaws.com"
+              },
+              "Action": "s3:GetObject",
+              "Resource": {
+                "Fn::Sub": "${AssetsBucket.Arn}/releases/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "AWS:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${WebDistribution}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DnsA": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": {
+          "Ref": "HostedZoneId"
+        },
+        "Name": {
+          "Ref": "DomainName"
+        },
+        "Type": "A",
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "WebDistribution",
+              "DomainName"
+            ]
+          },
+          "HostedZoneId": "Z2FDTNDATAQYW2",
+          "EvaluateTargetHealth": false
+        }
+      }
+    },
+    "DnsAAAA": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": {
+          "Ref": "HostedZoneId"
+        },
+        "Name": {
+          "Ref": "DomainName"
+        },
+        "Type": "AAAA",
+        "AliasTarget": {
+          "DNSName": {
+            "Fn::GetAtt": [
+              "WebDistribution",
+              "DomainName"
+            ]
+          },
+          "HostedZoneId": "Z2FDTNDATAQYW2",
+          "EvaluateTargetHealth": false
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "Url": {
+      "Value": {
+        "Fn::Sub": "https://${DomainName}"
+      }
+    },
+    "AssetsBucket": {
+      "Value": {
+        "Ref": "AssetsBucket"
+      }
+    },
+    "CasesBucket": {
+      "Value": {
+        "Ref": "CasesBucket"
+      }
+    },
+    "GameTable": {
+      "Value": {
+        "Ref": "GameTable"
+      }
+    },
+    "DistributionId": {
+      "Value": {
+        "Ref": "WebDistribution"
+      }
+    }
+  }
+}
