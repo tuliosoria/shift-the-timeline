@@ -42,7 +42,7 @@ test('inactive provider requests British English and keeps its original safety b
  }});
  await provider({persona:'Fictional character',canonical:'Synthetic fact',question:'What did you notice?'});
  assert.match(payload.input[0].content,/British English/);assert.ok(!payload.input[0].content.includes('Portuguese'));
- assert.match(payload.input[0].content,/Do not add facts/);assert.equal(payload.store,false);assert.equal(payload.max_output_tokens,350);assert.equal(payload.tools,undefined);
+ assert.match(payload.input[0].content,/Do not add facts/);assert.equal(payload.store,false);assert.equal(payload.service_tier,'default');assert.deepEqual(payload.prompt_cache_options,{mode:'explicit'});assert.equal(payload.max_output_tokens,350);assert.equal(payload.tools,undefined);
 });
 test('backend transport, session and limiter messages contain no previous Portuguese copy',async()=>{
  for(const file of ['api','sessions','limits','origin','runtime','lambda','persistent-game']){

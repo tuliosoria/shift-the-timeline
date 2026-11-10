@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {reserveCost,PROPOSED_LIMITS} from './budget.mjs';
+import {reserveCost,PROPOSED_LIMITS,validateSpendPolicy} from './budget.mjs';
 import {ConflictError} from '../storage/memory.mjs';
 const DAY=86400000,FINAL=new Set(['complete','fallback']);
 const write=(key,before,patch)=>({key,expectedVersion:before?.version??null,value:{...before,...patch,version:(before?.version??0)+1}});
@@ -16,8 +16,7 @@ export class AiJobs {
   if(maintenance&&policy===undefined){if(!store)throw new Error('Store required');this.store=store;this.now=now;this.policy=null;this.reserve=null;return;}
   if(!store||!policy||typeof policy.model!=='string'||!policy.model||policy.model.length>100)throw new Error('Explicit AI policy required');
   this.policy={...PROPOSED_LIMITS,...policy};
-  for(const key of ['roomMicroUsd','dayMicroUsd','monthMicroUsd','maxConcurrent'])if(!Number.isSafeInteger(this.policy[key])||this.policy[key]<1||this.policy[key]>PROPOSED_LIMITS[key])throw new Error('Invalid proposed AI limit');
-  if(this.policy.inputTokens!==2500||this.policy.outputTokens!==350)throw new Error('Unsupported token envelope');
+  validateSpendPolicy(this.policy);
   this.reserve=reserveCost(this.policy);this.store=store;this.now=now;
  }
  async prepareQuestion({room,player,receiptKey,caseData}){
@@ -25,7 +24,7 @@ export class AiJobs {
   const interview=player.interviews.find(i=>i.round===room.round),message=interview.messages.at(-1),now=this.now(),date=new Date(now),day=date.toISOString().slice(0,10),month=day.slice(0,7);
   const scopes=[{key:`AIBUDGET#ROOM#${room.code}`,max:this.policy.roomMicroUsd,expiresAt:room.createdAt+8*DAY},{key:`AIBUDGET#DAY#${day}`,max:this.policy.dayMicroUsd,expiresAt:Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()+8)},{key:`AIBUDGET#MONTH#${month}`,max:this.policy.monthMicroUsd,expiresAt:Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,8)}];
   let balances,guards;try{[balances,guards]=await Promise.all([Promise.all(scopes.map(s=>this.store.getAi(s.key))),Promise.all(scopes.map(s=>this.store.getAi(guardKey(s.key))))]);for(let i=0;i<scopes.length;i++){if(!!balances[i]!==!!guards[i])throw new Error('AI budget initialization mismatch');if(balances[i]){validBudget(balances[i]);validGuard(guards[i],scopes[i].key);}}}catch{message.narration={status:'fallback'};return [];}
-  if(balances.some((b,i)=>(b?.usedMicroUsd??0)+this.reserve>scopes[i].max)){message.narration={status:'fallback'};return [];}
+  if(balances.some((b,i)=>!Number.isSafeInteger((b?.usedMicroUsd??0)+this.reserve)||(this.policy.uncapped!==true&&(b?.usedMicroUsd??0)+this.reserve>scopes[i].max))){message.narration={status:'fallback'};return [];}
   const id=createHash('sha256').update(`ai:${receiptKey}`).digest('hex'),suspect=caseData.suspects.find(s=>s.id===interview.suspectId),deadline=now+30000,expiresAt=room.createdAt+DAY;
   const job={kind:'job',id,code:room.code,playerId:player.id,round:room.round,messageId:message.id,caseVersion:room.caseVersion,context:{persona:`${suspect.name}. ${suspect.role}. ${suspect.profile}`,canonical:message.answer,question:message.question},model:this.policy.model,rates:{inputRate:this.policy.inputRate,outputRate:this.policy.outputRate},status:'pending',createdAt:now,deadline,expiresAt,dueAt:deadline,reservedMicroUsd:this.reserve,budgetKeys:scopes.map(s=>s.key)};
   message.narration={status:'pending'};

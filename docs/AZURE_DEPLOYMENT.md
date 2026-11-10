@@ -139,3 +139,27 @@ The approved fallback's retail base estimate is $30.59/month at 730 hours: West 
 After successful provisioning, configure the app's `SHIFT_PG_HOST` to the **regional template output**, not the old failed server name. Bootstrap through the same existing App Service SSH tunnel, forwarding to that new private hostname. Run the local human-token migration and managed-identity checks before activating the normal entrypoint. The app remains in maintenance until readiness is verified. No OpenAI key transfer or activation is part of this fallback.
 
 A separately approved temporary exception may permit Azure-authenticated SCM networking without source-IP restrictions when the execution proxy rotates. It must not open the main website, enable basic publishing or FTP, or create anonymous SCM access. The operator performing that exception owns restoring SCM to the main restricted policy immediately after bootstrap; the regional database template never changes SCM or web ingress.
+
+## OpenAI pricing and privacy gate (not activation)
+
+The provider pins `service_tier: "default"` (Standard) rather than inheriting a project-level Fast setting. It also sends `prompt_cache_options: {mode: "explicit"}` with no breakpoints, disabling implicit prompt-cache use and writes. `store: false` remains set. These choices do not establish Zero Data Retention or eliminate applicable abuse-monitoring retention.
+
+On 2026-11-10, the [official GPT-6 Luna model page](https://developers.openai.com/api/docs/models/gpt-6-luna) and [pricing page](https://developers.openai.com/api/docs/pricing) list Standard `gpt-6-luna` at USD $0.10 per million input tokens and $0.50 per million output tokens. The 2,500-input/350-output envelope reserves 425 microUSD ($0.000425) per call at those rates. Reverify prices before activation or changing models. Cache-write rates differ; do not remove the explicit-only/no-breakpoint setting without updating accounting.
+
+See the [prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) for explicit-only behavior and the [Fast mode guide](https://developers.openai.com/api/docs/guides/fast-mode) for project-default processing tiers. Test the exact model/request combination after explicit paid-call approval. No model, secret destination, paid budget, player-data transmission, or hosted AI activation is authorized by this document or code change.
+
+### Explicitly uncapped narration spending
+
+The operator may explicitly choose `uncapped: true` with `roomMicroUsd`,
+`dayMicroUsd`, and `monthMicroUsd` all set to JSON `null`. This removes the
+application's financial ceilings; it does not create an unusually large hidden
+ceiling. On a publicly reachable game, consented requests can therefore incur
+unbounded cumulative OpenAI charges. Provider account limits, if any, are
+separate and are not configured or guaranteed by this application.
+
+Token envelopes, two concurrent reservations maximum, request deadlines,
+per-question consent, durable reservation/settlement accounting and canonical
+evidence authority remain enforced. Accounting rejects numeric overflow rather
+than losing precision. Omit `uncapped` to retain the existing bounded mode;
+invalid or mixed modes fail closed. Neither configuration mode authorizes
+activation or transferring credentials by itself.
