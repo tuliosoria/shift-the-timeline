@@ -18,14 +18,18 @@
     "dev:ai": "node server/local-ai-index.mjs",
     "dev:public-demo": "SHIFT_CASE_FILE=examples/public-demo.mjs node server/index.mjs",
     "check:public-demo": "SHIFT_CASE_FILE=examples/public-demo.mjs node scripts/check-case.mjs",
-    "eval:interviews": "node scripts/evaluate-interviews.mjs"
+    "eval:interviews": "node scripts/evaluate-interviews.mjs",
+    "package:azure": "node scripts/package-azure.mjs",
+    "start:azure": "node server/azure-index.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "3.1165.0",
     "@aws-sdk/client-s3": "3.1165.0",
     "@aws-sdk/client-secrets-manager": "3.1165.0",
     "@aws-sdk/client-sqs": "3.1165.0",
-    "@aws-sdk/lib-dynamodb": "3.1165.0"
+    "@aws-sdk/lib-dynamodb": "3.1165.0",
+    "@azure/identity": "4.14.1",
+    "pg": "8.23.1"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

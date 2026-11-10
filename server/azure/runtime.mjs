@@ -1,0 +1,65 @@
+import {readFile,stat} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {readAzureConfig} from './config.mjs';
+import {validateCase} from '../case-loader.mjs';
+import {DurableGame} from '../persistent-game.mjs';
+import {Sessions} from '../sessions.mjs';
+import {createRateLimiter} from '../limits.mjs';
+import {createApi,HEADERS} from '../api.mjs';
+import {DomainError} from '../game.mjs';
+import {AiJobs} from '../ai/jobs.mjs';
+import {runJob} from '../ai/worker.mjs';
+import {createProvider} from '../ai/provider.mjs';
+
+export async function readPinnedCase(config) {
+ const size=(await stat(config.caseFile)).size;
+ if(size>200000||size<1)throw new Error('Case artifact unavailable.');
+ const bytes=await readFile(config.caseFile);
+ if(bytes.length>200000||createHash('sha256').update(bytes).digest('hex')!==config.caseHash)throw new Error('Case integrity mismatch.');
+ return validateCase(JSON.parse(bytes.toString('utf8')));
+}
+export async function createAzureRuntime({env=process.env,store,loadCaseImpl=readPinnedCase,fetchImpl=fetch,now=Date.now}) {
+ const config=readAzureConfig(env);
+ if(!store||typeof store.checkReady!=='function'||typeof store.cleanupExpired!=='function')throw new Error('Durable PostgreSQL store required.');
+ await store.checkReady();
+ const data=await loadCaseImpl(config);
+ const jobs=config.policy?new AiJobs({store,policy:config.policy,now}):null;
+ // No jobs or provider are constructed unless explicitly opted in at deployment.
+ const provider=jobs?createProvider({model:config.policy.model,getSecret:async()=>env.OPENAI_API_KEY,fetchImpl}):null;
+ const admission=jobs?{prepareQuestion:args=>args.aiConsent===true?jobs.prepareQuestion(args):Promise.resolve([])}:undefined;
+ const game=new DurableGame({store,...data,ai:admission,now});
+ const limiter=createRateLimiter({store,now});
+ const api=createApi({game,sessions:new Sessions({store,secure:true,now}),allowedOrigin:config.origin,dialogueMode:jobs?'optional-openai':'canonical',rateLimit:async input=>{
+  if(!config.allowNewRooms&&input.path==='/api/rooms'&&input.request.method==='POST')throw new DomainError('New rooms are temporarily paused.',503);
+  // Never trust caller-supplied forwarding headers. Shared ingress IP limits are conservative.
+  await limiter(input);
+ }});
+ let running=null,timer=null,maintenance=null,maintenanceTimer=null,stopped=false;
+ const tick=()=>{
+  if(stopped||!jobs)return Promise.resolve({status:'disabled'});
+  if(running)return running;
+  running=jobs.reconcile({limit:25,shouldContinue:()=>!stopped,send:({jobId})=>runJob({enabled:!stopped,jobId,repository:jobs,provider,rates:config.policy,now})}).finally(()=>{running=null;});
+  return running;
+ };
+ const maintain=()=>{
+  if(stopped)return Promise.resolve(0);
+  if(maintenance)return maintenance;
+  maintenance=Promise.resolve().then(()=>store.cleanupExpired(now(),500)).finally(()=>{maintenance=null;});
+  return maintenance;
+ };
+ const start=()=>{
+  if(stopped)throw new Error('Worker stopped.');
+  if(!maintenanceTimer){maintenanceTimer=setInterval(()=>{void maintain().catch(()=>{});},60000);maintenanceTimer.unref?.();}
+  if(!jobs||timer)return;timer=setInterval(()=>{void tick().catch(()=>{});},1000);timer.unref?.();
+ };
+ const stop=async()=>{stopped=true;if(timer)clearInterval(timer);if(maintenanceTimer)clearInterval(maintenanceTimer);timer=null;maintenanceTimer=null;await Promise.all([running,maintenance]);};
+ const handler=async(request,context)=>{
+  if(new URL(request.url).pathname==='/healthz'){
+   if(request.method!=='GET'&&request.method!=='HEAD')return new Response(null,{status:405,headers:HEADERS});
+   try{await store.checkReady();return new Response(request.method==='HEAD'?null:'ok',{headers:{...HEADERS,'Content-Type':'text/plain'}});}
+   catch{return new Response(request.method==='HEAD'?null:'unavailable',{status:503,headers:{...HEADERS,'Content-Type':'text/plain'}});}
+  }
+  return api(request,context);
+ };
+ return {api:handler,config,start,stop,tick,maintain};
+}
