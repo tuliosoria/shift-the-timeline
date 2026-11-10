@@ -196,22 +196,34 @@ cleanup or lifecycle policy is configured. A retry encountering an existing blob
 fails closed: inspect whether the earlier deployment took effect rather than
 replacing the artifact or automatically repeating an uncertain deployment.
 
-The public ARM OneDeploy schema does not specify the response body. This helper
-supports only an explicit returned deployment ID and polling that same ID until
-`complete=true` and numeric `status=4`. Read-only live inspection confirmed GET
-may return `{value:[{id,location,name,properties,type},...]}` with the operation's
-UUID, status and completion flag inside `properties`. The helper selects only
-the exact ID accepted by PUT, never the first, latest or active historical entry.
-An absent ID waits only within the existing bounded polling deadline; duplicate
-matching IDs or malformed entries fail closed. Direct single-record GET responses
-remain supported. **The PUT response profile is not yet verified live**: it must
-supply an explicit deployment ID or the helper fails without guessing from history.
-Unknown response shapes fail closed. Live PUT compatibility, package-pull reachability, scoped role assignments and
-SAS generation must be verified before enabling the repository switch. A failed
+The public ARM OneDeploy schema does not specify the response body. Inspected
+Azure CLI code accepts successful PUT responses without guaranteeing a deployment
+ID. The helper accepts an empty HTTP 200/201/202 response as **acceptance only**.
+For this path it never inspects deployment history: within 600 seconds it requires
+two consecutive exact served-commit responses from `/api/release`, each accompanied
+by HTTP 200 from `/healthz`, with five seconds between checks. It reports
+`release_verified`, not completion of a specific ARM operation. This proves which
+revision is serving and basic database readiness, not that a new operation just
+completed, that this PUT caused activation, or that every app instance has updated.
+A preexisting identical revision can satisfy these serving checks. No prior-distinct revision is required, so first deployment from a
+legacy build without `/api/release` remains possible. Unknown nonempty bodies and
+error responses fail closed; PUT is never automatically retried.
+
+When PUT supplies an explicit deployment ID, the helper polls only that ID until
+`complete=true` and numeric `status=4`, then allows 120 seconds for the same two
+revision/readiness checks. Read-only live inspection confirmed GET may return
+`{value:[{id,location,name,properties,type},...]}`, with the operation UUID, status
+and completion flag inside `properties`. The helper selects only the exact ID
+accepted by PUT, never the first, latest or active historical entry. An absent ID
+waits only within the bounded polling deadline; duplicate matches or malformed
+entries fail closed. Direct single-record GET responses remain supported.
+
+Live PUT/package-pull integration, scoped role assignments and SAS generation
+must still be verified before enabling the repository switch. A failed
 post-submission check does not prove that deployment did not occur.
 
-The bundle embeds the tested commit at package-build time. After ARM completion,
-CI reads `/api/release` without credentials and requires that exact commit before
-reporting completion. The endpoint exposes only the revision, with no caching;
+The bundle embeds the tested commit at package-build time. CI reads the release
+and health endpoints without credentials and requires the exact revision and
+readiness before reporting verification. The endpoint exposes only the revision, with no caching;
 unversioned local builds return 404. This verifies the served revision, not
 comprehensive game health or database migration correctness.

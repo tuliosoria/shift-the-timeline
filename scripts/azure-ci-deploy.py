@@ -2,8 +2,9 @@
 """Inert until explicitly invoked after approved OIDC/IAM/storage setup.
 
 ARM OneDeploy 2023-12-01 has an untyped public response schema. This client
-supports ONLY an explicit deployment ID and matching Kudu status/complete record.
-Unknown response shapes fail closed and require a reviewed integration update.
+supports an explicit deployment ID and matching Kudu status/complete record, or
+an empty accepted PUT followed by exact served revision and readiness verification.
+Unknown nonempty response shapes fail closed and require a reviewed update.
 Never print captured CLI/HTTP data, exception text, tokens or package URLs.
 """
 import argparse
@@ -67,7 +68,12 @@ def arm_request(method, token, body=None):
             raw = response.read(1_000_001)
             if response.status not in (200, 201, 202) or len(raw) > 1_000_000:
                 fail()
-            return json.loads(raw)
+            if method == 'PUT' and not raw.strip():
+                return None  # Accepted, not a successful deployment.
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                fail()
+            return parsed
     except Exception:
         fail()
 
@@ -86,17 +92,33 @@ def release_request():
         fail()
 
 
-def verify_release(commit, fetch=release_request, sleep=time.sleep, clock=time.monotonic):
-    deadline = clock() + 120
-    for _ in range(24):
+def health_request():
+    try:
+        request = urllib.request.Request(f'https://{APP}.azurewebsites.net/healthz',
+                                         headers={'Cache-Control': 'no-cache'})
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=10) as response:
+            return response.status == 200
+    except Exception:
+        fail()
+
+
+def verify_release(commit, fetch=release_request, health=health_request,
+                   sleep=time.sleep, clock=time.monotonic, timeout=120):
+    deadline = clock() + timeout
+    consecutive = 0
+    for _ in range(timeout // 5):
         if clock() >= deadline:
             fail()
         try:
             response = fetch()
-            if response == {'commit': commit}:
-                return
+            if response == {'commit': commit} and health() is True:
+                consecutive += 1
+                if consecutive == 2:
+                    return
+            else:
+                consecutive = 0
         except Exception:
-            pass  # App restart/readiness can briefly make this public GET unavailable.
+            consecutive = 0  # Restart may briefly make public readiness unavailable.
         sleep(5)
     fail()
 
@@ -220,7 +242,7 @@ def polled_deployment(response, accepted_id):
 
 def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request,
            now=lambda: dt.datetime.now(dt.timezone.utc), sleep=time.sleep, clock=time.monotonic,
-           release_http=release_request):
+           release_http=release_request, health_http=health_request):
     # Validate all supplied targeting/input before any CLI/auth/network action.
     if tuple(target) != TARGET:
         fail()
@@ -243,8 +265,17 @@ def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request
                      '--output', 'tsv']).strip()
         if not token or any(c.isspace() for c in token):
             fail()
-        accepted = deployment_record(http('PUT', token, {'properties': {
-            'type': 'zip', 'packageUri': uri, 'clean': False, 'restart': True}}))
+        response = http('PUT', token, {'properties': {
+            'type': 'zip', 'packageUri': uri, 'clean': False, 'restart': True}})
+        if response is None:
+            # Empty 2xx is acceptance only. Never infer completion from old ARM history.
+            verify_release(commit, fetch=release_http, health=health_http, sleep=sleep, clock=clock, timeout=600)
+            return {'commit': commit, 'sha256': digest, 'status': 'release_verified'}
+        accepted = deployment_record(response)
+        if 'error' in response or 'error' in accepted:
+            fail()
+        if 'status' in accepted and (type(accepted['status']) is not int or accepted['status'] not in (0, 1, 2, 4)):
+            fail()
         ident = accepted['id']
         deadline = clock() + 600
         for _ in range(120):
@@ -258,7 +289,7 @@ def deploy(path, commit, digest, target=TARGET, *, cli=run_cli, http=arm_request
             if type(status) is not int or type(complete) is not bool:
                 fail()
             if status == 4 and complete:
-                verify_release(commit, fetch=release_http, sleep=sleep, clock=clock)
+                verify_release(commit, fetch=release_http, health=health_http, sleep=sleep, clock=clock)
                 return {'commit': commit, 'sha256': digest, 'status': 'deployment_complete'}
             if status not in (0, 1, 2) or complete:
                 fail()

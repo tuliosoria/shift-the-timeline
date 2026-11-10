@@ -53,7 +53,7 @@ class DeployTests(unittest.TestCase):
 
     def deploy(self, **kwargs):
         return m.deploy(self.path, self.commit, self.digest, cli=self.cli, http=self.http,
-                        now=lambda: self.now, sleep=lambda _: None, release_http=lambda: {'commit': self.commit}, **kwargs)
+                        now=lambda: self.now, sleep=lambda _: None, release_http=lambda: {'commit': self.commit}, health_http=lambda: True, **kwargs)
 
     def test_success_exact_scope_immutable_artifact_and_secret_free_result(self):
         self.polls.insert(0, {'id': 'deploy-1', 'status': 1, 'complete': False})
@@ -177,12 +177,67 @@ class DeployTests(unittest.TestCase):
         self.assertIsNone(m.polled_deployment({'value': []}, 'deploy-1'))
 
     def test_release_verification_requires_exact_live_revision(self):
-        responses = iter([{'commit': 'b' * 40}, {'commit': self.commit}])
-        m.verify_release(self.commit, fetch=lambda: next(responses), sleep=lambda _: None)
+        responses = iter([{'commit': 'b' * 40}, {'commit': self.commit}, {'commit': self.commit}])
+        m.verify_release(self.commit, fetch=lambda: next(responses), health=lambda: True, sleep=lambda _: None)
         with self.assertRaises(m.DeploymentError):
-            m.verify_release(self.commit, fetch=lambda: {'commit': 'b' * 40}, sleep=lambda _: None)
+            m.verify_release(self.commit, fetch=lambda: {'commit': 'b' * 40}, health=lambda: True, sleep=lambda _: None)
         with self.assertRaises(m.DeploymentError):
-            m.verify_release(self.commit, fetch=lambda: {'commit': self.commit, 'extra': 'untrusted'}, sleep=lambda _: None)
+            m.verify_release(self.commit, fetch=lambda: {'commit': self.commit, 'extra': 'untrusted'}, health=lambda: True, sleep=lambda _: None)
+
+    def test_empty_acceptance_verifies_revision_health_without_historical_fallback(self):
+        self.accepted = None
+        self.assertEqual(self.deploy()['status'], 'release_verified')
+        self.assertEqual([x[0] for x in self.http_calls], ['PUT'])
+        self.assertEqual(len(self.polls), 1)  # Historical GET success was never inspected.
+        self.http_calls.clear()
+        with self.assertRaises(m.DeploymentError):
+            m.deploy(self.path, self.commit, self.digest, cli=self.cli, http=self.http,
+                     now=lambda: self.now, sleep=lambda _: None,
+                     release_http=lambda: {'commit': 'b' * 40}, health_http=lambda: True)
+        self.assertEqual([x[0] for x in self.http_calls], ['PUT'])
+
+    def test_revision_requires_two_consecutive_healthy_probes(self):
+        probes = iter([True, False, True, True])
+        sleeps = []
+        m.verify_release(self.commit, fetch=lambda: {'commit': self.commit},
+                         health=lambda: next(probes), sleep=sleeps.append)
+        self.assertEqual(sleeps, [5, 5, 5])
+        with self.assertRaises(m.DeploymentError):
+            m.verify_release(self.commit, fetch=lambda: {'commit': self.commit},
+                             health=lambda: False, sleep=lambda _: None)
+
+    def test_error_body_never_counts_as_acceptance(self):
+        for body in [{'error': {'message': self.secret}}, {'id': 'deploy-1', 'error': {}},
+                     {'status': 'Accepted'}, {'id': 'deploy-1', 'status': 3},
+                     {'id': 'deploy-1', 'status': 'Failed'}, {}, []]:
+            self.accepted = body
+            with self.assertRaises(m.DeploymentError):
+                self.deploy()
+
+    def test_transport_accepts_empty_202_only_as_none_and_rejects_other_statuses(self):
+        from unittest.mock import patch
+        class Response:
+            status = 202
+            body = b''
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self, limit): return self.body
+        class Opener:
+            def open(self, *args, **kwargs): return response
+        response = Response()
+        with patch.object(m.urllib.request, 'build_opener', return_value=Opener()):
+            self.assertIsNone(m.arm_request('PUT', self.secret, {}))
+            for body in [b'null', b'false', b'42', b'"accepted"', b'[]']:
+                response.body = body
+                with self.assertRaises(m.DeploymentError):
+                    m.arm_request('PUT', self.secret, {})
+            response.body = b''
+            response.status = 403
+            with self.assertRaises(m.DeploymentError):
+                m.arm_request('PUT', self.secret, {})
+            response.status = 200
+            with self.assertRaises(m.DeploymentError):
+                m.arm_request('GET', self.secret)
 
     def test_http_transport_has_fixed_arm_url_and_rejects_redirect(self):
         self.assertEqual(urllib.parse.urlsplit(m.ARM).hostname, 'management.azure.com')
