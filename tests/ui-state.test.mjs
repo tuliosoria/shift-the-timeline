@@ -54,3 +54,12 @@ test('choosing source B first preserves its slot while source A is empty',()=>{
  const ui=store();ui.writeDraft(context,'correlation',{sources:[null,{kind:'suspect',id:'ben'}],relation:'related',text:'Draft'});
  assert.deepEqual(ui.read(context).correlation.sources,[null,{kind:'suspect',id:'ben'}]);
 });
+test('optional question topic survives reload but is scoped and never a recovered prose draft',()=>{
+ const storage=memory(),ui=store(storage);ui.writeDraft(context,'questionTopic','clue');
+ assert.equal(store(storage).read(context).questionTopic,'clue');
+ for(const diff of [{room:'OTHER123'},{player:'agent-2'},{round:2},{suspect:'martha'},{phase:'accusation'}])assert.equal(ui.read({...context,...diff}).questionTopic,'');
+ assert.deepEqual(ui.recoverable({...context,round:2}),[]);
+ ui.writeDraft(context,'questionTopic','motive');ui.clearMatchingDraft(context,'questionTopic','clue');assert.equal(ui.read(context).questionTopic,'motive');
+ ui.clearMatchingDraft(context,'questionTopic','motive');assert.equal(ui.read(context).questionTopic,'');
+ ui.writeDraft(context,'questionTopic','__proto__');assert.equal(ui.read(context).questionTopic,'');
+});

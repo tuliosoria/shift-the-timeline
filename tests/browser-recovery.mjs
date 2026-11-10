@@ -65,10 +65,15 @@ try {
  assert.equal(store.rooms.get(code).players.find(p=>p.name==='Agent 1').interviews[0].messages[0].answer,canonicalAnswer);
  // Optional external narration is explicit per question and never selected by default.
  assert.equal(await pages[1].locator('[name=aiConsent]').isChecked(),false);
- await pages[1].fill('#question','What did you notice?');
+ await pages[1].fill('#question','Who had clearance at the time?');
+ assert.match(await pages[1].locator('#topic-hint').textContent(),/Alibi.*Already covered/);
+ await pages[1].selectOption('#question-topic','clue');
+ assert.match(await pages[1].locator('#topic-hint').textContent(),/Observations.*One question/);
+ assert.equal(await pages[1].inputValue('#question'),'Who had clearance at the time?');
  let sent=pages[1].waitForRequest(r=>r.url().endsWith('/actions')&&r.postDataJSON()?.type==='ask');
- await pages[1].click('#question-form button');assert.equal((await sent).postDataJSON().aiConsent,undefined);
+ await pages[1].click('#question-form button');const targeted=(await sent).postDataJSON();assert.equal(targeted.aiConsent,undefined);assert.equal(targeted.question,'Who had clearance at the time?');assert.equal(targeted.topic,'clue');
  await pages[1].waitForFunction(()=>document.querySelectorAll('.bubble.question').length===2);
+ assert.equal(await pages[1].inputValue('#question-topic'),'');
  await pages[1].fill('#question','What was at stake?');await pages[1].check('[name=aiConsent]');
  sent=pages[1].waitForRequest(r=>r.url().endsWith('/actions')&&r.postDataJSON()?.type==='ask');
  await pages[1].click('#question-form button');assert.equal((await sent).postDataJSON().aiConsent,true);

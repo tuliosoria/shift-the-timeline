@@ -9,6 +9,7 @@ The investigative interface follows **Analyse → Interrogate → Deduce**. It i
 - Authoritative rules: 15 suspects, three rounds, one suspect per player per round, up to four questions per interview.
 - Eight-character invitations and cookie-based browser identity.
 - Private interviews and ballots. Only explicitly shared canonical answers enter the team board.
+- Freeform questions keep their wording. Automatic topic matching remains the default; an optional topic selector lets you direct a question to the intended canonical evidence without replacing it with a preset prompt.
 - Correlations reference public case facts, suspect dossiers or already-shared evidence. They remain unverified player hypotheses.
 - Local drafts survive stage changes, polling and reload in the same browser context. Unsent earlier-round drafts stay labelled and recoverable rather than moving into a new interview.
 - Idempotent commands and transactional DynamoDB adapters preserve safe retries.
