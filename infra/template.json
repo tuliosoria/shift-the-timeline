@@ -206,7 +206,6 @@
     },
     "ApiFunction": {
       "Type": "AWS::Serverless::Function",
-      "DependsOn": "FunctionLogs",
       "Properties": {
         "FunctionName": {
           "Fn::Sub": "${AWS::StackName}-api"
