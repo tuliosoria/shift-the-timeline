@@ -29,7 +29,7 @@ export async function bootstrapDatabase(config,{Client,getToken=getAdminToken,lo
  let token=await getToken(config),admin,db;
  try{
   admin=new Client(tunneledConnection(config,token,'postgres'));await admin.connect();
-  const principals=await admin.query('SELECT to_jsonb(p) AS principal FROM pg_catalog.pgaadauth_list_principals(false) AS p WHERE rolename=$1',['shift_app']);
+  const principals=await admin.query('SELECT to_jsonb(p) AS principal FROM pg_catalog.pgaadauth_list_principals(false) AS p WHERE rolname=$1',['shift_app']);
   if(principals.rows.length){
    const p=fields(principals.rows[0].principal);
    if(principals.rows.length!==1||p.objectid?.toLowerCase()!==config.objectId.toLowerCase()||p.tenantid?.toLowerCase()!==config.tenant.toLowerCase()||p.principaltype!=='service'||Number(p.isadmin)!==0)throw new Error('Existing application principal does not match approved identity.');

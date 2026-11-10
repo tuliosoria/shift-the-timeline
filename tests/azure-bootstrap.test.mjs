@@ -24,7 +24,7 @@ function clientHarness({existing=false,mismatch=false,excess=false,grantFailure=
   async connect(){this.connected=true;}
   async end(){this.ended=true;}
   async query(sql,args){this.queries.push({sql,args});
-   if(sql.includes('pgaadauth_list_principals'))return {rows:existing?[{principal:{rolename:'shift_app',objectId:mismatch?'wrong':config.objectId,tenantId:config.tenant,principalType:'service',isAdmin:0}}]:[]};
+   if(sql.includes('pgaadauth_list_principals')){assert.match(sql,/WHERE rolname=\$1$/);assert.deepEqual(args,['shift_app']);return {rows:existing?[{principal:{rolname:'shift_app',objectid:mismatch?'wrong':config.objectId,tenantid:config.tenant,principaltype:'service',ismfa:0,isadmin:0}}]:[]};}
    if(sql.startsWith('SELECT 1 FROM pg_roles'))return {rows:[]};
    if(sql.includes('rolsuper'))return {rows:[{rolsuper:excess,rolcreatedb:false,rolcreaterole:false,rolreplication:false,rolbypassrls:false}]};
    if(sql.startsWith('SELECT version'))return {rows:[{version:1}]};
