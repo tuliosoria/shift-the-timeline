@@ -2,7 +2,7 @@
 
 ## Executado localmente
 
-- 104 testes Node aprovados após as correções da revisão do terceiro corte.
+- 111 testes Node aprovados após os testes multiplayer HTTP e a correção de retry do cliente.
 - Sintaxe dos módulos verificada.
 - Quatro bundles Lambda importados com sucesso; manifesto verifica todos os 15 arquivos e inclui avisos de dependências.
 - Auditoria npm completa sem vulnerabilidades nesta verificação.
@@ -51,3 +51,11 @@ A revisão independente encontrou três pontos, reproduzidos antes das correçõ
 3. Os dois parâmetros de segredo aceitavam o mesmo ARN. Uma regra do template recusa compartilhar a credencial GPT com o segredo de origem da API.
 
 O [CI do terceiro corte](https://github.com/tuliosoria/shift-the-timeline/actions/runs/42784927693), commit 7e24bf1644039b72d90f77fc8d161ea20797ec2c, passou: instalação limpa, 104 testes, sintaxe, auditoria, quatro pacotes e cfn-lint. Nada disso substitui IAM/DynamoDB/SQS/Lambda reais.
+
+## Quarto corte: partidas HTTP e retry do cliente
+
+Dois testes atravessam um servidor HTTP real em loopback com três e quatro clientes de cookies isolados. Cobrem três turnos, replay concorrente da mesma pergunta, entrevistas e votos privados, compartilhamento somente da resposta canônica, rejeição de entrada tardia/quinta pessoa, revelação de vitória completa/parcial, polling sem alteração e logout. Usam o armazenamento em memória e o caso técnico público; não são validação DynamoDB nem playtest editorial.
+
+Uma corrida no cliente permitia iniciar tentativas simultâneas ao clicar repetidamente em “Tentar novamente”. O cliente agora admite uma tentativa por vez e impede substituir uma ação cujo resultado continua incerto. Regressões foram reproduzidas antes da correção e verificam o ID original, preservação da ação pendente e retry após falha de transporte. A revisão independente encontrou também perda desse ID quando um retry recebia HTTP 429 antes de consultar o recibo. O limite temporário agora mantém a ação original para retry manual; o teste confirma que uma resposta perdida seguida de 429 e recuperação registra apenas uma pergunta. Erros definitivos de validação continuam liberando a ação sem apagar o rascunho.
+
+A validação de navegador continua pendente: o Chromium local não conseguiu iniciar por restrição de socket, e o navegador cloud separado não alcançou o servidor de loopback. Não houve captura de tela nem partida visual. Os testes de VM do cliente e de HTTP não comprovam aparência, acessibilidade ou comportamento de um navegador real.

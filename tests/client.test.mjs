@@ -56,3 +56,28 @@ test('confirmed commands clear only their own matching drafts; failures preserve
 });
 test('browser uses cookie credentials and eight-character invitations without JavaScript bearer tokens',()=>{assert.ok(!source.includes('Authorization:'));assert.ok(!source.includes('token:p'));assert.match(source,/credentials:'same-origin'/);assert.match(source,/minlength="8" maxlength="8"/);assert.match(source,/api\/session/);});
 test('generated narration is labelled separately and escaped without changing the canonical answer',()=>{const fn=source.match(/function renderNarration\(message\)\{[^\n]+\}/)?.[0];assert.ok(fn,'Separate narration renderer required');const sandbox={};vm.runInNewContext(source.split('\n').find(x=>x.startsWith('const esc='))+fn+'; result=renderNarration({answer:"CANON",narration:{status:"complete",text:"<script>bad</script>"}});',sandbox);assert.match(sandbox.result,/NÃO É EVIDÊNCIA/);assert.ok(!sandbox.result.includes('<script>'));assert.match(sandbox.result,/&lt;script&gt;/);assert.ok(!sandbox.result.includes('CANON'));vm.runInNewContext('result=renderNarration({narration:{status:"pending"}})',sandbox);assert.equal(sandbox.result,'');});
+test('repeated retry clicks share one in-flight attempt and cannot unlock a stale response',async()=>{
+ const fn=source.slice(source.indexOf('async function runPending'),source.indexOf('function setBusy'));
+ const responses=[];const work={path:'/api/test',body:{type:'start',id:'same-request'}};
+ const sandbox={pending:work,busy:false,storage:{remove(){}},setBusy(){},render(){},notice(){},$:()=>({textContent:''}),fetchJson:()=>new Promise(resolve=>responses.push(resolve))};
+ vm.runInNewContext(fn+'; first=runPending(); second=runPending()',sandbox);
+ const started=responses.length;for(const resolve of responses)resolve({version:2});
+ assert.equal(await sandbox.first,true);assert.equal(await sandbox.second,false);
+ assert.equal(started,1);assert.equal(sandbox.busy,false);assert.equal(sandbox.pending,null);
+});
+test('a different command cannot replace an uncertain pending request',async()=>{
+ const fn=source.slice(source.indexOf('async function command'),source.indexOf('async function runPending'));
+ const work={path:'/api/test',body:{type:'ask',id:'original-request'}};let starts=0;
+ const sandbox={pending:work,busy:false,storage:{set(){}},setBusy(){},runPending:async()=>{starts++;return true;}};
+ vm.runInNewContext(fn+"; result=command('/api/other',{type:'note',id:'different-request'})",sandbox);
+ assert.equal(await sandbox.result,false);assert.equal(starts,0);assert.equal(sandbox.pending,work);
+});
+test('initial command starts exactly once and the same request can be retried after transport failure',async()=>{
+ const fn=source.slice(source.indexOf('async function command'),source.indexOf('function setBusy'));
+ const requests=[],body={type:'ask',id:'stable-id',question:'Keep until confirmed'};
+ const sandbox={pending:null,busy:false,storage:{set(){},remove(){}},setBusy(){},render(){},notice(){},$:()=>({textContent:'',value:''}),fetchJson:async(path,options)=>{requests.push({path,body:options.body});if(requests.length===1)throw new Error('offline');return {version:3};},body};
+ vm.runInNewContext(fn+"; first=command('/api/test',body)",sandbox);
+ assert.equal(await sandbox.first,false);assert.equal(sandbox.pending.body,body);assert.equal(sandbox.busy,false);
+ vm.runInNewContext('second=runPending()',sandbox);assert.equal(await sandbox.second,true);
+ assert.equal(requests.length,2);assert.equal(requests[0].body,requests[1].body);assert.equal(sandbox.pending,null);assert.equal(sandbox.state.version,3);
+});

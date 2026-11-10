@@ -7,12 +7,12 @@ const topicLabels={alibi:'Onde você estava?',clue:'O que você percebeu?',motiv
 const phaseLabels={lobby:'Formando a unidade',investigation:'Investigação em curso',accusation:'Hora de decidir',reveal:'Linha do tempo revelada'};
 function notice(message,error=false){$('#notice').className=error?'error':'info';$('#notice').textContent=message;if(pending){const button=document.createElement('button');button.textContent='Tentar novamente';button.dataset.action='retry';$('#notice').append(button);}}
 async function fetchJson(path,{body}={}){const response=await fetch(path,{method:body?'POST':'GET',credentials:'same-origin',headers:{...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(10000)});if(response.status===204)return null;const data=await response.json();if(!response.ok){const error=new Error(data.error??'Não foi possível concluir.');error.status=response.status;throw error;}return data;}
-async function command(path,body,entry=false){if(busy)return false;busy=true;pending={path,body,entry};storage.set('shift-pending',pending);setBusy();return await runPending();}
-async function runPending(){if(!pending){busy=false;return false;}busy=true;setBusy();const work=pending;try{
+async function command(path,body,entry=false){if(busy||pending)return false;pending={path,body,entry};storage.set('shift-pending',pending);return await runPending();}
+async function runPending(){if(busy)return false;if(!pending)return false;busy=true;setBusy();const work=pending;try{
  const data=await fetchJson(work.path,{body:work.body,});
  if(work.entry){session={code:data.code,playerId:data.playerId};storage.set('shift-session',session);state=data.state;}else state=data;
  pending=null;storage.remove('shift-pending');$('#notice').textContent='';lastVersion=state.version;render();const field=work.body.type==='ask'?$('#question'):work.body.type==='note'?$('#note'):null;const sent=work.body.type==='ask'?work.body.question:work.body.text;if(field&&field.value===sent)field.value='';return true;
- }catch(error){if(error.status&&error.status<500){pending=null;storage.remove('shift-pending');notice(error.message,true);}else notice('A conexão caiu. A ação pode ter sido recebida. Tente novamente com segurança.',true);return false;}
+ }catch(error){if(error.status&&error.status<500&&error.status!==429){pending=null;storage.remove('shift-pending');notice(error.message,true);}else notice(error.status===429?error.message:'A conexão caiu. A ação pode ter sido recebida. Tente novamente com segurança.',true);return false;}
  finally{busy=false;setBusy();}
 }
 function setBusy(){document.body.classList.toggle('busy',busy);document.querySelectorAll('[data-submit]').forEach(b=>b.disabled=busy||!!pending||b.dataset.locked==='true');}

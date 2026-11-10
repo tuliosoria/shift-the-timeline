@@ -13,6 +13,7 @@
 - [x] Empacotamento novo, imutável e com manifesto completo.
 - [x] Revisão independente de código e correções testadas.
 - [x] CI remoto e validação estática do CloudFormation com cfn-lint.
+- [x] Partidas completas em HTTP local com 3/4 clientes isolados, privacidade e replay.
 - [ ] Testes reais DynamoDB/Lambda e QA de navegador.
 - [ ] Deploy de homologação, teste de capacidade e rollback.
 
