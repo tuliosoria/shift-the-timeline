@@ -35,6 +35,7 @@ try{
   await page.getByRole('button',{name:'The empty corridor',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#case-film-video').currentSrc.endsWith('/corridor.mp4')&&document.querySelector('#case-film-video').currentTime>0);
   await noOverflow(page);
+  if(width===390)await page.screenshot({path:'/tmp/shift-recovery-films-mobile-viewer.png',fullPage:true});
   await page.keyboard.press('Escape');await page.locator('#film-dialog').waitFor({state:'hidden'});
   assert.equal(await page.locator('#case-film-video').getAttribute('src'),null);
   assert.equal(await page.locator('#create-name').inputValue(),'Film agent','Films preserve entry drafts');
@@ -42,7 +43,7 @@ try{
   for(let i=0;i<2;i++){await page.locator('#case-film-open').click();await page.locator('#film-close').click();}
   assert.equal(await page.locator('#case-film-video').getAttribute('src'),null);
   if(width===390){
-   await page.screenshot({path:'/tmp/shift-films-mobile-landing.png',fullPage:true});
+   await page.screenshot({path:'/tmp/shift-recovery-films-mobile-landing.png',fullPage:true});
    await page.click('#create-form button');await page.locator('.selectable-code').waitFor();
    const code=(await page.locator('.selectable-code').textContent()).trim();
    await page.getByRole('button',{name:'Play The empty corridor'}).click();
@@ -58,7 +59,7 @@ try{
    await page.keyboard.press('Escape');assert.equal(await page.locator('#case-film-open').evaluate(el=>el===document.activeElement),true,'Focus returns after background re-render');
    await page.click('[data-action="start"]');await page.locator('#stage-heading').waitFor();
    await page.getByRole('button',{name:'Play The pocket watch'}).click();await page.locator('#film-close').click();
-   await page.screenshot({path:'/tmp/shift-films-mobile-investigation.png',fullPage:true});
+   await page.screenshot({path:'/tmp/shift-recovery-films-mobile-investigation.png',fullPage:true});
   }
   await context.close();
  }
