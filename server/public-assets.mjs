@@ -5,6 +5,7 @@ const entries=[
  ['/', 'index.html', 'text/html; charset=utf-8'],
  ['/app.js', 'app.js', 'text/javascript; charset=utf-8'],
  ['/ui-state.js', 'ui-state.js', 'text/javascript; charset=utf-8'],
+ ['/question-topics.js', 'question-topics.js', 'text/javascript; charset=utf-8'],
  ['/style.css', 'style.css', 'text/css; charset=utf-8'],
  ...['mara','ines','bento','celia','noa','rui','vera','davi','lia','tomas','helena','joel','olga','samira','elio'].map(id=>[`/assets/portraits/${id}.webp`,`assets/portraits/${id}.webp`,'image/webp']),
  ...['analyse','interrogate','deduce'].map(id=>[`/assets/steps/${id}.webp`,`assets/steps/${id}.webp`,'image/webp']),

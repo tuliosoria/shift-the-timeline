@@ -80,3 +80,20 @@ asynchronous). They do not grow the per-player engine request map. The local
 MemoryStore is a development adapter and does not prune receipt rows. This is
 not a constant-storage presence service; receipt volume and write costs must be
 reviewed before production, or replaced with a dedicated coalesced presence path.
+
+## Canonical interview topic guidance
+
+Each of the four canonical topics can consume a question only once per player's
+current interview. A repeated explicit or inferred topic is rejected without
+changing the room version, budget or transcript; retrying the same committed
+request remains successful. This prevents keyword paraphrases from silently
+spending limited turns on an identical answer. Other players and later rounds
+retain independent interviews.
+
+The interface identifies the matched topic before sending, marks topics already
+heard as “Review answer”, and focuses the existing private answer without a
+request or automatic sharing. Keyword matching is explicitly not described as
+AI understanding. Closed/history interviews keep review links; unused question
+controls remain disabled. Client and transactional regressions cover this rule,
+and the synthetic Chromium flow exercises keyboard focus, draft preservation
+and rejected repeat submissions.

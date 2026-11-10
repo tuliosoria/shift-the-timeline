@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import {inferTopic} from '../public/question-topics.js';
 export const CONFIG = Object.freeze({minPlayers:3,maxPlayers:4,rounds:3,maxQuestions:4,roomLifetimeHours:6});
 export const RECOVERY_DELAY_MS=120_000;
 const TTL=CONFIG.roomLifetimeHours*60*60*1000;
@@ -7,7 +8,6 @@ export class DomainError extends Error { constructor(message,status=400){super(m
 function fail(message,status=400){throw new DomainError(message,status);}
 function text(value,label,max){if(typeof value!=='string'||!value.trim()||value.trim().length>max)fail(`${label}: enter between 1 and ${max} characters.`);return value.trim();}
 function requestId(value){if(typeof value!=='string'||!/^[\w-]{16,100}$/.test(value))fail('Invalid request identifier.');return value;}
-function inferTopic(question){const q=question.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();if(/\b(?:onde|estava\w*|horarios?|alibi|22h?|ontem|where|when|time|yesterday)\b/.test(q))return 'alibi';if(/\b(?:motivo\w*|dinheiro|segredo\w*|divida\w*|ganha\w*|perde\w*|why|motive|money|secret|debt|gain|lose|profit)\b/.test(q))return 'motive';if(/\b(?:vitima\w*|conhec\w*|relacao|relacoes|relacion\w*|victim|know|knew|relationship|related)\b/.test(q))return 'relationship';return 'clue';}
 const CORRELATION_FIELDS=new Set(['id','type','round','expectedPhase','sources','relation','text','expectedVersion']);
 function correlate(room,player,action,caseData){
   if(Object.keys(action).some(key=>!CORRELATION_FIELDS.has(key)))fail('Unexpected correlation field.');
@@ -66,7 +66,7 @@ export class GameService {
         room.phase='reveal';break;
       case 'start':host();phase('lobby');if(room.players.length<CONFIG.minPlayers)fail('At least 3 players are required.');room.phase='investigation';room.round=1;break;
       case 'select':round();suspect(action.suspectId);if(player.interviews.some(i=>i.round===room.round))fail('You have already chosen a person for this round.');player.interviews.push({round:room.round,suspectId:action.suspectId,opening:suspect(action.suspectId).opening,messages:[],closed:false});break;
-      case 'ask':{const i=interview();if(i.messages.length>=CONFIG.maxQuestions)fail('Limit of 4 questions for this interview.');const question=text(action.question,'Question',300);if(action.topic!==undefined&&!TOPICS.includes(action.topic))fail('Invalid question topic.');const topic=action.topic??inferTopic(question);i.messages.push({id:randomUUID(),question,topic,answer:suspect(i.suspectId).responses[topic]});break;}
+      case 'ask':{const i=interview();if(i.messages.length>=CONFIG.maxQuestions)fail('Limit of 4 questions for this interview.');const question=text(action.question,'Question',300);if(action.topic!==undefined&&!TOPICS.includes(action.topic))fail('Invalid question topic.');const topic=action.topic??inferTopic(question);if(i.messages.some(m=>m.topic===topic))fail('This topic is already covered. Review the earlier answer; no question used.',409);i.messages.push({id:randomUUID(),question,topic,answer:suspect(i.suspectId).responses[topic]});break;}
       case 'end':interview().closed=true;if(room.players.every(p=>p.interviews.find(i=>i.round===room.round)?.closed))this.nextRound(room);break;
       case 'advance':host();round();if(action.confirmed!==true)fail('Confirm that unfinished interviews will be lost.');for(const p of room.players){const i=p.interviews.find(i=>i.round===room.round);if(i)i.closed=true;}this.nextRound(room);break;
       case 'share':{if(!['investigation','accusation'].includes(room.phase))fail('Sharing is unavailable in this phase.');let found;for(const i of player.interviews){const message=i.messages.find(m=>m.id===action.messageId);if(message){found={i,message};break;}}if(!found)fail('Answer not found in your interviews.');if(room.board.some(n=>n.messageId===action.messageId))break;if(room.board.length>=60)fail('Board full: limit of 60 records.');room.board.push({id:randomUUID(),type:'clue',messageId:found.message.id,text:found.message.answer,source:suspect(found.i.suspectId).name,by:player.name,round:found.i.round});break;}

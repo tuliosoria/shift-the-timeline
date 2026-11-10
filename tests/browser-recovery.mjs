@@ -24,6 +24,20 @@ try {
  for(let i=1;i<3;i++){const joined=await call(pages[i],`/api/rooms/${code}/join`,{id:randomUUID(),name:`Agent ${i}`});await pages[i].evaluate(s=>localStorage.setItem('shift-session',JSON.stringify(s)),{code,playerId:joined.playerId});await pages[i].reload();await pages[i].waitForSelector('.selectable-code');}
  const act=(p,type,extra={})=>call(p,`/api/rooms/${code}/actions`,{id:randomUUID(),type,...extra});
  await pages[0].waitForFunction(()=>!document.querySelector('[data-action=start]').disabled);await pages[0].click('[data-action=start]');
+ // Canonical topics remain private and repeat attempts cannot waste a slot.
+ await act(pages[1],'select',{round:1,suspectId:'suspect-1'});
+ await act(pages[1],'ask',{round:1,question:'Where were you?',topic:'alibi'});
+ await pages[1].reload();await pages[1].locator('[data-stage=interrogate]').first().click();
+ await pages[1].waitForSelector('[data-action=review-topic][data-id=alibi]');
+ let asks=0;pages[1].on('request',r=>{if(r.url().endsWith('/actions')&&r.postDataJSON()?.type==='ask')asks++;});
+ await pages[1].click('[data-action=review-topic][data-id=alibi]');
+ assert.equal(asks,0);assert.match(await pages[1].evaluate(()=>document.activeElement.id),/^answer-/);
+ await pages[1].fill('#question','Where were you yesterday?');
+ assert.match(await pages[1].locator('#topic-hint').textContent(),/Already covered/);
+ await pages[1].click('#question-form button');await pages[1].waitForFunction(()=>document.querySelector('#notice').textContent.includes('already covered'));
+ assert.equal(await pages[1].inputValue('#question'),'Where were you yesterday?');
+ assert.equal(await pages[1].locator('.bubble.question').count(),1);
+ await pages[1].screenshot({path:'/tmp/shift-recovery-topic-guidance.png',fullPage:true});
  // Observe the real scheduled presence request, not just a manual test command.
  await pages[1].waitForRequest(r=>r.url().endsWith('/actions')&&r.postDataJSON()?.type==='heartbeat',{timeout:35000});
  // Original host is genuinely disconnected, not silently removed.

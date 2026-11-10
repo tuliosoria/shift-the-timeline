@@ -46,7 +46,7 @@ test('each round grants one interview, four questions, and idempotent retry',()=
   s.g.act(s.a.code,s.a.token,request);s.g.act(s.a.code,s.a.token,request);
   assert.equal(s.g.view(s.a.code,s.a.token).me.interviews[0].messages.length,1);
   assert.throws(()=>s.g.act(s.a.code,s.a.token,{...request,topic:'clue'}),/reused/);
-  for(let i=0;i<3;i++)s.act(s.a,'ask',{topic:'clue',question:'O que viu?',round:1});
+  for(const topic of ['clue','motive','relationship'])s.act(s.a,'ask',{topic,question:'O que viu?',round:1});
   assert.throws(()=>s.act(s.a,'ask',{topic:'clue',question:'Outra?',round:1}),/4/);
   s.act(s.a,'end',{round:1});
   assert.throws(()=>s.act(s.a,'ask',{topic:'clue',question:'Outra?',round:1}),/closed/);
