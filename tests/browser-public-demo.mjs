@@ -163,6 +163,20 @@ try {
   await page.click('#vote-form button');await confirm(page);
  }
  for(const page of pages){await page.locator('.reveal').waitFor();assert.match(await page.locator('.reveal').textContent(),/COMPLETE VICTORY/);assert.ok((await page.locator('.reveal').textContent()).includes(caseData.solution.motive));await overflow(page);}
+ // Read-only debrief preserves the actual investigation without exposing teammates' private answers.
+ const debriefPage=pages[1],debrief=debriefPage.locator('#case-debrief');
+ assert.equal(await debrief.evaluate(el=>el.open),false);const actionsBeforeDebrief=actions.length;
+ await debrief.locator(':scope > summary').focus();await debriefPage.keyboard.press('Enter');
+ assert.equal(await debrief.evaluate(el=>el.open),true);assert.equal(await debrief.locator('.board-record').count(),60);
+ assert.equal(await debrief.locator('button,form,input,textarea').count(),0);
+ assert.equal(await debrief.locator('.generated-voice').count(),0);
+ await debrief.locator('.debrief-interview summary').first().click();
+ const ownInterview=store.rooms.get(code).players[1].interviews[0];
+ for(const message of ownInterview.messages)assert.ok((await debrief.locator('.debrief-interview').first().textContent()).includes(message.answer));
+ await overflow(debriefPage);await debriefPage.screenshot({path:'/tmp/shift-recovery-debrief-mobile.png',fullPage:true});
+ await debriefPage.setViewportSize({width:1440,height:900});await overflow(debriefPage);await debriefPage.screenshot({path:'/tmp/shift-recovery-debrief-desktop.png',fullPage:true});
+ await debrief.locator(':scope > summary').click();assert.equal(await debrief.evaluate(el=>el.open),false);
+ assert.equal(actions.length,actionsBeforeDebrief,'Debrief sends no game actions');
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);assert.equal(actions.includes('advance'),false,'Rounds advance only when all three players finish');
  console.log('PASS: authored known-route public demo; three real browser sessions; UI-only join, three rounds, scoped topics, explicit sharing, correlation, private history, votes and complete reveal. Not blind-solving evidence.');
 }finally{await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
