@@ -15,7 +15,7 @@ async function harness(overrides={},options={}){
  await game.join(a.code,'session-B','B',id());await game.join(a.code,'session-C','C',id());
  await game.act(a.code,'session-A',{type:'start',id:id()});
  for(const session of ['session-A','session-B','session-C'])await game.act(a.code,session,{type:'select',round:1,suspectId:'suspect-1',id:id()});
- const ask=(session='session-A',request=id())=>game.act(a.code,session,{type:'ask',round:1,question:'Uma pergunta privada',topic:'clue',id:request});
+ const ask=(session='session-A',request=id())=>game.act(a.code,session,{type:'ask',round:1,question:'Uma pergunta privada',topic:'clue',aiConsent:true,id:request});
  return {store,jobs,game,code:a.code,now,advance:ms=>time+=ms,ask,jobList:()=>[...store.ai.values()].filter(x=>x.kind==='job')};
 }
 const fakeProvider=()=>Object.assign(async()=>({text:'Uma fala fictícia.',inputTokens:10,outputTokens:5}),{model:'synthetic-model'});

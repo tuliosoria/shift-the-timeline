@@ -10,7 +10,7 @@ function validBudget(value){if(!value||!Number.isSafeInteger(value.version)||val
 function target(room,job,now){if(!room||room.expiresAt<=now||room.createdAt+DAY<=now||room.caseVersion!==job.caseVersion)return null;const player=room.players.find(p=>p.id===job.playerId),interview=player?.interviews.find(i=>i.round===job.round),message=interview?.messages.find(m=>m.id===job.messageId);return message?{player,interview,message}:null;}
 function current(room,job,now){const t=target(room,job,now);return t&&room.phase==='investigation'&&room.round===job.round&&!t.interview.closed?t:null;}
 
-// Only explicitly injected by tests/development. Production runtime does not enable this repository.
+// Injected only when the deployment explicitly enables optional, consented narration.
 export class AiJobs {
  constructor({store,policy,now=Date.now,maintenance=false}){
   if(maintenance&&policy===undefined){if(!store)throw new Error('Store required');this.store=store;this.now=now;this.policy=null;this.reserve=null;return;}

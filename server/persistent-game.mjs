@@ -23,7 +23,7 @@ export class DurableGame {
    const p=room.players.find(p=>p.token===session);if(!p)throw new Error('Missing participant after command');
    for(const player of room.players)if(Buffer.byteLength(JSON.stringify({...player,requests:[...player.requests]}))>120_000)throw new DomainError('Game data limit reached.',413);
    const receipt={key,fingerprint,code:room.code,playerId:p.id,expiresAt:room.createdAt+24*HOUR};
-   const aiWrites=this.ai&&kind==='act'&&payload.type==='ask'?await this.ai.prepareQuestion({room,player:p,receiptKey:key,caseData:this.caseData}):[];
+   const aiWrites=this.ai&&kind==='act'&&payload.type==='ask'&&payload.aiConsent===true?await this.ai.prepareQuestion({room,player:p,receiptKey:key,caseData:this.caseData}):[];
    try{await this.store.commitRoom({expectedVersion:before?.version??null,room,receipt,aiWrites});return {code:room.code,playerId:p.id,state:g.view(room.code,session)};}catch(e){if(!(e instanceof ConflictError)&&e.name!=='ConflictError')throw e;}
   }
   throw new DomainError('Too many simultaneous actions. Please try again.',409);
