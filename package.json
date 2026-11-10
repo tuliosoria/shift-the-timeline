@@ -14,7 +14,8 @@
     "package": "node scripts/package.mjs",
     "dev:demo": "SHIFT_CASE_FILE=tests/fixtures/case.mjs node server/index.mjs",
     "test:browser": "node tests/browser-recovery.mjs",
-    "check:case": "node scripts/check-case.mjs"
+    "check:case": "node scripts/check-case.mjs",
+    "dev:ai": "node server/local-ai-index.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "3.1165.0",
