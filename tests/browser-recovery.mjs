@@ -27,6 +27,11 @@ try {
  // Canonical topics remain private and repeat attempts cannot waste a slot.
  await act(pages[1],'select',{round:1,suspectId:'suspect-1'});
  await act(pages[1],'ask',{round:1,question:'Where were you?',topic:'alibi'});
+ // Inject only a synthetic completed voice into the in-memory fixture: no provider or external API.
+ const inventedVoice='FABRICATED VOICE: an invented witness contradicts the record. <img src=x onerror="globalThis.voiceExecuted=true">';
+ const fixtureRoom=store.rooms.get(code),fixturePlayer=fixtureRoom.players.find(p=>p.name==='Agent 1');
+ const fixtureMessage=fixturePlayer.interviews[0].messages[0],canonicalAnswer=fixtureMessage.answer;
+ fixtureMessage.narration={status:'complete',text:inventedVoice};fixtureRoom.version++;
  await pages[1].reload();await pages[1].locator('[data-stage=interrogate]').first().click();
  await pages[1].waitForSelector('[data-action=review-topic][data-id=alibi]');
  let asks=0;pages[1].on('request',r=>{if(r.url().endsWith('/actions')&&r.postDataJSON()?.type==='ask')asks++;});
@@ -37,6 +42,27 @@ try {
  await pages[1].click('#question-form button');await pages[1].waitForFunction(()=>document.querySelector('#notice').textContent.includes('already covered'));
  assert.equal(await pages[1].inputValue('#question'),'Where were you yesterday?');
  assert.equal(await pages[1].locator('.bubble.question').count(),1);
+ // Freeform voice remains visible but clearly unverified, escaped and separate from case evidence.
+ const answer=pages[1].locator(`#answer-${fixtureMessage.id}`),voice=answer.getByRole('note',{name:'Unverified AI voice'});
+ await voice.waitFor();assert.match(await voice.textContent(),/AI voice may invent or contradict facts/);
+ assert.match(await voice.textContent(),/Use case evidence for deductions/);
+ assert.ok((await voice.textContent()).includes(inventedVoice));assert.equal(await voice.locator('img').count(),0);
+ assert.equal(await pages[1].evaluate(()=>globalThis.voiceExecuted===true),false);
+ assert.equal(await answer.locator('.record-label').textContent(),'Case evidence');
+ assert.ok((await answer.textContent()).includes(canonicalAnswer));
+ await answer.locator('[data-action=share]').click();
+ await pages[1].waitForSelector('#confirm-body .canonical-preview');
+ assert.equal(await pages[1].locator('#confirm-body .canonical-preview').textContent(),canonicalAnswer);
+ assert.equal((await pages[1].locator('#confirm-body').textContent()).includes('FABRICATED VOICE'),false);
+ await pages[1].click('#confirm-accept');
+ await pages[1].waitForFunction(id=>document.querySelector(`#answer-${id} .share-button`)?.dataset.locked==='true',fixtureMessage.id);
+ const peerState=await pages[2].evaluate(async code=>(await fetch(`/api/rooms/${code}`)).json(),code);
+ assert.equal(peerState.board[0].text,canonicalAnswer);assert.equal(JSON.stringify(peerState).includes('FABRICATED VOICE'),false);
+ await pages[2].reload();await pages[2].locator('[data-stage=deduce]').first().click();
+ await pages[2].waitForFunction(text=>document.body.textContent.includes(text),canonicalAnswer);
+ assert.equal((await pages[2].locator('body').textContent()).includes('FABRICATED VOICE'),false);
+ assert.equal(await pages[2].locator('[aria-label="Unverified AI voice"]').count(),0);
+ assert.equal(store.rooms.get(code).players.find(p=>p.name==='Agent 1').interviews[0].messages[0].answer,canonicalAnswer);
  // Optional external narration is explicit per question and never selected by default.
  assert.equal(await pages[1].locator('[name=aiConsent]').isChecked(),false);
  await pages[1].fill('#question','What did you notice?');
@@ -65,5 +91,5 @@ try {
  assert.match(await pages[1].locator('.reveal').textContent(),/PARTIAL VICTORY/);
  assert.equal(await pages[1].evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  await pages[1].screenshot({path:'/tmp/shift-recovery-mobile.png',fullPage:true});assert.deepEqual(errors,[]);
- console.log('PASS: browser host takeover, cancel/confirm, preserved roster, missing-vote grace, explicit abstention reveal, mobile overflow, no page errors.');
+ console.log('PASS: escaped unverified AI voice, canonical-only share and peer isolation; browser host takeover, cancel/confirm, preserved roster, missing-vote grace, explicit abstention reveal, mobile overflow, no page errors.');
 } finally {await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
