@@ -28,7 +28,7 @@ test('request IDs work over HTTP LAN without crypto.randomUUID',()=>{
 });
 test('a late poll cannot roll back confirmed actions or replace a different room',async()=>{
  let resolve;const notice={dataset:{}};
- const sandbox={session:{code:'ABC123',token:'token-a'},state:{version:5,phase:'investigation'},lastVersion:5,busy:false,pending:null,fetchJson:()=>new Promise(r=>resolve=r),render(){},$:()=>notice};
+ const sandbox={session:{code:'ABC123',token:'token-a'},state:{version:5,phase:'investigation'},lastHeartbeat:Date.now(),lastVersion:5,busy:false,pending:null,fetchJson:()=>new Promise(r=>resolve=r),render(){},$:()=>notice};
  vm.runInNewContext(source.match(/async function poll\(\)\{[^\n]+\}/)[0]+'; result=poll();',sandbox);
  sandbox.state={version:6,phase:'accusation'};sandbox.lastVersion=6;
  resolve({version:5,phase:'investigation',round:1});await sandbox.result;
