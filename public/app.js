@@ -44,7 +44,10 @@ async function action(type, values = {}, retryPending = false) {
     if (current !== session) return false;
     pendingAction = null; storage.remove('shift-pending'); show('retry-pending',false);
     if (payload.type === 'leave') { reset(); return true; }
-    state = next; render(); return true;
+    state = next; render();
+    if (retryPending && payload.type === 'ask' && $('question').value.trim() === payload.text) $('question').value = '';
+    if (retryPending && payload.type === 'share' && $('note').value.trim() === payload.text) $('note').value = '';
+    return true;
   } catch (err) {
     if (err.status) { pendingAction = null; storage.remove('shift-pending'); }
     show('retry-pending',!!pendingAction);
