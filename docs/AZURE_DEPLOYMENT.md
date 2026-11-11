@@ -172,14 +172,39 @@ activation or transferring credentials by itself.
 {"model":"<current model>","inputRate":<current>,"outputRate":<current>,"roomMicroUsd":250000,"dayMicroUsd":10000000,"monthMicroUsd":50000000,"maxConcurrent":8,"inputTokens":6000,"outputTokens":400}
 ```
 
-`inputTokens` and `outputTokens` must be exactly 6000 and 400. At startup the app also checks that a full room of 48 questions fits `roomMicroUsd` at the chosen rates, and fails closed if not. To update the existing app, put the JSON in a local file that contains no secrets, then run:
+`inputTokens` and `outputTokens` must be exactly 6000 and 400. At startup the app also checks that a full room of 48 questions fits `roomMicroUsd` at the chosen rates, and fails closed if not.
 
-```sh
-az webapp config appsettings show --resource-group <group> --name <app> --query "[?name=='SHIFT_AI_POLICY'].value" -o tsv   # read model and rates
-az webapp config appsettings set --resource-group <group> --name <app> --settings SHIFT_AI_POLICY=@shift-ai-policy.json
-```
+**Each build accepts only its own envelope.** Builds before the chat redesign require exactly 2500/350; the redesign requires exactly 6000/400. While AI is enabled, either mismatch stops the app at startup and App Service restarts it in a loop, so the whole site is down, not just AI. Changing an app setting restarts the app that is running now, so setting the new policy before the new build is live takes the old build down, and deploying the new build over the old policy does the same. With AI off the policy is not read, so turn AI off across the switch.
 
-Set only `SHIFT_AI_POLICY`; never put `OPENAI_API_KEY` or other secrets in these commands. The setting restarts the app. Confirm `/healthz` returns HTTP 200 afterwards.
+Put the new JSON in a local file that contains no secrets, then follow these steps in order:
+
+1. **Turn AI off.** The old build restarts in canonical mode and keeps serving.
+
+   ```sh
+   az webapp config appsettings show --resource-group <group> --name <app> --query "[?name=='SHIFT_AI_POLICY'].value" -o tsv   # read model and rates
+   az webapp config appsettings set --resource-group <group> --name <app> --settings SHIFT_AI_ENABLED=false
+   ```
+
+   Read it back (`--query "[?name=='SHIFT_AI_ENABLED'].value" -o tsv` must print `false`) and confirm `/healthz` returns HTTP 200.
+2. **Set the new policy.** The app restarts again, still canonical, so the new policy is not read yet.
+
+   ```sh
+   az webapp config appsettings set --resource-group <group> --name <app> --settings SHIFT_AI_POLICY=@shift-ai-policy.json
+   ```
+
+   Read `SHIFT_AI_POLICY` back with the `show` command above and check it matches the file.
+3. **Deploy the new build** (a push to `main` deploys it through CI when that is enabled, so do steps 1 and 2 before merging) and confirm `/api/release` reports the expected commit and `/healthz` returns HTTP 200.
+4. **Turn AI back on.**
+
+   ```sh
+   az webapp config appsettings set --resource-group <group> --name <app> --settings SHIFT_AI_ENABLED=true
+   ```
+
+   Read it back (must print `true`), then confirm `/healthz` returns HTTP 200 and `/api/cases` reports `"dialogueMode":"ai"`.
+
+If the app does not come back at step 4, set `SHIFT_AI_ENABLED=false` again; the site returns in canonical mode. The startup log line `{"event":"azure_startup_failed","stage":"config","reason":"ai_policy_invalid"}` means the policy does not match the running build's envelope; it never includes the policy itself. Rolling back to an older build follows the same order in reverse: AI off, restore the old policy, deploy the old build, AI on.
+
+Change only `SHIFT_AI_ENABLED` and `SHIFT_AI_POLICY` here; never put `OPENAI_API_KEY` or other secrets in these commands.
 
 ## Verified-main CI deployment (explicitly enabled only after integration checks)
 

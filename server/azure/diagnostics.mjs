@@ -12,7 +12,7 @@ const codes=new Map([
  ['CERT_HAS_EXPIRED','tls_expired'],['UNABLE_TO_VERIFY_LEAF_SIGNATURE','tls_trust'],
  ['UNABLE_TO_GET_ISSUER_CERT_LOCALLY','tls_trust'],['DEPTH_ZERO_SELF_SIGNED_CERT','tls_trust'],
  ['ENOENT','file_missing'],['EACCES','file_permission'],['EADDRINUSE','port_in_use'],
- ['SHIFT_CASE_INTEGRITY','case_integrity'],['SHIFT_CASE_SIZE','case_size'],['SHIFT_TOKEN_MISSING','token_missing'],['SHIFT_TOKEN_TIMEOUT','token_timeout']
+ ['SHIFT_CASE_INTEGRITY','case_integrity'],['SHIFT_CASE_SIZE','case_size'],['SHIFT_TOKEN_MISSING','token_missing'],['SHIFT_TOKEN_TIMEOUT','token_timeout'],['SHIFT_AI_POLICY_INVALID','ai_policy_invalid']
 ]);
 export async function startupStep(stage,run){
  try{return await run();}catch(error){if(error!==null&&(typeof error==='object'||typeof error==='function')&&!marked.has(error))marked.set(error,stages.has(stage)?stage:'runtime');throw error;}

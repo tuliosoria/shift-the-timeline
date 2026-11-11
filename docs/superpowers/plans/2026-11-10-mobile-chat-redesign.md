@@ -306,7 +306,10 @@
 
 ### Task 11: Ship
 
-- [ ] **Step 1:** Merge `redesign-mobile-chat` into `main` and push. CI must be green.
-- [ ] **Step 2:** Update the live `SHIFT_AI_POLICY` app setting to the new limits (keep its `model`, `inputRate` and `outputRate`), following `docs/AZURE_DEPLOYMENT.md`.
-- [ ] **Step 3:** Build `npm run package:azure` and deploy with `scripts/azure-ci-deploy.py --artifact … --commit <sha> --sha256 …`, per the runbook.
-- [ ] **Step 4:** Verify `/api/release` reports the merged commit, `/api/cases` reports `dialogueMode:'ai'`, and a real phone plays one turn (screenshot).
+The old build only starts with the 2500/350 policy and the new build only with 6000/400; with AI on, a mismatch crash-loops the whole site. Changing a setting restarts the running build, and a push to `main` can deploy through CI. So AI goes off before anything changes and comes back on last (`docs/AZURE_DEPLOYMENT.md`, "Updating SHIFT_AI_POLICY").
+
+- [ ] **Step 1:** Set the live `SHIFT_AI_ENABLED=false`. Read the setting back (`false`) and confirm `/healthz` is 200: the old build now serves canonical replies.
+- [ ] **Step 2:** Update the live `SHIFT_AI_POLICY` app setting to the new limits (keep its `model`, `inputRate` and `outputRate`). Read it back and check it matches.
+- [ ] **Step 3:** Merge `redesign-mobile-chat` into `main` and push. CI must be green. If CI deployment is not enabled, build `npm run package:azure` and deploy with `scripts/azure-ci-deploy.py --artifact … --commit <sha> --sha256 …`, per the runbook. Verify `/api/release` reports the merged commit and `/healthz` is 200.
+- [ ] **Step 4:** Set `SHIFT_AI_ENABLED=true`. Read it back (`true`), then verify `/healthz` is 200 and `/api/cases` reports `dialogueMode:'ai'`. If the app does not come back, set `SHIFT_AI_ENABLED=false` again and read the startup log reason (`ai_policy_invalid` means the policy does not match the build).
+- [ ] **Step 5:** A real phone plays one turn (screenshot).
