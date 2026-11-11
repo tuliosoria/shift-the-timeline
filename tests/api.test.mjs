@@ -74,3 +74,23 @@ test('a missing room or a retired case version means the room is gone', () => {
   assert.equal(api.roomGone(error(500)), null);
   assert.equal(api.roomGone(new TypeError('network down')), null);
 });
+
+
+test('poll errors retain their originating snapshot after the selected room changes', async t => {
+  let reject, active = {code: 'ABCD2345', version: 7, localEpoch: 2};
+  const source = active, failures = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = () => new Promise((_, fail) => { reject = fail; });
+  t.after(() => { globalThis.fetch = original; });
+  const loop = api.pollLoop({getState: () => active, onState: () => {}, onError: (error, snapshot) => failures.push({error, snapshot}), isHidden: () => false});
+  t.after(() => loop.stop());
+  const running = loop.now();
+  active = {code: 'EFGH6789', version: 1, localEpoch: 3};
+  const error = new Error('Old room unavailable');
+  reject(error);
+  await running;
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0].snapshot, source);
+  assert.equal(failures[0].error, error);
+  assert.notEqual(failures[0].snapshot.localEpoch, active.localEpoch);
+});

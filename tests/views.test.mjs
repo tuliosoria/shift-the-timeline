@@ -204,3 +204,26 @@ test('lobby exposes confirmed host recovery only for an eligible non-host', () =
   assert.doesNotMatch(views.renderLobby({...lobby, hostRecoverable:false}, local()), /data-action="claimHost"/);
   assert.doesNotMatch(views.renderLobby({...lobby, me:{...lobby.me, host:true}}, local()), /data-action="claimHost"/);
 });
+
+
+test('room switching is explicit, preserves the seat and warns the host', () => {
+  const host = state();
+  assert.match(views.renderLobby(host, local()), /data-action="switch-room" data-submit/);
+  assert.match(views.renderCaseFile(host), /data-action="switch-room" data-submit/);
+  const choice = views.switchRoomConfirmation(host, 'EFGH6789');
+  assert.match(choice.title, /EFGH6789/);
+  assert.match(choice.body, /ABCD2345/);
+  assert.match(choice.body, /Your seat stays/);
+  assert.match(choice.body, /does not pause or extend/);
+  assert.match(choice.body, /another agent can take over after two minutes/);
+  assert.doesNotMatch(views.switchRoomConfirmation(state({}, {host:false})).body, /You are the host/);
+  assert.doesNotMatch(views.switchRoomConfirmation(state({code:'<script>'}), '<b>').body, /<script>|<b><b>/);
+});
+
+test('landing offers a saved seat only when a resume target exists', () => {
+  assert.doesNotMatch(views.renderLanding(null, local()), /data-action="resume"/);
+  const html = views.renderLanding(null, local({resume:{code:'ABCD2345'}}));
+  assert.match(html, /data-action="resume" data-submit/);
+  assert.match(html, /Return to room ABCD2345/);
+  assert.match(html, /while the room is still available/);
+});
