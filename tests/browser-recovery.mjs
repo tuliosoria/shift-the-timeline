@@ -148,7 +148,10 @@ try {
  await pages[0].close();now+=121000;await act(pages[1],'heartbeat');
  await pages[1].waitForSelector('[data-action=claimHost]');await pages[1].click('[data-action=claimHost]');await pages[1].click('#confirm-cancel');
  await pages[1].click('[data-action=claimHost]');await pages[1].click('#confirm-accept');await pages[1].waitForSelector('#host-panel');
- for(let round=1;round<=3;round++)await act(pages[1],'advance',{round,confirmed:true});
+ await act(pages[1],'advance',{round:1,confirmed:true});
+ await act(pages[1],'select',{round:2,suspectId:'suspect-2'});
+ await act(pages[1],'ask',{round:2,question:'Second round notebook question',topic:'alibi'});
+ for(let round=2;round<=3;round++)await act(pages[1],'advance',{round,confirmed:true});
  // Before an irreversible accusation, review full private history even with no round-3 interview.
  await pages[1].reload();await pages[1].waitForSelector('#vote-form');
  await pages[1].check(`#vote-form input[value="${TRAIN_CASE.culpritId}"]`);
@@ -157,6 +160,32 @@ try {
  await pages[1].waitForSelector('.transcript');
  assert.equal(await pages[1].locator('#question-form').count(),0);
  assert.equal(await pages[1].locator('.review-nav [aria-current=page]').count(),1);
+ // Search own canonical evidence across rounds without sharing or asking again.
+ assert.match(await pages[1].locator('.transcript').textContent(),/Second round notebook question/);
+ await pages[1].locator('#private-notebook summary').click();
+ await pages[1].fill('#private-evidence-search','FABRICATED VOICE');
+ assert.equal(await pages[1].locator('#private-evidence-count').textContent(),'0 of 4 answers match');
+ await pages[1].fill('#private-evidence-search','  ALIBI  ');
+ assert.equal(await pages[1].locator('#private-evidence-count').textContent(),'2 of 4 answers match');
+ assert.equal(await pages[1].evaluate(()=>document.activeElement.id),'private-evidence-search');
+ assert.match(await pages[1].locator('.private-search-results').textContent(),/Round 1/);
+ assert.match(await pages[1].locator('.private-search-results').textContent(),/Round 2/);
+ assert.equal(await pages[1].locator('#private-notebook [data-action=share]').count(),0);
+ for(const width of [320,390,1440]){await pages[1].setViewportSize({width,height:900});assert.equal(await pages[1].evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
+ await pages[1].setViewportSize({width:390,height:900});
+ await pages[1].screenshot({path:'/tmp/shift-recovery-private-evidence-search-mobile.png',fullPage:true});
+ await pages[1].fill('#private-evidence-search','clearance');
+ assert.equal(await pages[1].locator('#private-evidence-count').textContent(),'1 of 4 answers match');
+ await pages[1].locator('[data-action=review-private-answer]').focus();await pages[1].keyboard.press('Enter');
+ assert.equal(await pages[1].inputValue('#interview-round'),'1');
+ const notebookTarget=store.rooms.get(code).players.find(p=>p.name==='Agent 1').interviews[0].messages[1].id;
+ assert.equal(await pages[1].evaluate(()=>document.activeElement.id),'answer-'+notebookTarget);
+ assert.equal(await pages[1].inputValue('#private-evidence-search'),'clearance');
+ await pages[1].click('[data-action=clear-private-search]');
+ assert.equal(await pages[1].evaluate(()=>document.activeElement.id),'private-evidence-search');
+ assert.equal(await pages[1].inputValue('#private-evidence-search'),'');
+ await pages[1].locator('#private-notebook summary').click();
+
  assert.match(await pages[1].locator('.transcript').textContent(),/Who had clearance at the time\?/);
  assert.equal(await pages[1].evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
  const unshared=store.rooms.get(code).players.find(p=>p.name==='Agent 1').interviews[0].messages[1];
