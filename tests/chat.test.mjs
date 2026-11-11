@@ -29,12 +29,12 @@ test('enter sends, shift+enter does not', () => {
   type('Where were you at eight?');
   const newline = fire($('#question'), 'keydown', {key: 'Enter', shiftKey: true});
   assert.equal(newline.defaultPrevented, false, 'Shift+Enter keeps the native newline');
-  assert.deepEqual(sent, []);
+  fire($('#question'), 'keydown', {key: 'Enter', isComposing: true});
+  fire($('#question'), 'keydown', {key: 'Enter', keyCode: 229});
+  assert.deepEqual(sent, [], 'an IME composition (or Safari\'s commit Enter) never sends');
   const enter = fire($('#question'), 'keydown', {key: 'Enter'});
   assert.equal(enter.defaultPrevented, true);
   assert.deepEqual(sent, ['Where were you at eight?']);
-  fire($('#question'), 'keydown', {key: 'Enter', isComposing: true});
-  assert.deepEqual(sent, ['Where were you at eight?'], 'an IME composition never sends');
 });
 
 test('field cleared and focused after send', () => {
@@ -104,8 +104,10 @@ test('the draft is restored and saved per keystroke', () => {
   view.update(state());
   assert.equal($('#question').value, 'Half a quest');
   assert.equal($('.send').disabled, false);
+  $('#transcript').scrollTop = 0;
   type('Half a question');
   assert.equal(drafts.at(-1), 'Half a question');
+  assert.equal($('#transcript').scrollTop, $('#transcript').scrollHeight, 'a growing field keeps the newest bubble anchored');
 });
 
 test('polling update keeps caret and draft', () => {
@@ -124,11 +126,14 @@ test('polling update keeps caret and draft', () => {
 });
 
 test('third reply swaps composer for end-of-turn message', () => {
-  const {root, view, $} = setup();
+  const {doc, root, view, $} = setup();
   view.update(state([message(1), message(2), message(3, 'pending')]));
   assert.ok($('#question'), 'the composer stays while the last reply is pending');
   assert.equal($('.send').disabled, true);
+  assert.equal($('#question').readOnly, true, 'nothing can be typed that would be lost with the composer');
+  $('#question').focus();
   view.update(state([message(1), message(2), message(3)]));
+  assert.equal(doc.activeElement, $('.done button'), 'focus moves to Continue instead of falling to the page');
   assert.equal($('#question'), null);
   assert.equal($('.chips'), null);
   assert.match(root.textContent, /That's all your questions for this turn\./);
@@ -161,7 +166,7 @@ test('a retry the app still holds keeps the bubble without restoring the text', 
   view.update(state());
   $('#question').value = 'Still sending?'; fire($('#question'), 'input');
   fire($('.send'), 'click');
-  view.update(state(), {outgoing: 'Still sending?'});
+  view.update(state(), {outgoing: {text: 'Still sending?', count: 0}});
   settle(false);
   await new Promise(r => setTimeout(r));
   assert.equal($('#question').value, '');
@@ -169,18 +174,63 @@ test('a retry the app still holds keeps the bubble without restoring the text', 
   assert.equal($('.send').disabled, true, 'only the Retry in the notice may resend it');
 });
 
-test('keyboard inset sets --kb and keeps the newest message in view', () => {
-  const visualViewport = fakeTarget({height: 844, offsetTop: 0});
-  const win = fakeTarget({innerHeight: 844, visualViewport});
-  const {doc, view, $} = setup({viewport: win});
-  view.update(state([message(1)]));
-  visualViewport.height = 508;
+test('a held retry of a repeated question still shows until the server has it', () => {
+  const {view, $} = setup();
+  const asked = {...message(1), question: 'What did you notice?'};
+  view.update(state([asked]), {outgoing: {text: 'What did you notice?', count: 1}});
+  assert.equal($('#transcript').querySelectorAll('.b.me').length, 2, 'same text, not yet delivered');
+  assert.equal($('.send').disabled, true);
+  view.update(state([asked, {...message(2, 'pending'), question: 'What did you notice?'}]), {outgoing: {text: 'What did you notice?', count: 1}});
+  assert.equal($('#transcript').querySelectorAll('.b.me').length, 2, 'no duplicate once delivered');
+});
+
+function keyboardSetup({innerHeight = 844, coarse = false} = {}) {
+  const visualViewport = fakeTarget({width: 390, height: innerHeight, offsetTop: 0});
+  const win = fakeTarget({innerHeight, visualViewport, matchMedia: q => ({matches: coarse && q === '(pointer: coarse)'})});
+  const t = setup({viewport: win});
+  t.view.update(state([message(1)]));
+  const css = name => t.doc.documentElement.style.getPropertyValue(name), open = () => t.doc.documentElement.classList.contains('kb-open');
+  return {...t, win, visualViewport, css, open};
+}
+
+test('iOS keyboard: the app follows the panned visual viewport and the tab bar steps aside', () => {
+  const {doc, view, $, visualViewport, css, open} = keyboardSetup();
+  assert.equal(doc.documentElement.classList.contains('vv-pinned'), true);
+  assert.equal(css('--vvh'), '844px');
+  $('#question').focus();
+  assert.equal(open(), false, 'a focused field alone is not a keyboard on a desktop');
+  // Safari keeps the layout viewport (innerHeight) and pans the visual one up over the keyboard.
+  Object.assign(visualViewport, {height: 508, offsetTop: 336});
   $('#transcript').scrollTop = 0;
-  visualViewport.emit('resize');
-  assert.equal(doc.documentElement.style.getPropertyValue('--kb'), '336px');
-  assert.equal(doc.documentElement.classList.contains('kb-open'), true);
-  assert.equal($('#transcript').scrollTop, $('#transcript').scrollHeight);
+  visualViewport.emit('scroll');
+  assert.equal(css('--vvh'), '508px');
+  assert.equal(css('--vvtop'), '336px');
+  assert.equal(css('--kb'), '336px');
+  assert.equal(open(), true);
+  assert.equal($('#transcript').scrollTop, $('#transcript').scrollHeight, 'the newest bubble stays in view');
+  $('#question').blur();
+  assert.equal(open(), false);
+  assert.equal(css('--kb'), '0px');
   view.destroy();
-  assert.equal(visualViewport.listenerCount('resize'), 0);
-  assert.equal(doc.documentElement.style.getPropertyValue('--kb'), '');
+  assert.equal(visualViewport.listenerCount('resize') + visualViewport.listenerCount('scroll'), 0);
+  for (const name of ['--kb', '--vvh', '--vvtop']) assert.equal(css(name), '');
+  assert.equal(doc.documentElement.classList.contains('vv-pinned'), false);
+});
+
+test('Android keyboard: a resized layout with no inset still counts as the keyboard', () => {
+  const {$, win, visualViewport, css, open} = keyboardSetup();
+  $('#question').focus();
+  // interactive-widget=resizes-content shrinks the layout and visual viewports together.
+  win.innerHeight = visualViewport.height = 664;
+  visualViewport.emit('resize');
+  assert.equal(open(), true);
+  assert.equal(css('--vvh'), '664px');
+  assert.equal(css('--kb'), '180px');
+});
+
+test('a touch device treats the focused field as the keyboard', () => {
+  const {$, open} = keyboardSetup({coarse: true});
+  assert.equal(open(), false);
+  $('#question').focus();
+  assert.equal(open(), true);
 });

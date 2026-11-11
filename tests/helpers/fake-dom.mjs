@@ -64,6 +64,8 @@ class Element {
   }
   get disabled() { return this.hasAttribute('disabled'); }
   set disabled(v) { this.toggleAttribute('disabled', !!v); }
+  get readOnly() { return this.hasAttribute('readonly'); }
+  set readOnly(v) { this.toggleAttribute('readonly', !!v); }
   get hidden() { return this.hasAttribute('hidden'); }
   set hidden(v) { this.toggleAttribute('hidden', !!v); }
   get type() { return this.getAttribute('type') ?? (this.localName === 'button' ? 'submit' : 'text'); }
@@ -87,8 +89,14 @@ class Element {
   querySelector(sel) { return this.querySelectorAll(sel)[0] ?? null; }
   matches(sel) { return matches(this, sel); }
   closest(sel) { for (let x = this; x?.nodeType === 1; x = x.parentNode) if (matches(x, sel)) return x; return null; }
-  focus() { this.ownerDocument.activeElement = this; }
-  blur() { if (this.ownerDocument.activeElement === this) this.ownerDocument.activeElement = this.ownerDocument.body; }
+  focus() {
+    const doc = this.ownerDocument, before = doc.activeElement;
+    if (before === this) return;
+    doc.activeElement = this;
+    if (before && before !== doc.body) fire(before, 'focusout');
+    fire(this, 'focusin');
+  }
+  blur() { const doc = this.ownerDocument; if (doc.activeElement === this) { doc.activeElement = doc.body; fire(this, 'focusout'); } }
   addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }
   removeEventListener(type, fn) { this.listeners[type] = (this.listeners[type] ?? []).filter(f => f !== fn); }
   dispatchEvent(event) {

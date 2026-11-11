@@ -44,7 +44,11 @@ function chatFor(main) {
   chat?.destroy();
   const context = uiContext(state);
   chat = mountChat(main, {draft: ui.draft(context), onDraft: text => ui.writeDraft(context, text),
-    onSend: question => act('ask', {question, round: views.currentInterview(state, local)?.round ?? state.round})});
+    onSend: question => {
+      const interview = views.currentInterview(state, local);
+      // `count` (messages before this one) lets the chat tell a held retry from a delivered repeat.
+      return act('ask', {question, round: interview?.round ?? state.round}, {count: interview?.messages.length ?? 0});
+    }});
   chat.key = key;
   return chat;
 }
@@ -66,7 +70,7 @@ function render() {
   main.dataset.view = view;
   $('#tabbar').innerHTML = tabBar;
   if (view === 'chat') {
-    const outgoing = pending?.action?.type === 'ask' ? pending.action.question : null;
+    const outgoing = pending?.action?.type === 'ask' && Number.isInteger(pending.count) ? {text: pending.action.question, count: pending.count} : null;
     chatFor(main).update(state, {...local, busy, outgoing});
   } else {
     if (chat) { chat.destroy(); chat = null; }
@@ -122,9 +126,9 @@ async function run(work) {
     return false;
   }
 }
-function act(type, data = {}) {
+function act(type, data = {}, extra = {}) {
   const action = {type, ...data};
-  return run({code: session.code, context: uiContext(state), action: {...action, id: requestIdFor(action)}});
+  return run({...extra, code: session.code, context: uiContext(state), action: {...action, id: requestIdFor(action)}});
 }
 
 function openConfirmation({title, body, label, onConfirm}) {

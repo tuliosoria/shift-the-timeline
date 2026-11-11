@@ -61,17 +61,24 @@ try {
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'question');
   assert.equal(await page.evaluate(() => document.getElementById('question').selectionStart), 8, 'caret survives');
   assert.equal(asks, 2);
+  assert.ok(await page.locator('#tabbar').isVisible(), 'no keyboard yet: the tab bar stays');
   await page.screenshot({path: `${shot}/shift-t7-chat-844.png`});
 
-  // A keyboard leaves 664 px: the composer and the newest bubble stay in view.
+  // A keyboard leaves 664 px (Android resizes-content shrinks both viewports): the composer sits
+  // on the keyboard with the tab bar out of the way, and the newest bubble stays in view.
   await page.setViewportSize({width: 390, height: 664});
   await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'question');
+  assert.ok(await page.locator('#tabbar').isHidden(), 'the tab bar steps aside for the keyboard');
   const composer = await page.locator('.composer').boundingBox();
-  assert.ok(composer.y >= 0 && composer.y + composer.height <= 664, `composer inside the viewport: ${JSON.stringify(composer)}`);
+  assert.ok(composer.y >= 0 && Math.abs(composer.y + composer.height - 664) <= 3, `composer docked on the keyboard: ${JSON.stringify(composer)}`);
   const transcript = await page.locator('#transcript').boundingBox(), last = await page.locator('#transcript > li').last().boundingBox();
   assert.ok(last.y >= transcript.y - 1 && last.y + last.height <= transcript.y + transcript.height + 1, 'newest bubble visible in the transcript');
   assert.ok(last.y + last.height <= composer.y, 'newest bubble above the composer');
   await page.screenshot({path: `${shot}/shift-t7-chat-keyboard-664.png`});
+  await page.locator('#question').blur();
+  assert.ok(await page.locator('#tabbar').isVisible(), 'the tab bar returns when the keyboard goes');
+  await page.focus('#question');
 
   // The third reply ends the turn in place; the player moves on when ready.
   await page.fill('#question', 'Who else was there?');
