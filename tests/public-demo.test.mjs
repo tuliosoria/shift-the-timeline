@@ -7,7 +7,7 @@ import {buildChatContext} from '../server/ai/chat-context.mjs';
 import {caseData,catalog,reviewRoutes} from '../examples/public-demo.mjs';
 let serial=0;const request=()=>`public-demo-${++serial}-request`;
 function setup(count=3){const g=new GameService({caseData,catalog}),host=g.create('A',caseData.id,request()),players=[host];for(let i=1;i<count;i++)players.push(g.join(host.code,`Agent ${i}`,request()));return{g,host,players,act:(p,type,data={})=>g.act(host.code,p.token,{id:request(),type,...data})};}
-test('public authored demo validates separately from synthetic and private cases',()=>{const result=validateCase({caseData,catalog});assert.equal(result.caseData.suspects.length,15);assert.notEqual(caseData.id,'demo');assert.match(catalog[0].description,/public/i);assert.ok(reviewRoutes.length>=3);assert.equal(new Set(caseData.suspects.map(s=>s.id)).size,15);});
+test('public authored demo validates separately from synthetic and private cases',()=>{const result=validateCase({caseData,catalog});assert.equal(result.caseData.suspects.length,15);assert.notEqual(caseData.id,'demo');assert.match(catalog[0].description,/public/i);assert.ok(reviewRoutes.length>=3);assert.equal(new Set(caseData.suspects.map(s=>s.id)).size,15);assert.equal(caseData.clockStart,'18:00');});
 const keyDeductions=()=>caseData.deductions.filter(d=>d.key);
 test('every key deduction has sources from at least 2 different suspects',()=>{
  assert.ok(keyDeductions().length>=6);

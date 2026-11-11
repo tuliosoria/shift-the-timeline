@@ -38,7 +38,9 @@ publish verdict.
 
 Export `TRAIN_CASE` (or `caseData`) and `CASES` (or `catalog`). The case needs
 `id`, `title`, `victim`, `place`, `method`, `prediction`, `culpritId`, exactly 15
-unique suspects, and a `solution`. A version string is optional. Suspect IDs and
+unique suspects, and a `solution`. A version string is optional. An optional
+`clockStart` (24-hour `HH:MM`, default `20:00`) sets the story time of turn 1;
+each later turn is six hours on, and the crime is 24 hours after `clockStart`. Suspect IDs and
 case IDs use lowercase ASCII letters, digits and hyphens (1–40 characters).
 Each suspect needs `id`, `name`, `role`, `initials`, `color`, `profile`, `opening`,
 a `brief` and nonblank `responses` for `alibi`, `motive`, `clue` and `relationship`.

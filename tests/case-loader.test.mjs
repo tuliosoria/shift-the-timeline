@@ -64,3 +64,7 @@ test('rejects a missing brief',()=>{for(const value of [undefined,'',' ',null,'Ã
 test('rejects a deduction with an unknown suspect',()=>{rejectChange('caseData.deductions[0].sources[0].suspectId','missing');rejectChange('caseData.deductions[0].sources[0].topic','weather');});
 test('rejects fewer than 3 key deductions',()=>{const input=baseline();input.caseData.deductions[2].key=false;assert.throws(()=>impl.validateCase(input),error=>error instanceof impl.CaseValidationError&&error.message.startsWith('caseData.deductions:'));});
 test('rejects malformed deduction lists',()=>{rejectChange('caseData.deductions',TRAIN_CASE.deductions.slice(1));rejectChange('caseData.deductions[0].text','x'.repeat(161));rejectChange('caseData.deductions[0].id','Bad Id');rejectChange('caseData.deductions[0].sources',[]);});
+test('optional clock start must be a 24-hour HH:MM time',()=>{
+ for(const value of ['25:00','8:00','18:60','','18:00 ',1800,null])rejectChange('caseData.clockStart',value);
+ for(const clockStart of [undefined,'00:00','18:00','23:59'])assert.doesNotThrow(()=>impl.validateCase({caseData:{...TRAIN_CASE,clockStart},catalog:CASES}));
+});

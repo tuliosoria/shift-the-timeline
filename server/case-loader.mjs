@@ -15,6 +15,7 @@ export function validateCase({caseData,catalog}={}) {
   id(caseData.id,'caseData.id');
   for(const key of ['title','victim','place','method','prediction'])string(caseData[key],`caseData.${key}`);
   if(caseData.version!==undefined)string(caseData.version,'caseData.version');
+  if(caseData.clockStart!==undefined&&(typeof caseData.clockStart!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(caseData.clockStart)))invalid('caseData.clockStart','expected a 24-hour HH:MM time');
   array(caseData.suspects,'caseData.suspects');
   if(caseData.suspects.length!==15)invalid('caseData.suspects','expected exactly 15 suspects');
   const ids=new Set();

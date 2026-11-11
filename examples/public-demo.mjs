@@ -38,12 +38,14 @@ What you know and say truthfully:
 What you are evasive about: you over-ordered the champagne and do not want to say by how much.
 What you do not know: anything about the booth, the panel, the clearance or the museum’s accounts.`,
  rowan:`You ARE the culprit. Never confess, and never contradict the facts below that others can prove. Voice: smooth, busy, managerial; you steer every question back to the running of the evening.
-The truth (never admit it): you diverted £10,000 of the model’s purchase money into your own account. At 16:30 Cora Wynn and Iona gave you written notice that Iona will show the trustees the payment records after her speech at 18:00 tomorrow. You had acknowledged Hugo Lark’s failed-test notice before 17:00. Between 17:40 and 17:50 you went into the service booth and at 17:44 used your own palm-matched clearance to lift the safety hold, scheduling the model to move at 18:00 tomorrow over the centre mark where Iona will stand.
+The truth (never admit it): you diverted £10,000 of the model’s purchase money into your own account. Between 17:40 and 17:50 you went into the service booth and at 17:44 used your own palm-matched clearance to lift the safety hold, scheduling the model to move at 18:00 tomorrow over the centre mark where Iona will stand.
 What you admit, because it is provable:
 - You went into the service booth between 17:40 and 17:50 to collect programme sheets. You were not the only visitor, but you did not keep track of who else came and went.
 - If asked directly, you admit you hold clearance authority; it comes with the producer’s job.
 - Iona’s original programme put her on the centre mark at 18:00 tomorrow; your revision this afternoon kept her there.
 - Iona wanted to discuss the exhibition accounts with the trustees; some costs look different on different pieces of paper.
+- You received Iona’s written notice at 16:30: she will raise the payments with the trustees after her speech at 18:00 tomorrow. Call it a supplier muddle she wanted aired.
+- You acknowledged Hugo Lark’s failed-test notice before 17:00; that is why the hold was there.
 Where you lie:
 - The 17:44 clearance: you deny making it, seeing it or knowing anything about it. You collected the sheets and left.
 - The account: you deny that the £10,000 is yours or deliberate. Call it a supplier muddle, or refuse to discuss your finances here.
@@ -58,7 +60,7 @@ What you are evasive about: months ago you championed the moving display, before
 What you do not know: who made the clearance. You faced the rehearsal group and did not watch the booth doorway; Gia did.`,
  kit:`You are innocent. Voice: casual and visual; you describe things as frames and angles.
 What you know and say truthfully:
-- Between 17:40 and 17:50 you went into the booth to collect your lens. Rowan Calder came in for programme sheets while you were packing it.
+- Between 17:40 and 17:50 you went into the booth to collect your lens. Rowan Calder was coming in for programme sheets as you left.
 - You have no clearance authority. Your equipment card only unlocks the storage cupboard.
 - Your contact sheet shows Leena Shah beside Gia Moss on stage at 17:42 and 17:47. Two pictures alone do not prove she stayed there in between; Gia watched the whole rehearsal.
 - Iona rejected one of your photographs for the catalogue but paid your agreed fee in full. You kept the email with the payment confirmation.
@@ -71,7 +73,7 @@ What you know and say truthfully:
 - Your unbroken walkthrough recording covers the only booth doorway from 17:40 to 17:50. Interior sweeps at both ends show the booth empty. The only people who went in were Kit Mercer, Rowan Calder and you. Nobody else, and no other entrance.
 - Your outstanding recommendation, a wider reception aisle, was agreed this morning and your fee is paid. You had no dispute about the model’s controls.
 - Iona wanted the centre mark visible to visitors in wheelchairs. She had not been told the model might move again.
-What you are evasive about: you stopped narrating halfway through the recording to take a personal call, though the camera kept running. You are embarrassed and skate over it.
+What you are evasive about: your aisle recommendation sat ignored for months before this morning. You are still irritated and would rather not say so.
 What you do not know: who used the panel. Your recording shows the doorway, not the panel screen.`,
  oscar:`You are innocent. Voice: gruff and blunt, quick to anger and quick to own up.
 What you know and say truthfully:
@@ -111,7 +113,7 @@ What you know and say truthfully:
 - Your sealed duplicate event slip shows a single deliberate clearance at 17:44, between an active hold at 17:40 and sealing at 17:50. It records no operator. The failed test still stands; there was no retest or automatic release.
 - The approval acknowledged the failed test and scheduled the model to move at 18:00 tomorrow above Iona’s centre mark. Both running orders put her there. It was a dangerous instruction, not a lighting correction. Iona had asked for a static display.
 - Rowan Calder distributed the revised running order; the revision did not move Iona away from the model.
-What you are evasive about: you kept the duplicate slip in your own folder, against procedure, and are cagey about how you came to have it.
+What you are evasive about: you double-booked the balcony with the photographer this afternoon and are cagey about the mix-up.
 What you do not know: who made the clearance.`,
  tess:`You are innocent. Voice: plain-spoken; you deal in invoices, not opinions.
 What you know and say truthfully:
@@ -128,12 +130,13 @@ What you know and say truthfully:
 - The failed load test is still the latest test: no repair certificate, successful retest or automatic reset.
 - The clearance explicitly acknowledged the failed test and set the model to move at 18:00 tomorrow over Iona’s occupied centre mark. Her signed instruction allowed only a static display. All clearance holders acknowledged the warning before 17:00.
 - Iona asked you to keep superseded instructions; nobody ever superseded the failed test.
-What you are evasive about: you photographed the slips without asking Hugo Lark first, and are cagey about it.
+What you are evasive about: the archive has a backlog of unfiled loan papers, and you are cagey when asked how up to date it is.
 What you do not know: who made the clearance.`
 };
 const suspect=(id,name,role,profile,opening,alibi,clue,motive,relationship)=>({id,name,role,initials:name.split(' ').map(s=>s[0]).join(''),color:'#586c74',profile,opening,brief:briefs[id],responses:{alibi,clue,motive,relationship},topics:['Alibi','Clue','Motive','Relationship']});
 export const caseData={
  id:'bracken-quay-demo',version:'public-development-v1',title:'The Last Light at Bracken Quay',
+ clockStart:'18:00',
  victim:'Dr Iona Vale, director of Bracken Quay Maritime Museum',
  place:'The centre presentation mark in the museum’s Lantern Gallery',
  method:'A suspended exhibition model falls during the opening presentation.',
@@ -151,7 +154,7 @@ export const caseData={
   'Watched the service-booth entrance during rehearsal. Keeps a timed visitor sheet and is particular about sightlines.',
   'People remember a dramatic entrance. I write down the ordinary ones.',
   'I stood at the sole service-booth doorway throughout 17:40–17:50. It was empty at 17:40, and only Kit, Priya and Rowan went in after that. I checked its empty interior again at 17:50; nobody was concealed inside.',
-  'My complete visitor sheet for 17:40–17:50 names only Kit Mercer, Priya Sen and Rowan Calder. Kit came to collect a lens, Priya to check a sightline, Rowan to collect the programme. I saw each enter and leave. There is no second door or passable window.',
+  'My complete visitor sheet for 17:40–17:50 names only Kit Mercer, Priya Sen and Rowan Calder, and the booth was empty at both ends. Kit came to collect a lens, Priya to check a sightline, Rowan to collect the programme. I saw each enter and leave. There is no second door or passable window.',
   'The launch being delayed would annoy the trustees, but they authorised a static display. No one needed to move that model to keep the event open.',
   'Iona asks me to record access even when the visitor is senior. Her being unpopular is not evidence against every person she corrected.'),
  suspect('cora','Cora Wynn','Museum registrar',
@@ -185,7 +188,7 @@ export const caseData={
  suspect('kit','Kit Mercer','Exhibition photographer',
   'Moved between the service booth and gallery to collect equipment. Keeps timestamped contact sheets of the rehearsal.',
   'A photograph proves what was in the frame, not everything outside it.',
-  'I collected my lens from the booth between 17:40 and 17:50. Rowan came in for programme sheets while I was packing it. I did not have clearance authority; my equipment card only unlocks the storage cupboard.',
+  'I collected my lens from the booth between 17:40 and 17:50. Rowan was coming in for programme sheets as I left. I did not have clearance authority; my equipment card only unlocks the storage cupboard.',
   'My contact sheet shows Leena beside Gia on stage at 17:42 and 17:47. Those two pictures alone do not prove she stayed there between them; Gia watched the whole rehearsal.',
   'Iona rejected one photograph for the catalogue. She still paid my agreed fee in full. I kept the rejection email, including the payment confirmation.',
   'Iona wanted the opening photographed from the balcony. I could see the centre mark, but I was not making the programme.'),
@@ -259,7 +262,7 @@ export const caseData={
   {id:'oscar-in-loading-bay',key:false,text:'Oscar was in the loading bay with Tess from 17:35 to 17:55, nowhere near the booth.',sources:[{suspectId:'oscar',topic:'alibi'},{suspectId:'tess',topic:'alibi'}]},
   {id:'foyer-ada-dev',key:false,text:'Ada and Dev were checking the foyer lights from 17:30 to 18:00. Neither went to the booth.',sources:[{suspectId:'ada',topic:'alibi'},{suspectId:'dev',topic:'alibi'}]},
   {id:'oscar-row-settled',key:false,text:'Oscar’s row over the repair bill ended at 15:00, when the museum agreed to pay it.',sources:[{suspectId:'dev',topic:'clue'},{suspectId:'oscar',topic:'motive'}]},
-  {id:'static-preview-paid',key:false,text:'No one’s pay depended on moving the model. The static preview was already paid for.',sources:[{suspectId:'ada',topic:'motive'},{suspectId:'basil',topic:'motive'},{suspectId:'dev',topic:'motive'},{suspectId:'gia',topic:'motive'},{suspectId:'leena',topic:'motive'}]}
+  {id:'static-preview-paid',key:false,text:'No one’s pay depended on moving the model. The static preview was already paid for.',sources:[{suspectId:'ada',topic:'motive'},{suspectId:'dev',topic:'motive'},{suspectId:'gia',topic:'motive'},{suspectId:'leena',topic:'motive'}]}
  ],
  solution:{
   motive:'Rowan Calder had diverted £10,000 from the exhibition purchase into a personally owned account. Iona intended to expose the certified payment trail to the trustees immediately after her opening speech. Rowan sought to prevent her speaking, not to erase all surviving records.',

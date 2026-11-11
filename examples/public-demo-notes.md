@@ -4,7 +4,7 @@
 
 This is an original, deliberately public development mystery, not the private editorial case. The source contains the answer. Do not read these notes before a blind playtest. No production deployment, paid AI or private material is needed. Existing synthetic test fixtures remain separate.
 
-The setting is a maritime museum on the afternoon before an opening. A forecast shows director Iona Vale dying beneath a suspended exhibition model at 18:00 tomorrow. Players arrive at 18:00 today, twenty-four hours before the forecast, after someone has knowingly cleared an unsafe movement but before it takes place. All preparation times from 15:00 to 17:55 refer to today. Four six-hour turns reach tomorrow’s 18:00 opening. The presentation is non-graphic. The equipment and its safety workflow are fictional, with no real-world operating instructions.
+The setting is a maritime museum on the afternoon before an opening. A forecast shows director Iona Vale dying beneath a suspended exhibition model at 18:00 tomorrow. Players arrive at 18:00 today, twenty-four hours before the forecast, after someone has knowingly cleared an unsafe movement but before it takes place. All preparation times from 15:00 to 17:55 refer to today. Four six-hour turns (18:00, 00:00, 06:00, 12:00; `clockStart: '18:00'`) reach tomorrow’s 18:00 opening. The presentation is non-graphic. The equipment and its safety workflow are fictional, with no real-world operating instructions.
 
 ## Solution and clue graph
 
@@ -19,13 +19,13 @@ The inference is an intersection, not a confession:
 5. **Knowing danger and target:** the approval explicitly acknowledges the failed test and places the 18:00 tomorrow movement over Iona’s occupied centre mark. Sources: Hugo `motive`, Milo `motive`, Wren `motive`. Hugo `relationship` and Wren `motive` additionally establish receipt of the warning. Both running orders already place Iona there, so no unproved programme alteration is needed.
 6. **Motive:** certified supplier/bank records identify the diverted payment and Rowan’s ownership of the receiving account. Sources: Cora `clue`, Nell `clue`, Tess `clue`. Their `motive` responses establish the notified disclosure after the speech.
 
-7. **Rowan in the booth:** Rowan admits going into the booth between 17:40 and 17:50 for programme sheets, and Kit saw Rowan there. Sources: Rowan `alibi`, Kit `alibi`. This is not new logic; it is a seventh key deduction that keeps any one player from unlocking every key fact (see below).
+7. **Rowan in the booth:** Rowan admits going into the booth between 17:40 and 17:50 for programme sheets, and Kit passed Rowan coming in as Kit left. Sources: Rowan `alibi`, Kit `alibi`. This is not new logic; it is a seventh key deduction that keeps any one player from unlocking every key fact (see below).
 
 The event record deliberately lacks operator identity; it does not solve the puzzle on its own. The personal-authorisation rule is an explicit fictional system guarantee, not an assumption that cards cannot be stolen. No culprit confession is required. Rowan admits ordinary access and evades the financial question, but supplies no unique indispensable fact.
 
 ## Deductions and coverage
 
-The case lists twelve unlockable deductions. Seven are key: links 1, 2, 3, 5 and 6 above, with link 5 split into the time record (`clue`) and the knowing danger (`motive`), plus link 7. Five are non-key and clear alibis or red herrings: Leena on stage (Leena, Gia `alibi`), Oscar in the loading bay (Oscar, Tess `alibi`), Ada and Dev in the foyer (`alibi`), Oscar’s settled repair bill (Dev `clue`, Oscar `motive`) and the paid static preview (Ada, Basil, Dev, Gia, Leena `motive`). With AI off, a canonical answer unlocks the deductions that list that suspect and topic. With AI on, a suspect can unlock only the deductions that list that suspect.
+The case lists twelve unlockable deductions. Seven are key: links 1, 2, 3, 5 and 6 above, with link 6 split into the diverted payment (`clue`) and the notified disclosure (`motive`), plus link 7. Five are non-key and clear alibis or red herrings: Leena on stage (Leena, Gia `alibi`), Oscar in the loading bay (Oscar, Tess `alibi`), Ada and Dev in the foyer (`alibi`), Oscar’s settled repair bill (Dev `clue`, Oscar `motive`) and the paid static preview (Ada, Dev, Gia, Leena `motive`). With AI off, a canonical answer unlocks the deductions that list that suspect and topic. With AI on, a suspect can unlock only the deductions that list that suspect.
 
 The rules are 4 turns × 3 questions: one suspect per player per turn, so a player sees at most four suspects and asks twelve questions. Unlocking every key deduction needs at least five suspects (`minimumSuspectCover`), so no lone player can unlock them all. A three-player team has twelve interviews. Without link 7 the minimum would be four, because Hugo, Milo and Wren each source two key deductions, and so do Cora, Nell and Tess.
 

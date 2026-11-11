@@ -91,6 +91,14 @@ test('clock follows the story',()=>{
   });
   assert.equal(s.g.view(s.a.code,s.a.token).clock.hoursLeft,0);
 });
+test('clock follows the case start',()=>{
+  const times=caseData=>{const g=new GameService({caseData,catalog:CASES}),a=g.create('A',caseData.id,id());g.join(a.code,'B',id());g.join(a.code,'C',id());
+    const act=(type,data={})=>g.act(a.code,a.token,{id:id(),type,...data});act('start');const seen=[];
+    for(let round=1;round<=4;round++){const {clock}=g.view(a.code,a.token);seen.push([clock.time,clock.crimeAt]);act('advance',{round,confirmed:true});}
+    return seen;};
+  assert.deepEqual(times(TRAIN_CASE),[['20:00','20:00'],['02:00','20:00'],['08:00','20:00'],['14:00','20:00']]);
+  assert.deepEqual(times({...TRAIN_CASE,clockStart:'18:00'}),[['18:00','18:00'],['00:00','18:00'],['06:00','18:00'],['12:00','18:00']]);
+});
 test('same topic may be asked twice',()=>{
   const s=setup();s.act(s.a,'start');
   s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[0].id,round:1});
