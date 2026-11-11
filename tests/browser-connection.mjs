@@ -1,0 +1,64 @@
+// Synthetic connection failures only. No production accounts or external services.
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+import {createServer} from '../server/http.mjs';
+import {createApi} from '../server/api.mjs';
+import {DurableGame} from '../server/persistent-game.mjs';
+import {Sessions} from '../server/sessions.mjs';
+import {MemoryStore} from '../server/storage/memory.mjs';
+import {TRAIN_CASE,CASES} from './fixtures/case.mjs';
+const store=new MemoryStore();let api;
+const server=createServer({api:(...args)=>api(...args),origin:'http://127.0.0.1'});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const origin=`http://127.0.0.1:${server.address().port}`;
+api=createApi({game:new DurableGame({store,caseData:TRAIN_CASE,catalog:CASES}),sessions:new Sessions({store,secure:false}),allowedOrigin:origin,rateLimit:async()=>{}});
+const browser=await chromium.launch({headless:true});
+try{
+ const errors=[],inviteContext=await browser.newContext({viewport:{width:320,height:800}}),invite=await inviteContext.newPage();
+ invite.on('pageerror',error=>errors.push(error.message));let sessionFailure=true,sessionCalls=0,joins=0;
+ await invite.route('**/api/session',async route=>{sessionCalls++;if(sessionFailure)await route.abort('connectionfailed');else await route.continue();});
+ invite.on('request',request=>{if(request.url().endsWith('/join'))joins++;});
+ await invite.goto(origin+'/#join=ABCD2345');await invite.waitForSelector('#retry-connection');
+ assert.match(await invite.locator('#main').textContent(),/Unable to connect/);
+ assert.equal(await invite.locator('#join-form').count(),0);
+ assert.equal(await invite.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await invite.screenshot({path:'/tmp/shift-recovery-connection-retry-mobile.png',fullPage:true});
+ sessionFailure=false;await invite.locator('#retry-connection').focus();await invite.keyboard.press('Enter');await invite.waitForSelector('#join-name');
+ assert.equal(await invite.inputValue('#join-code'),'ABCD2345');assert.equal(await invite.evaluate(()=>document.activeElement.id),'join-name');
+ assert.equal(sessionCalls,2);assert.equal(joins,0);await inviteContext.close();
+
+ const context=await browser.newContext({viewport:{width:390,height:900}}),page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
+ await page.goto(origin);await page.waitForSelector('#create-name');
+ let dropCreate=true,caseFailure=false,createBodies=[],created;
+ await page.route(url=>url.pathname==='/api/rooms',async route=>{createBodies.push(route.request().postDataJSON());const response=await route.fetch();if(dropCreate){created=await response.json();dropCreate=false;await route.abort('connectionfailed');}else await route.fulfill({response});});
+ await page.route('**/api/cases',async route=>{if(caseFailure)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic catalogue outage'})});else await route.continue();});
+ await page.fill('#create-name','Retry Agent');await page.click('#create-form button');
+ await page.waitForFunction(()=>document.querySelector('#notice')?.textContent.includes('Retry safely'));
+ const originalPending=await page.evaluate(()=>sessionStorage.getItem('shift-pending'));assert.ok(originalPending);assert.equal(store.rooms.size,1);assert.equal(createBodies.length,1);
+ caseFailure=true;await page.reload();await page.waitForSelector('#retry-connection');
+ assert.equal(await page.evaluate(()=>sessionStorage.getItem('shift-pending')),originalPending);
+ assert.equal(await page.locator('#create-form').count(),0);assert.equal(createBodies.length,1);
+ caseFailure=false;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('.selectable-code');
+ assert.equal((await page.locator('.selectable-code').textContent()).trim(),created.code);assert.equal(store.rooms.size,1);
+ assert.deepEqual(createBodies,[JSON.parse(originalPending).body,JSON.parse(originalPending).body]);
+ assert.equal(await page.evaluate(()=>sessionStorage.getItem('shift-pending')),null);
+ const originalSession=await page.evaluate(()=>localStorage.getItem('shift-session'));
+ assert.equal(JSON.parse(originalSession).playerId,created.playerId);
+
+ let roomFailure=true,bootstrapCalls=0,releaseBootstrap,startedBootstrap,holdBootstrap=false,holdRoom=false,releaseRoom,startedRoom;
+ await page.route(url=>url.pathname===`/api/rooms/${created.code}`,async route=>{if(roomFailure)await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic room read outage'})});else{if(holdRoom){startedRoom();await new Promise(resolve=>releaseRoom=resolve);}await route.continue();}});
+ await page.route('**/api/session',async route=>{bootstrapCalls++;if(holdBootstrap){startedBootstrap();await new Promise(resolve=>releaseBootstrap=resolve);}await route.continue();});
+ await page.reload();await page.waitForSelector('#retry-connection');
+ assert.equal(await page.evaluate(()=>localStorage.getItem('shift-session')),originalSession);
+ assert.equal(await page.locator('#create-form').count(),0);
+ roomFailure=false;holdBootstrap=true;holdRoom=true;const callsBefore=bootstrapCalls,started=new Promise(resolve=>startedBootstrap=resolve),restoring=new Promise(resolve=>startedRoom=resolve);
+ await page.click('#retry-connection');await started;await page.waitForFunction(()=>document.querySelector('#retry-connection')?.disabled);
+ await page.evaluate(()=>{window.dispatchEvent(new Event('online'));window.dispatchEvent(new Event('online'));window.dispatchEvent(new PopStateEvent('popstate'));document.querySelector('#retry-connection').click();});
+ assert.equal(await page.locator('#create-form').count(),0);
+ assert.equal(bootstrapCalls,callsBefore+1);releaseBootstrap();await restoring;await page.evaluate(()=>window.dispatchEvent(new PopStateEvent('popstate')));assert.equal(await page.locator('#create-form').count(),0);holdRoom=false;releaseRoom();
+ await page.waitForSelector('.selectable-code');assert.equal(bootstrapCalls,callsBefore+1);
+ assert.equal(await page.evaluate(()=>localStorage.getItem('shift-session')),originalSession);assert.equal(store.rooms.size,1);assert.equal(createBodies.length,2);
+ assert.equal(await page.evaluate(()=>document.activeElement.id),'main');
+ assert.deepEqual(errors,[]);
+ console.log('PASS: initial session/catalogue/room-read recovery, keyboard retry, invite preservation, duplicate-event guard, exact pending replay and unchanged saved identity.');
+}finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
