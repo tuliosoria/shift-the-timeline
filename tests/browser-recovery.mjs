@@ -56,6 +56,34 @@ try {
  assert.equal(await pages[2].locator('#dossier-detail h2').textContent(),selectedDossier);
  assert.equal((await pages[2].evaluate(async code=>(await fetch(`/api/rooms/${code}`)).json(),code)).me.interviews.length,0);
  await pages[2].screenshot({path:'/tmp/shift-recovery-dossier-discovery-mobile.png',fullPage:true});
+ // Read adjacent matching dossiers without scrolling back through the whole list.
+ assert.equal(await pages[2].locator('[data-action=browse-dossier][data-id=previous]').isDisabled(),true);
+ await pages[2].locator('[data-action=browse-dossier][data-id=next]').focus();
+ await pages[2].keyboard.press('Enter');
+ assert.equal(await pages[2].locator('#dossier-detail h2').textContent(),'Character 2');
+ assert.equal(await pages[2].evaluate(()=>document.activeElement.id),'dossier-detail');
+ assert.match(await pages[2].locator('.dossier-position').textContent(),/Dossier 2 of 14 matching/);
+ await pages[2].click('[data-action=return-to-suspects]');
+ assert.equal(await pages[2].evaluate(()=>document.activeElement.dataset.id),'suspect-2');
+ const cardPosition=await pages[2].locator('[data-action=dossier][data-id="suspect-2"]').boundingBox();
+ assert.ok(cardPosition.y>=0&&cardPosition.y+cardPosition.height<=900);
+ await pages[2].keyboard.press('Enter');
+ await pages[2].click('[data-action=browse-dossier][data-id=previous]');
+ assert.equal(await pages[2].locator('#dossier-detail h2').textContent(),'Character 0');
+ for(const width of [320,390,1440]){await pages[2].setViewportSize({width,height:900});assert.equal(await pages[2].evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
+ await pages[2].setViewportSize({width:390,height:900});
+ await pages[2].locator('#dossier-detail').screenshot({path:'/tmp/shift-recovery-dossier-browsing-mobile.png'});
+ await pages[2].fill('#suspect-search','Character 14');
+ assert.match(await pages[2].locator('.dossier-position').textContent(),/outside your current filters/);
+ assert.equal(await pages[2].locator('[data-action=browse-dossier][data-id=previous]').isDisabled(),true);
+ assert.equal(await pages[2].locator('[data-action=browse-dossier][data-id=next]').isDisabled(),true);
+ await pages[2].click('[data-action=return-to-suspects]');
+ assert.equal(await pages[2].evaluate(()=>document.activeElement.id),'suspect-search');
+ await pages[2].click('[data-action=dossier][data-id="suspect-14"]');
+ assert.match(await pages[2].locator('.dossier-position').textContent(),/Dossier 1 of 1 matching/);
+ assert.equal(await pages[2].locator('[data-action=browse-dossier][data-id=next]').isDisabled(),true);
+ assert.equal((await pages[2].evaluate(async code=>(await fetch(`/api/rooms/${code}`)).json(),code)).me.interviews.length,0);
+
  await pages[2].click('[data-action=clear-suspect-search]');
 
  // Inject only a synthetic completed voice into the in-memory fixture: no provider or external API.

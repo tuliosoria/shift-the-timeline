@@ -28,3 +28,5 @@ dialog{max-width:min(560px,calc(100vw - 32px));width:100%;max-height:calc(100dvh
 .case-debrief{margin:2rem 0;padding:1rem;border:1px solid var(--line);border-radius:12px;min-width:0}.case-debrief>summary{font-weight:700}.case-debrief p{white-space:pre-wrap;overflow-wrap:anywhere}.debrief-interview{margin:1rem 0;padding:1rem;border:1px solid var(--line);border-radius:8px}.debrief-interview article+article{border-top:1px solid var(--line);margin-top:1rem;padding-top:1rem}
 
 .suspect-results{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:12px 0}.suspect-results p{margin:0;color:var(--muted)}.suspect-results button{min-height:44px}
+
+.dossier-detail>div{min-width:0;flex:1}.dossier-position{font-size:14px;margin-bottom:8px}.dossier-navigation{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}.dossier-navigation button{min-height:44px}
