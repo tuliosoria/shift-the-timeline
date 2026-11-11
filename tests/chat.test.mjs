@@ -83,7 +83,7 @@ test('a reply scrolls to the bottom and is announced once', () => {
   const transcript = $('#transcript');
   transcript.scrollTop = 0;
   view.update(state([message(1), message(2)]));
-  assert.equal(doc.getElementById('announcer').textContent, 'Ben: Reply 2.');
+  assert.equal(doc.getElementById('announcer').textContent, 'Ben, AI reply: Reply 2.');
   assert.equal(transcript.scrollTop, transcript.scrollHeight);
   doc.getElementById('announcer').textContent = '';
   view.update(state([message(1), message(2)]));
@@ -303,4 +303,23 @@ test('confirmed sends do not rehydrate the cleared draft', async () => {
   view.update(state([{...message(1), question: 'Saved before sending?'}]), {draft: ''});
   settle(true); await new Promise(resolve => setTimeout(resolve));
   assert.equal(root.querySelector('#question').value, '');
+});
+
+
+test('new replies do not move a reader and remain reachable after the composer closes', () => {
+  const {doc, view, $} = setup();
+  view.update(state([message(1), message(2), message(3, 'pending')]));
+  const transcript = $('#transcript');
+  transcript.scrollTop = 20;
+  fire(transcript, 'scroll');
+  view.update(state([message(1), message(2), message(3)]));
+  assert.equal(transcript.scrollTop, 20);
+  assert.equal($('.new-reply').hidden, false);
+  assert.equal($('#question'), null);
+  view.update(state([message(1), message(2), message(3)]));
+  assert.equal($('.new-reply').hidden, false, 'polling keeps the unread cue');
+  fire($('.new-reply'), 'click');
+  assert.equal(transcript.scrollTop, transcript.scrollHeight);
+  assert.equal($('.new-reply').hidden, true);
+  assert.equal(doc.activeElement, transcript, 'focus is not stranded on a hidden button');
 });

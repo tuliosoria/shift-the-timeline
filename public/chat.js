@@ -25,7 +25,7 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
   };
   const hold = () => { const i = interview(); return !i || i.closed || i.messages.at(-1)?.status === 'pending' || !!local.busy || !!optimistic(); };
 
-  function scrollToEnd() { if (refs) { refs.transcript.scrollTop = refs.transcript.scrollHeight; stick = true; } }
+  function scrollToEnd() { if (refs) { refs.transcript.scrollTop = refs.transcript.scrollHeight; stick = true; refs.newReply.hidden = true; } }
   function fit() {
     const field = refs?.field;
     if (!field) return;
@@ -46,11 +46,12 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
 
   function build() {
     root.innerHTML = views.renderChat(state, {...local, draft});
-    refs = {head: root.querySelector('.chead'), transcript: root.querySelector('#transcript'), foot: root.querySelector('.cfoot'),
+    refs = {head: root.querySelector('.chead'), transcript: root.querySelector('#transcript'), newReply: root.querySelector('.new-reply'), foot: root.querySelector('.cfoot'),
       field: root.querySelector('#question'), send: root.querySelector('.send'), chips: root.querySelectorAll('.chip')};
     refs.transcript.addEventListener('scroll', () => {
       const t = refs.transcript;
       stick = t.scrollHeight - t.scrollTop - t.clientHeight < NEAR_BOTTOM;
+      if (stick) refs.newReply.hidden = true;
     });
     ended = !refs.field;
     head = views.renderChatHead(state, local);
@@ -72,11 +73,16 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
     const replied = i.messages.filter(m => m.status !== 'pending');
     let arrived = false;
     if (!announced) announced = new Set(replied.map(m => m.id));
-    for (const m of replied) if (!announced.has(m.id)) { announced.add(m.id); arrived = true; announce(`${views.firstName(suspectName())}: ${m.reply}`); }
+    for (const m of replied) if (!announced.has(m.id)) { announced.add(m.id); arrived = true; announce(`${views.firstName(suspectName())}, ${views.replyProvenance(m)}: ${m.reply}`); }
     if (next !== html) {
       html = next;
+      const scrollTop = refs.transcript.scrollTop;
       refs.transcript.innerHTML = next;
-      if (stick || arrived) scrollToEnd();
+      if (stick) scrollToEnd();
+      else {
+        refs.transcript.scrollTop = scrollTop;
+        if (arrived) refs.newReply.hidden = false;
+      }
     }
     if (!ended && views.chatEnded(state, local)) {
       const focused = doc.activeElement === refs.field;
@@ -134,7 +140,14 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
     mousedown(event) { if (refs?.field && event.target.closest?.('.cfoot') && event.target.id !== 'question') event.preventDefault(); },
     click(event) {
       const button = event.target.closest?.('button');
-      if (!button || button.disabled || !refs?.field) return;
+      if (!button || button.disabled) return;
+      if (button.classList.contains('new-reply')) {
+        scrollToEnd();
+        // Keep a keyboard user's focus in the transcript when their button disappears.
+        refs.transcript.focus({preventScroll: true});
+        return;
+      }
+      if (!refs?.field) return;
       if (button.classList.contains('send')) send(refs.field.value);
       else if (button.dataset.chip) { refs.field.value = button.dataset.chip; send(button.dataset.chip); }
     },

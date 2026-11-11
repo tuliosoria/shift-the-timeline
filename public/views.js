@@ -194,6 +194,12 @@ const chatParts = (state, local) => {
   return {interview, s: suspect(state, interview?.suspectId), q: maxQuestions(state), pending: pendingLast(interview)};
 };
 export const typingLabel = name => `${firstName(name)} is replying`;
+// Describe how this particular answer was produced, not merely the room's configured mode.
+export function replyProvenance(message) {
+  const source = message.status === 'canonical' ? 'Scripted answer' : 'AI reply';
+  const count = new Set(message.unlocked ?? []).size;
+  return source + (count ? ` · ${plural(count, 'new deduction')}` : '');
+}
 
 export function renderChatHead(state, local) {
   const {interview, s, q} = chatParts(state, local), asked = interview.messages.length;
@@ -204,7 +210,7 @@ export function renderTranscript(state, local) {
   const {interview, s} = chatParts(state, local);
   const bubbles = interview.messages.map(m => `<li class="b me">${esc(m.question)}</li>${m.status === 'pending'
     ? `<li class="typing" role="img" aria-label="${esc(typingLabel(s?.name))}"><i></i><i></i><i></i></li>`
-    : `<li class="b them">${esc(m.reply)}</li>`}`).join('');
+    : `<li class="b them"><small class="reply-source">${esc(replyProvenance(m))}</small>${esc(m.reply)}</li>`}`).join('');
   return `<li class="sys">Turn ${interview.round} · only you can see this conversation</li>${interview.opening ? `<li class="b them">${esc(interview.opening)}</li>` : ''}${bubbles}`;
 }
 
@@ -221,7 +227,8 @@ export function renderChatFooter(state, local) {
 export function renderChat(state, local) {
   return `<section class="screen chat">
 <div class="chead">${renderChatHead(state, local)}</div>
-<ol id="transcript" class="msgs">${renderTranscript(state, local)}</ol>
+<ol id="transcript" class="msgs" aria-label="Private interview" tabindex="0">${renderTranscript(state, local)}</ol>
+<button type="button" class="new-reply" hidden aria-controls="transcript">New reply ↓</button>
 <div class="cfoot">${renderChatFooter(state, local)}</div>
 </section>`;
 }
@@ -333,7 +340,7 @@ function renderInterviewReview(state, interview, notebook, draft, persistent = t
 <p class="eyebrow">Private interview · Turn ${interview.round}</p><h1 class="title" id="review-title" tabindex="-1">${esc(s?.name)}</h1>
 <p class="sub">Read-only · reviewing uses no questions. Return to ${state.phase === 'reveal' ? 'Outcome' : state.phase === 'accusation' ? 'Summon' : 'Investigate'} when you are ready.</p>
 ${source ? `<aside class="source-note"><b>Source for your deduction</b><p>${esc(source.text)}</p></aside>` : ''}
-<ol class="review-transcript">${interview.opening ? `<li class="b them"><small>${esc(s?.name)}</small>${esc(interview.opening)}</li>` : ''}${interview.messages.map((m, n) => `<li class="review-exchange${m.id === notebook.message ? ' source-answer' : ''}" id="review-message-${esc(m.id)}" tabindex="-1"><p class="b me"><small>You · Question ${n + 1}</small>${esc(m.question)}</p><p class="b them"><small>${esc(s?.name)}${m.status === 'canonical' ? ' · Scripted answer' : ''}</small>${m.status === 'pending' ? 'Reply pending. This conversation will update when it arrives.' : esc(m.reply)}</p></li>`).join('')}</ol>
+<ol class="review-transcript">${interview.opening ? `<li class="b them"><small>${esc(s?.name)}</small>${esc(interview.opening)}</li>` : ''}${interview.messages.map((m, n) => `<li class="review-exchange${m.id === notebook.message ? ' source-answer' : ''}" id="review-message-${esc(m.id)}" tabindex="-1"><p class="b me"><small>You · Question ${n + 1}</small>${esc(m.question)}</p><p class="b them"><small>${esc(s?.name)}${m.status !== 'pending' ? ' · ' + esc(replyProvenance(m)) : ''}</small>${m.status === 'pending' ? 'Reply pending. This conversation will update when it arrives.' : esc(m.reply)}</p></li>`).join('')}</ol>
 ${draft ? `<aside class="saved-draft"><h2 class="label">Unsent draft · Turn ${interview.round}</h2><p>${esc(draft)}</p><p class="sub">${persistent ? 'Saved on this browser.' : 'Only in this open tab. Storage is unavailable; reloading will lose this draft.'} This text was never sent.</p></aside>` : ''}
 </section>`;
 }
