@@ -27,6 +27,37 @@ try {
  // Canonical topics remain private and repeat attempts cannot waste a slot.
  await act(pages[1],'select',{round:1,suspectId:'suspect-1'});
  await act(pages[1],'ask',{round:1,question:'Where were you?',topic:'alibi'});
+ // Find public profile details and spread interviews without reading private answers.
+ await pages[2].waitForSelector('#suspect-search');
+ await pages[2].fill('#suspect-search','  DEVELOPMENT  ');
+ assert.equal(await pages[2].inputValue('#suspect-search'),'  DEVELOPMENT  ');
+ assert.equal(await pages[2].evaluate(()=>document.activeElement.id),'suspect-search');
+ await pages[2].selectOption('#suspect-filter','unassigned');
+ await pages[2].waitForFunction(()=>document.querySelector('#suspect-results')?.textContent==='14 of 15 public dossiers');
+ assert.equal(await pages[2].locator('[data-action=dossier][data-id="suspect-1"]').count(),0);
+ await pages[2].fill('#suspect-search','<img onerror=globalThis.searchExecuted=true>');
+ assert.equal(await pages[2].locator('#suspect-results').textContent(),'0 of 15 public dossiers');
+ assert.match(await pages[2].locator('.suspect-grid').textContent(),/No public dossiers match/);
+ assert.equal(await pages[2].evaluate(()=>globalThis.searchExecuted===true),false);
+ await pages[2].click('[data-action=clear-suspect-search]');
+ assert.equal(await pages[2].evaluate(()=>document.activeElement.id),'suspect-search');
+ assert.equal(await pages[2].inputValue('#suspect-search'),'');
+ assert.equal(await pages[2].inputValue('#suspect-filter'),'all');
+ assert.equal(await pages[2].locator('#suspect-results').textContent(),'15 of 15 public dossiers');
+ for(const width of [320,390,1440]){await pages[2].setViewportSize({width,height:900});await pages[2].fill('#suspect-search','development');assert.equal(await pages[2].evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);}
+ await pages[2].setViewportSize({width:390,height:900});
+ await pages[2].selectOption('#suspect-filter','unassigned');
+ await pages[2].locator('[data-action=dossier]').first().click();
+ const selectedDossier=await pages[2].locator('#dossier-detail h2').textContent();
+ await pages[2].locator('[data-stage=deduce]').first().click();
+ await pages[2].locator('[data-stage=analyse]').first().click();
+ assert.equal(await pages[2].inputValue('#suspect-search'),'development');
+ assert.equal(await pages[2].inputValue('#suspect-filter'),'unassigned');
+ assert.equal(await pages[2].locator('#dossier-detail h2').textContent(),selectedDossier);
+ assert.equal((await pages[2].evaluate(async code=>(await fetch(`/api/rooms/${code}`)).json(),code)).me.interviews.length,0);
+ await pages[2].screenshot({path:'/tmp/shift-recovery-dossier-discovery-mobile.png',fullPage:true});
+ await pages[2].click('[data-action=clear-suspect-search]');
+
  // Inject only a synthetic completed voice into the in-memory fixture: no provider or external API.
  const inventedVoice='FABRICATED VOICE: an invented witness contradicts the record. <img src=x onerror="globalThis.voiceExecuted=true">';
  const fixtureRoom=store.rooms.get(code),fixturePlayer=fixtureRoom.players.find(p=>p.name==='Agent 1');
