@@ -1,57 +1,65 @@
-const KEY = 'shift-ui-v1';
-export const STAGES = Object.freeze(['analyse', 'interrogate', 'deduce']);
-const emptyCorrelation = () => ({sources: [], relation: 'related', text: ''});
-const copy = value => JSON.parse(JSON.stringify(value));
-const identity = c => typeof c?.room === 'string' && typeof c?.player === 'string' && Number.isInteger(c?.round) && typeof c?.phase === 'string';
-const contextKey = (c, field) => JSON.stringify([c.room, c.player, c.round, c.phase, ['question','questionTopic'].includes(field) ? c.suspect ?? null : null, field]);
-function cleanValue(field, value) {
-  if (field === 'questionTopic') return ['alibi','clue','motive','relationship'].includes(value) ? value : '';
-  if (field === 'stage') return STAGES.includes(value) ? value : 'analyse';
-  if (field === 'question' || field === 'note') return typeof value === 'string' ? value.slice(0, 10000) : '';
-  if (field === 'correlation') return value && typeof value === 'object' && !Array.isArray(value) ? {
-    sources: Array.isArray(value.sources) ? value.sources.slice(0, 2).map(s => s && ['case', 'suspect', 'clue'].includes(s.kind) && typeof s.id === 'string' ? {kind: s.kind, id: s.id} : null) : [],
-    relation: ['related', 'supports', 'contradicts'].includes(value.relation) ? value.relation : 'related',
-    text: typeof value.text === 'string' ? value.text.slice(0, 10000) : '',
-  } : emptyCorrelation();
-  return null;
-}
+// Client-only memory: unsent question drafts per interview and the "seen" flags
+// (briefing, last turn transition) per room and player. Nothing here is sent to the server.
+const KEY = 'shift-ui-v2';
+const MAX_DRAFT = 10000;
+const unseen = () => ({briefingSeen: false, lastSeenRound: 0});
+const draftKey = c => JSON.stringify([c.room, c.player, c.round, c.suspect ?? null]);
+const seenKey = (room, player) => JSON.stringify([room, player]);
+const validDraftContext = c => typeof c?.room === 'string' && typeof c?.player === 'string' && Number.isInteger(c?.round);
+const cleanSeen = s => ({briefingSeen: s?.briefingSeen === true, lastSeenRound: Number.isInteger(s?.lastSeenRound) && s.lastSeenRound >= 0 ? s.lastSeenRound : 0});
+
 export function uiContext(state) {
   if (!state?.me) return null;
   return {room: state.code, player: state.me.id, round: state.round, phase: state.phase,
     suspect: state.me.interviews?.find(i => i.round === state.round)?.suspectId ?? null};
 }
+
 export function createUiState(storage) {
   let persistent = true;
-  const records = new Map();
+  const drafts = new Map(), seen = new Map();
   try {
     const saved = JSON.parse(storage.getItem(KEY) ?? 'null');
-    if (saved?.version === 1 && Array.isArray(saved.records)) for (const record of saved.records) {
-      if (!identity(record.context) || !['stage', 'question', 'questionTopic', 'note', 'correlation'].includes(record.field)) continue;
-      records.set(contextKey(record.context, record.field), {context: copy(record.context), field: record.field, value: cleanValue(record.field, record.value)});
+    if (saved?.version === 2) {
+      for (const d of Array.isArray(saved.drafts) ? saved.drafts : []) {
+        if (validDraftContext(d?.context) && typeof d.value === 'string') {
+          const context = {room: d.context.room, player: d.context.player, round: d.context.round, suspect: typeof d.context.suspect === 'string' ? d.context.suspect : null};
+          drafts.set(draftKey(context), {context, value: d.value.slice(0, MAX_DRAFT)});
+        }
+      }
+      for (const s of Array.isArray(saved.seen) ? saved.seen : []) {
+        if (typeof s?.room === 'string' && typeof s?.player === 'string') seen.set(seenKey(s.room, s.player), {room: s.room, player: s.player, ...cleanSeen(s)});
+      }
     }
   } catch { persistent = false; }
   function persist() {
-    try { storage.setItem(KEY, JSON.stringify({version: 1, records: [...records.values()]})); }
+    try { storage.setItem(KEY, JSON.stringify({version: 2, drafts: [...drafts.values()], seen: [...seen.values()]})); }
     catch { persistent = false; }
-  }
-  function get(c, field) { return copy(records.get(contextKey(c, field))?.value ?? (field === 'stage' ? 'analyse' : field === 'correlation' ? emptyCorrelation() : '')); }
-  function put(c, field, value) {
-    if (!identity(c)) return;
-    records.set(contextKey(c, field), {context: {...c, suspect: ['question','questionTopic'].includes(field) ? c.suspect ?? null : null}, field, value: cleanValue(field, value)});
-    persist();
   }
   return {
     get persistent() { return persistent; },
-    read(c) { return identity(c) ? {stage: get(c, 'stage'), question: get(c, 'question'), questionTopic: get(c, 'questionTopic'), note: get(c, 'note'), correlation: get(c, 'correlation')} : {stage: 'analyse', question: '', questionTopic: '', note: '', correlation: emptyCorrelation()}; },
-    writeDraft(c, field, value) { if (['question', 'questionTopic', 'note', 'correlation'].includes(field)) put(c, field, value); },
-    setStage(c, stage) { if (STAGES.includes(stage)) put(c, 'stage', stage); },
-    clearMatchingDraft(c, field, value) {
-      if (identity(c) && JSON.stringify(get(c, field)) === JSON.stringify(cleanValue(field, value))) { records.delete(contextKey(c, field)); persist(); }
+    draft(c) { return validDraftContext(c) ? drafts.get(draftKey(c))?.value ?? '' : ''; },
+    writeDraft(c, value) {
+      if (!validDraftContext(c)) return;
+      const text = typeof value === 'string' ? value.slice(0, MAX_DRAFT) : '';
+      if (text) drafts.set(draftKey(c), {context: {room: c.room, player: c.player, round: c.round, suspect: c.suspect ?? null}, value: text});
+      else drafts.delete(draftKey(c));
+      persist();
     },
-    recoverable(c) {
-      if (!identity(c)) return [];
-      return [...records.values()].filter(r => r.context.room === c.room && r.context.player === c.player && (r.context.round !== c.round || r.context.phase !== c.phase) && !['stage','questionTopic'].includes(r.field) && (r.field === 'correlation' ? r.value.text : r.value)).map(r => ({round: r.context.round, phase: r.context.phase, suspect: r.context.suspect, field: r.field, value: copy(r.value)}));
+    // Clears the draft only if it still holds what was sent, so a late acknowledgement never erases newer typing.
+    clearMatchingDraft(c, sent) { if (validDraftContext(c) && drafts.get(draftKey(c))?.value === sent) { drafts.delete(draftKey(c)); persist(); } },
+    seen(room, player) { const s = seen.get(seenKey(room, player)); return s ? cleanSeen(s) : unseen(); },
+    markSeen(room, player, {briefingSeen, lastSeenRound} = {}) {
+      if (typeof room !== 'string' || typeof player !== 'string') return;
+      const current = this.seen(room, player);
+      seen.set(seenKey(room, player), {room, player,
+        briefingSeen: current.briefingSeen || briefingSeen === true,
+        lastSeenRound: Number.isInteger(lastSeenRound) ? Math.max(current.lastSeenRound, lastSeenRound) : current.lastSeenRound});
+      persist();
     },
-    forget(room, player) { for (const [key, r] of records) if (r.context.room === room && r.context.player === player) records.delete(key); persist(); },
+    forget(room, player) {
+      for (const [key, d] of drafts) if (d.context.room === room && d.context.player === player) drafts.delete(key);
+      seen.delete(seenKey(room, player));
+      persist();
+    },
   };
 }

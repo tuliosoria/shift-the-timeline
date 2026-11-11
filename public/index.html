@@ -2,30 +2,32 @@
 <html lang="en-GB">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#0d1722">
-<meta name="description" content="A crime foretold. Fifteen suspects. Three rounds to change the timeline. A cooperative investigation game.">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="A crime foretold. Question the suspects on your phone and summon the killer before it happens. A party game for 3–4 players.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SHIFT">
 <title>SHIFT: The Timeline</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
 <link rel="stylesheet" href="/style.css">
 <script type="module" src="/app.js"></script>
-<script type="module" src="/case-films.js"></script>
 </head>
 <body>
-<a href="#main" class="skip">Skip to the investigation</a>
+<video id="backdrop" autoplay muted loop playsinline disablepictureinpicture aria-hidden="true" tabindex="-1" poster="/assets/films/train.webp"></video>
+<div class="veil" aria-hidden="true"></div>
+<div id="app">
 <header id="header"></header>
+<main id="main" tabindex="-1"><p class="loading">Connecting to the Bureau…</p></main>
+<div id="tabbar"></div>
+</div>
 <div id="notice" role="status" aria-live="polite"></div>
-<div id="storage-notice" role="status" aria-live="polite"></div>
+<div id="toasts" role="status" aria-live="polite"></div>
 <div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
-<main id="main" tabindex="-1"><p class="loading">Connecting to the Temporal Investigation Bureau…</p></main>
-<footer><span>SHIFT / THE TIMELINE</span><span>FIXED CASE EVIDENCE · PRIVATE INTERVIEWS</span></footer>
-<dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><div id="confirm-body"></div><div class="dialog-actions"><button id="confirm-cancel" class="secondary">Cancel</button><button id="confirm-accept" class="primary" data-submit>Confirm</button></div></dialog>
-<dialog id="film-dialog" class="film-dialog" aria-labelledby="film-title" aria-describedby="film-description">
-<div class="film-heading"><div><p class="eyebrow">A GLIMPSE OF THE TIMELINE</p><h2 id="film-title">Case films</h2></div><button id="film-close" class="secondary" type="button" autofocus>Close films</button></div>
-<video id="case-film-video" controls muted playsinline preload="none" width="960" height="540" aria-labelledby="film-title" aria-describedby="film-description"></video>
-<p id="film-description"></p>
-<p class="muted">Atmosphere only. These films contain no case evidence. Sound starts muted; use the player controls to listen.</p>
-<div class="film-choices" role="group" aria-label="Choose a scene"><button type="button" data-film-choice="train">The night train</button><button type="button" data-film-choice="pocket-watch">The pocket watch</button><button type="button" data-film-choice="corridor">The empty corridor</button></div>
-<p id="film-status" role="status" aria-live="polite"></p>
-</dialog>
+<dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><div id="confirm-body"></div><div class="dialog-actions"><button type="button" id="confirm-cancel" class="btn ghost">Cancel</button><button type="button" id="confirm-accept" class="btn" data-submit>Confirm</button></div></dialog>
 </body>
 </html>
