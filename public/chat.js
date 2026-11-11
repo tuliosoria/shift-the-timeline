@@ -167,6 +167,9 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
       state = next;
       local = nextLocal;
       if (!interview()) return;
+      // A rejected command can restore its saved draft after this chat was remounted.
+      // Hydrate only an empty composer; polling must never replace newer local typing.
+      if (refs?.field && !refs.field.value && local.draft) { refs.field.value = local.draft; fit(); }
       if (refs) refresh(); else build();
     },
     destroy() {

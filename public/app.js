@@ -138,7 +138,14 @@ async function run(work) {
     if (error.status === 503 && roomGone(error)) {
       if (work.entry) { pending = null; store.remove(PENDING); notice(ROOM_EXPIRED, true); }
       else { resetSession(); notice(ROOM_EXPIRED, true); }
-    } else if (error.status && error.status < 500 && error.status !== 429) { pending = null; store.remove(PENDING); notice(error.message, true); }
+    } else if (error.status && error.status < 500 && error.status !== 429) {
+      pending = null; store.remove(PENDING);
+      // The command owns recovery: the original chat may have been unmounted by a tab
+      // change or reload. A definite rejection must not discard the question, but never
+      // replace newer typing in this interview. Ambiguous failures keep the held retry.
+      if (work.action?.type === 'ask' && !ui.draft(work.context)) ui.writeDraft(work.context, work.action.question);
+      notice(error.message, true);
+    }
     else notice(error.status === 429 ? error.message : 'Connection lost. Your action may have arrived. Retry safely: it will not be sent twice.', true);
     render();
     return false;
