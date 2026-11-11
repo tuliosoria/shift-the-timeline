@@ -11,7 +11,7 @@ import {validateCase} from '../server/case-loader.mjs';
 import {PROPOSED_LIMITS} from '../server/ai/budget.mjs';
 import {TRAIN_CASE,CASES} from './fixtures/case.mjs';
 const env={SHIFT_RUNTIME:'azure',NODE_ENV:'production',SHIFT_ORIGIN:'https://shift.example',SHIFT_PG_HOST:'shift.postgres.database.azure.com',SHIFT_PG_USER:'shift_app',SHIFT_PG_DATABASE:'shift',SHIFT_CASE_FILE:'/private/case.json',SHIFT_CASE_SHA256:'a'.repeat(64)};
-const policy={...PROPOSED_LIMITS,model:'synthetic-model',inputRate:1,outputRate:2};
+const policy={...PROPOSED_LIMITS,model:'synthetic-model',inputRate:0.4,outputRate:1.6};
 const ready=()=>Object.assign(new MemoryStore(),{checkReady:async()=>true,cleanupExpired:async()=>0});
 const request=(path,body,headers={})=>new Request(`${env.SHIFT_ORIGIN}${path}`,body===undefined?{}:{method:'POST',headers:{origin:env.SHIFT_ORIGIN,'content-type':'application/json',...headers},body:JSON.stringify(body)});
 const setup=(changes={},store=ready(),fetchImpl=()=>{throw new Error('Unexpected provider call');})=>createAzureRuntime({env:{...env,...changes},store,loadCaseImpl:async()=>validateCase({caseData:TRAIN_CASE,catalog:CASES}),fetchImpl});
