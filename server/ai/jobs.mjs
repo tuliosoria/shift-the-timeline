@@ -8,8 +8,10 @@ const DAY=86400000,FINAL=new Set(['complete','fallback']);
 const write=(key,before,patch)=>({key,expectedVersion:before?.version??null,value:{...before,...patch,version:(before?.version??0)+1}});
 const jobKey=id=>`AIJOB#${id}`;
 const guardKey=key=>`AIBUDGET#GUARD#${key}`;
-function validGuard(value,key){if(!value||value.kind!=='budget_guard'||value.budgetKey!==key||value.version!==1)throw new Error('AI budget initialization guard missing or corrupt');return value;}
-function validBudget(value){if(!value||!Number.isSafeInteger(value.version)||value.version<1||!Number.isSafeInteger(value.usedMicroUsd)||value.usedMicroUsd<0)throw new Error('AI budget record missing or corrupt');return value;}
+// Budget state that is missing or corrupt, as opposed to a store that could not be read.
+class BudgetStateError extends Error{}
+function validGuard(value,key){if(!value||value.kind!=='budget_guard'||value.budgetKey!==key||value.version!==1)throw new BudgetStateError('AI budget initialization guard missing or corrupt');return value;}
+function validBudget(value){if(!value||!Number.isSafeInteger(value.version)||value.version<1||!Number.isSafeInteger(value.usedMicroUsd)||value.usedMicroUsd<0)throw new BudgetStateError('AI budget record missing or corrupt');return value;}
 function target(room,job,now){if(!room||room.expiresAt<=now||room.createdAt+DAY<=now||room.caseVersion!==job.caseVersion)return null;const player=room.players.find(p=>p.id===job.playerId),interview=player?.interviews.find(i=>i.round===job.round),message=interview?.messages.find(m=>m.id===job.messageId);return message?{player,interview,message}:null;}
 // A reply still lands after its turn closed or advanced; it only needs the question to be unresolved.
 function current(room,job,now){const t=target(room,job,now);return t?.message.status==='pending'?t:null;}
@@ -74,7 +76,7 @@ export class AiJobs {
   const job=await this.store.getAi(jobKey(claim.id));if(!job||job.status!=='leased'||job.fence!==claim.fence||job.leaseUntil<=this.now()||job.deadline<=this.now())return false;
   if(job.model!==this.policy.model||job.rates?.inputRate!==this.policy.inputRate||job.rates?.outputRate!==this.policy.outputRate||job.reservedMicroUsd!==this.reserve)return false;
   const room=await this.store.getRoom(job.code);if(!current(room,job,this.now()))return false;
-  const budgetChecks=[];for(const key of job.budgetKeys){const balance=validBudget(await this.store.getAi(key)),guard=validGuard(await this.store.getAi(guardKey(key)),key);if(balance.usedMicroUsd<job.reservedMicroUsd)throw new Error('AI budget invariant violated');budgetChecks.push({key,expectedVersion:balance.version},{key:guardKey(key),expectedVersion:guard.version});}
+  const budgetChecks=[];for(const key of job.budgetKeys){const balance=validBudget(await this.store.getAi(key)),guard=validGuard(await this.store.getAi(guardKey(key)),key);if(balance.usedMicroUsd<job.reservedMicroUsd)throw new BudgetStateError('AI budget invariant violated');budgetChecks.push({key,expectedVersion:balance.version},{key:guardKey(key),expectedVersion:guard.version});}
   const slots=await this.store.getAi('AISLOTS#GLOBAL'),now=this.now();if(job.leaseUntil<=now||job.deadline<=now)return false;
   const active=(slots?.active??[]).filter(s=>s.until>now);if(active.length>=this.policy.maxConcurrent)return false;
   active.push({id:job.id,fence:job.fence,until:now+60000});
@@ -89,13 +91,17 @@ export class AiJobs {
   const job=await this.store.getAi(jobKey(claim.id));if(!job)return {status:'missing'};if(FINAL.has(job.status))return {status:job.status};if(claim.fence!==job.fence)return {status:'stale'};
   const now=this.now(),room=await this.store.getRoom(job.code),visible=current(room,job,now),started=job.status==='provider_started';
   if(result.reply&&!started)return {status:'stale'};
-  const completed=!!result.reply&&!!visible&&now<job.deadline;
   if(result.actualMicroUsd>job.reservedMicroUsd)throw new Error('Provider cost exceeds reservation');
-  const uncertain=started&&!completed||!!result.costUncertain;
+  // Missing or corrupt budget state never yields a refund: the reservation stays charged and the slot is kept.
+  // The question is still resolved canonically, so a player is never left waiting. Store read failures still throw and are retried.
+  const balances=[];let budgetOk=true;
+  try{for(const key of job.budgetKeys)balances.push(validBudget(await this.store.getAi(key)));for(const key of job.budgetKeys)validGuard(await this.store.getAi(guardKey(key)),key);if(balances.some(b=>b.usedMicroUsd<job.reservedMicroUsd))throw new BudgetStateError('AI budget invariant violated');}
+  catch(error){if(!(error instanceof BudgetStateError))throw error;budgetOk=false;}
+  const completed=budgetOk&&!!result.reply&&!!visible&&now<job.deadline;
+  const uncertain=!budgetOk||started&&!completed||!!result.costUncertain;
   const charge=completed?result.actualMicroUsd:uncertain?job.reservedMicroUsd:0,refund=job.reservedMicroUsd-charge;
-  const balances=[];for(const key of job.budgetKeys)balances.push(await this.store.getAi(key));for(const key of job.budgetKeys)validGuard(await this.store.getAi(guardKey(key)),key);for(const b of balances){validBudget(b);if(b.usedMicroUsd<job.reservedMicroUsd)throw new Error('AI budget invariant violated');}
-  const writes=job.budgetKeys.map((k,i)=>write(k,balances[i],{usedMicroUsd:balances[i].usedMicroUsd-refund}));
-  const finished={status:completed?'complete':'fallback',settledMicroUsd:charge,costUncertain:uncertain,finishedAt:now,reason:completed?null:result.reason??'stale_or_late',dueAt:undefined};
+  const writes=budgetOk?job.budgetKeys.map((k,i)=>write(k,balances[i],{usedMicroUsd:balances[i].usedMicroUsd-refund})):[];
+  const finished={status:completed?'complete':'fallback',settledMicroUsd:charge,costUncertain:uncertain,finishedAt:now,reason:completed?null:budgetOk?result.reason??'stale_or_late':'budget_unavailable',dueAt:undefined};
   writes.push(write(jobKey(job.id),job,finished));
   const outbox=await this.store.getAi(`AIOUTBOX#${job.id}`);if(outbox)writes.push(write(`AIOUTBOX#${job.id}`,outbox,{status:'done',dueAt:undefined}));
   const slots=await this.store.getAi('AISLOTS#GLOBAL');if(slots&&!uncertain)writes.push(write('AISLOTS#GLOBAL',slots,{active:slots.active.filter(s=>s.id!==job.id)}));

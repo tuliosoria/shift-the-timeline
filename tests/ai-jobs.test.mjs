@@ -128,10 +128,16 @@ test('durable slots cap provider starts and mismatched model never starts',async
  assert.equal((await mine(other)).status,'canonical');
 });
 
-test('missing or corrupt budget state blocks settlement instead of manufacturing a refund',async()=>{
- const h=await harness();await h.ask();const job=h.jobList()[0],claim=await h.jobs.claim(job.id);assert.equal(await h.jobs.markProviderStarted(claim),true);
- h.store.ai.delete(job.budgetKeys[0]);await assert.rejects(()=>h.jobs.complete(claim,{reply:'Text',unlocked:[],actualMicroUsd:FAKE_COST}),/budget/i);
- assert.equal((await h.store.getAi(`AIJOB#${job.id}`)).status,'provider_started');assert.equal((await mine(h)).status,'pending');
+for(const corruption of ['missing budget','missing guard','invalid budget','budget below reservation'])test(`${corruption} at settlement resolves canonically without manufacturing a refund`,async()=>{
+ const h=await harness();await h.ask('session-A',id(),ALIBI);const job=h.jobList()[0],claim=await h.jobs.claim(job.id);assert.equal(await h.jobs.markProviderStarted(claim),true);
+ const key=job.budgetKeys[0];
+ if(corruption==='missing budget')h.store.ai.delete(key);else if(corruption==='missing guard')h.store.ai.delete(`AIBUDGET#GUARD#${key}`);else h.store.ai.get(key).usedMicroUsd=corruption==='invalid budget'?NaN:RESERVE-1;
+ assert.equal((await h.jobs.complete(claim,{reply:'Text',unlocked:['d-alibi-gap'],actualMicroUsd:FAKE_COST})).status,'fallback');
+ const message=await mine(h);assert.equal(message.status,'canonical');assert.equal(message.reply,SUSPECT.responses.alibi);assert.deepEqual(message.unlocked,['d-alibi-gap']);
+ const settled=await h.store.getAi(`AIJOB#${job.id}`);assert.deepEqual([settled.status,settled.costUncertain,settled.settledMicroUsd,settled.reason],['fallback',true,RESERVE,'budget_unavailable']);
+ for(const other of job.budgetKeys.slice(1))assert.equal((await h.store.getAi(other)).usedMicroUsd,RESERVE);
+ assert.equal((await h.store.getAi('AISLOTS#GLOBAL')).active.length,1);
+ assert.equal((await h.store.getAi(`AIOUTBOX#${job.id}`)).status,'done');
 });
 
 test('completion rejects malformed provider results',async()=>{
