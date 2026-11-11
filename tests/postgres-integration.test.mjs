@@ -38,7 +38,7 @@ test('PostgreSQL integration: atomic durable storage contract',{skip:!url},async
    await restarted.join(created.code,'session-C','C',id());
    await first.act(created.code,'session-A',{type:'start',id:id()});
    await first.act(created.code,'session-A',{type:'select',round:1,suspectId:'suspect-1',id:id()});
-   const command={type:'ask',round:1,question:'Private PostgreSQL question',topic:'clue',id:id()};
+   const command={type:'ask',round:1,question:'Private PostgreSQL question',id:id()};
    const [a,b]=await Promise.all([first.act(created.code,'session-A',command),restarted.act(created.code,'session-A',command)]);
    assert.equal(a.version,b.version);
    const owner=await game().view(created.code,'session-A');assert.equal(owner.me.interviews[0].messages.length,1);
