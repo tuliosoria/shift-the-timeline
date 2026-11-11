@@ -28,10 +28,9 @@ export async function createAzureRuntime({env=process.env,store,loadCaseImpl=rea
  const jobs=config.policy?new AiJobs({store,policy:config.policy,now}):null;
  // No jobs or provider are constructed unless explicitly opted in at deployment.
  const provider=jobs?createProvider({model:config.policy.model,getSecret:async()=>env.OPENAI_API_KEY,fetchImpl}):null;
- const admission=jobs?{prepareQuestion:args=>args.aiConsent===true?jobs.prepareQuestion(args):Promise.resolve([])}:undefined;
- const game=new DurableGame({store,...data,ai:admission,now});
+ const game=new DurableGame({store,...data,ai:jobs,now});
  const limiter=createRateLimiter({store,now});
- const api=createApi({game,sessions:new Sessions({store,secure:true,now}),allowedOrigin:config.origin,dialogueMode:jobs?'optional-openai':'canonical',rateLimit:async input=>{
+ const api=createApi({game,sessions:new Sessions({store,secure:true,now}),allowedOrigin:config.origin,rateLimit:async input=>{
   if(!config.allowNewRooms&&input.path==='/api/rooms'&&input.request.method==='POST')throw new DomainError('New rooms are temporarily paused.',503);
   // The Azure transport validates platform-overwritten CLIENT-IP; generic transports use the socket.
   await limiter(input);

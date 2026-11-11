@@ -12,6 +12,6 @@ export async function runJob({enabled=false,jobId,repository,provider,rates,now=
   const result=await provider(job.context,{now,deadline:job.deadline,startBy:job.leaseUntil??job.deadline});const actualMicroUsd=reserveCost({...rates,...job.rates,inputTokens:result.inputTokens,outputTokens:result.outputTokens});
   if(actualMicroUsd>job.reservedMicroUsd)throw new Error('Usage exceeded reservation');
   if(job.deadline<=now())return repository.fallback(job,'deadline',{costUncertain:true});
-  return await repository.complete(job,{voice:result.text,actualMicroUsd});
+  return await repository.complete(job,{reply:result.reply,unlocked:result.unlocked,actualMicroUsd});
  }catch{return repository.fallback(job,'unavailable',{costUncertain:started});}
 }

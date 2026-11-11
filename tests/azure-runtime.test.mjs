@@ -31,7 +31,7 @@ test('room admission is paused by default and cookies/origin remain secure',asyn
  assert.equal((await runtime.api(request('/api/session',{}, {origin:'https://evil.example'}))).status,403);assert.equal((await runtime.api(request('/api/session',{}, {'sec-fetch-site':'cross-site'}))).status,403);
  const cases=await (await runtime.api(request('/api/cases'))).json();assert.equal(cases.dialogueMode,'canonical');assert.equal(cases.persistence,'durable');assert.ok(!JSON.stringify(cases).includes('culpritId'));assert.deepEqual(await runtime.tick(),{status:'disabled'});await runtime.stop();
 });
-test('AI requires explicit operator opt-in and never calls provider for empty queue',async()=>{let calls=0;const runtime=await setup({SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic',SHIFT_AI_POLICY:JSON.stringify(policy)},ready(),()=>{calls++;throw new Error('No calls expected');});assert.equal((await (await runtime.api(request('/api/cases'))).json()).dialogueMode,'optional-openai');await runtime.tick();assert.equal(calls,0);await runtime.stop();});
+test('AI requires explicit operator opt-in and never calls provider for empty queue',async()=>{let calls=0;const runtime=await setup({SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic',SHIFT_AI_POLICY:JSON.stringify(policy)},ready(),()=>{calls++;throw new Error('No calls expected');});assert.equal((await (await runtime.api(request('/api/cases'))).json()).dialogueMode,'ai');await runtime.tick();assert.equal(calls,0);await runtime.stop();});
 test('bounded TTL maintenance runs even when AI disabled and stops cleanly',async()=>{const store=ready();let calls=0;store.cleanupExpired=async(now,limit)=>{assert.ok(Number.isSafeInteger(now));assert.equal(limit,500);calls++;return 3;};const runtime=await setup({},store);assert.equal(await runtime.maintain(),3);runtime.start();runtime.start();await runtime.stop();assert.equal(await runtime.maintain(),0);assert.equal(calls,1);assert.throws(()=>runtime.start(),/stopped/);});
 test('explicit room admission supports durable create and idempotent retries without AI',async()=>{
  const store=ready(),runtime=await setup({SHIFT_ALLOW_NEW_ROOMS:'true',OPENAI_API_KEY:'synthetic-unused'},store);
@@ -39,4 +39,24 @@ test('explicit room admission supports durable create and idempotent retries wit
  const body={name:'Arthur',caseId:'demo',requestId:'azure-create-0001'};
  const first=await runtime.api(request('/api/rooms',body,{cookie}));assert.equal(first.status,201);const result=await first.json();
  const retry=await runtime.api(request('/api/rooms',body,{cookie}));assert.equal(retry.status,201);assert.deepEqual(await retry.json(),result);assert.equal(store.rooms.size,1);assert.equal(store.ai.size,0);await runtime.stop();
+});
+test('AI answers each question through the worker and falls back to the canonical answer on provider failure',async()=>{
+ let fail=false,calls=0;const store=ready();
+ const runtime=await setup({SHIFT_ALLOW_NEW_ROOMS:'true',SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic',SHIFT_AI_POLICY:JSON.stringify(policy)},store,async()=>{calls++;if(fail)return new Response('synthetic failure',{status:503});return new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({reply:'In character.',unlocked:['d-alibi-gap']})}]}],usage:{input_tokens:10,output_tokens:5}}));});
+ let serial=0;const id=()=>`azure-ai-request-${++serial}`;
+ const post=async(path,body,cookie)=>{const response=await runtime.api(request(path,body,cookie?{cookie}:{}));assert.ok([200,201].includes(response.status),`${path}: ${response.status}`);return {body:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};};
+ const get=async(code,cookie)=>(await runtime.api(new Request(`${env.SHIFT_ORIGIN}/api/rooms/${code}`,{headers:{cookie}}))).json();
+ try{
+  const cookies=[];for(let i=0;i<3;i++)cookies.push((await post('/api/session',{})).cookie);
+  const code=(await post('/api/rooms',{name:'A',caseId:'demo',requestId:id()},cookies[0])).body.code;
+  for(let i=1;i<3;i++)await post(`/api/rooms/${code}/join`,{name:`P${i}`,requestId:id()},cookies[i]);
+  await post(`/api/rooms/${code}/actions`,{type:'start',id:id()},cookies[0]);
+  await post(`/api/rooms/${code}/actions`,{type:'select',round:1,suspectId:'suspect-1',id:id()},cookies[0]);
+  const ask=async question=>(await post(`/api/rooms/${code}/actions`,{type:'ask',round:1,question,id:id()},cookies[0])).body.me.interviews[0].messages.at(-1);
+  assert.equal((await ask('What did you notice?')).status,'pending');await runtime.tick();
+  let state=await get(code,cookies[0]);assert.deepEqual([state.me.interviews[0].messages[0].status,state.me.interviews[0].messages[0].reply],['complete','In character.']);assert.deepEqual(state.me.deductions.map(d=>d.id),['d-alibi-gap']);
+  fail=true;assert.equal((await ask('What was your motive?')).status,'pending');await runtime.tick();
+  state=await get(code,cookies[0]);assert.deepEqual([state.me.interviews[0].messages[1].status,state.me.interviews[0].messages[1].reply],['canonical',TRAIN_CASE.suspects[1].responses.motive]);
+  assert.equal(calls,2);
+ }finally{await runtime.stop();}
 });

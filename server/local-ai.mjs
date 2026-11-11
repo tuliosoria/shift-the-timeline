@@ -11,6 +11,6 @@ export async function createLocalAiRuntime({env,getSecret,fetchImpl,loadCaseImpl
  const data=await loadCaseImpl(env),store=new MemoryStore();
  const worker=createLocalAi({env,store,getSecret,fetchImpl});
  const game=new DurableGame({store,...data,ai:worker.admission});
- const api=createApi({game,sessions:new Sessions({store,secure:false}),allowedOrigin:worker.config.origin,rateLimit:createRateLimiter({store}),dialogueMode:'optional-openai'});
+ const api=createApi({game,sessions:new Sessions({store,secure:false}),allowedOrigin:worker.config.origin,rateLimit:createRateLimiter({store})});
  return {api,worker,config:worker.config};
 }

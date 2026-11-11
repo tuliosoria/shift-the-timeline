@@ -1,7 +1,7 @@
 import {AiJobs} from './jobs.mjs';
 import {runJob} from './worker.mjs';
 import {createProvider} from './provider.mjs';
-import {PROPOSED_LIMITS,reserveCost} from './budget.mjs';
+import {PROPOSED_LIMITS,reserveCost,validateSpendPolicy} from './budget.mjs';
 
 // Per-process trial limits, not durable account-wide spending controls. Restart resets them.
 export function readLocalAiConfig(env={}) {
@@ -16,9 +16,11 @@ export function readLocalAiConfig(env={}) {
  const inputRate=number('SHIFT_LOCAL_AI_INPUT_RATE'),outputRate=number('SHIFT_LOCAL_AI_OUTPUT_RATE');
  const maxCalls=number('SHIFT_LOCAL_AI_MAX_CALLS'),maxReserve=number('SHIFT_LOCAL_AI_MAX_RESERVE_MICROUSD');
  if(!Number.isSafeInteger(maxCalls)||maxCalls>12||!Number.isSafeInteger(maxReserve)||maxReserve>250000)fail();
- const policy={model,inputRate,outputRate,maxConcurrent:1,roomMicroUsd:maxReserve,dayMicroUsd:maxReserve,monthMicroUsd:maxReserve};
+ // The room limit must fit a full room of reservations; the per-process allowance still caps every paid attempt.
+ const policy={model,inputRate,outputRate,maxConcurrent:1,roomMicroUsd:PROPOSED_LIMITS.roomMicroUsd,dayMicroUsd:maxReserve,monthMicroUsd:maxReserve};
  const reservation=reserveCost({...policy,inputTokens:PROPOSED_LIMITS.inputTokens,outputTokens:PROPOSED_LIMITS.outputTokens});
  if(reservation>maxReserve)fail();
+ try{validateSpendPolicy({...PROPOSED_LIMITS,...policy});}catch{fail();}
  return Object.freeze({origin:origin.origin,host:origin.hostname==='[::1]'?'::1':origin.hostname,port:Number(origin.port||80),maxCalls,maxReserve,reservation,policy:Object.freeze(policy)});
 }
 
@@ -37,7 +39,7 @@ export function createLocalAi({env,store,getSecret,fetchImpl=fetch,now=Date.now}
  },{model:config.policy.model});
  const repository=new AiJobs({store,policy:config.policy,now});
  const admission={prepareQuestion:async args=>{
-  if(stopped||args.aiConsent!==true)return [];
+  if(stopped)return [];
   return repository.prepareQuestion(args);
  }};
  const tick=()=>{
