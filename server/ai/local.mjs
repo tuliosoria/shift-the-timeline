@@ -1,7 +1,7 @@
 import {AiJobs} from './jobs.mjs';
 import {runJob} from './worker.mjs';
 import {createProvider} from './provider.mjs';
-import {reserveCost} from './budget.mjs';
+import {PROPOSED_LIMITS,reserveCost} from './budget.mjs';
 
 // Per-process trial limits, not durable account-wide spending controls. Restart resets them.
 export function readLocalAiConfig(env={}) {
@@ -17,7 +17,7 @@ export function readLocalAiConfig(env={}) {
  const maxCalls=number('SHIFT_LOCAL_AI_MAX_CALLS'),maxReserve=number('SHIFT_LOCAL_AI_MAX_RESERVE_MICROUSD');
  if(!Number.isSafeInteger(maxCalls)||maxCalls>12||!Number.isSafeInteger(maxReserve)||maxReserve>250000)fail();
  const policy={model,inputRate,outputRate,maxConcurrent:1,roomMicroUsd:maxReserve,dayMicroUsd:maxReserve,monthMicroUsd:maxReserve};
- const reservation=reserveCost({...policy,inputTokens:2500,outputTokens:350});
+ const reservation=reserveCost({...policy,inputTokens:PROPOSED_LIMITS.inputTokens,outputTokens:PROPOSED_LIMITS.outputTokens});
  if(reservation>maxReserve)fail();
  return Object.freeze({origin:origin.origin,host:origin.hostname==='[::1]'?'::1':origin.hostname,port:Number(origin.port||80),maxCalls,maxReserve,reservation,policy:Object.freeze(policy)});
 }

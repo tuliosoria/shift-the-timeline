@@ -17,8 +17,8 @@ test('uncapped mode is explicit null limits, bounded defaults remain unchanged',
  for(const patch of [
   {roomMicroUsd:null}, {...uncapped,uncapped:false}, {...uncapped,uncapped:'true'},
   {...uncapped,roomMicroUsd:250000}, {...uncapped,dayMicroUsd:0},
-  {...uncapped,monthMicroUsd:undefined}, {...uncapped,maxConcurrent:3},
-  {...uncapped,inputTokens:2501}, {...uncapped,outputTokens:351},
+  {...uncapped,monthMicroUsd:undefined}, {...uncapped,maxConcurrent:9},
+  {...uncapped,inputTokens:6001}, {...uncapped,outputTokens:401},
   {roomMicroUsd:Number.MAX_SAFE_INTEGER}
  ]){
   assert.throws(()=>new AiJobs({store:new MemoryStore(),policy:{...policy,...patch}}));
