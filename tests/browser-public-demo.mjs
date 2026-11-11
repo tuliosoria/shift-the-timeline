@@ -14,7 +14,7 @@ const server=createServer({api:(...args)=>api(...args),origin:'http://127.0.0.1'
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin=`http://127.0.0.1:${server.address().port}`;
 api=createApi({game:new DurableGame({store,...data}),sessions:new Sessions({store,secure:false}),allowedOrigin:origin,rateLimit:async()=>{}});
-const pages=[],errors=[],external=[],actions=[];
+const pages=[],errors=[],external=[],actions=[],joins=[];
 const overflow=async page=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'No horizontal viewport overflow');
 const navigate=async(page,stage)=>{await page.locator(`[data-stage="${stage}"]`).first().click();};
 const confirm=async page=>{await page.locator('#confirm-dialog[open]').waitFor();await page.locator('#confirm-accept').click();await page.locator('#confirm-dialog').waitFor({state:'hidden'});};
@@ -24,13 +24,31 @@ try {
  for(let i=0;i<3;i++){
   const context=await browser.newContext({viewport:{width:i===1?390:1440,height:900}});
   await context.route('**/*',route=>{if(new URL(route.request().url()).origin!==origin){external.push('Unexpected external request');return route.abort();}return route.continue();});
-  const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.url().endsWith('/actions'))actions.push(request.postDataJSON()?.type);});page.setDefaultTimeout(20000);await page.goto(origin);await page.locator('#create-name').waitFor();pages.push(page);
+  const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(request.url().endsWith('/join'))joins.push(request.postDataJSON());if(request.url().endsWith('/actions'))actions.push(request.postDataJSON()?.type);});page.setDefaultTimeout(20000);await page.goto(origin);await page.locator('#create-name').waitFor();pages.push(page);
  }
  await pages[0].fill('#create-name','Route host');await pages[0].selectOption('#case-choice',caseData.id);await pages[0].click('#create-form button');await pages[0].locator('.selectable-code').waitFor();
  const code=(await pages[0].locator('.selectable-code').textContent()).trim();
+ const invite=await pages[0].inputValue('#invite-link');assert.equal(invite,`${origin}/#join=${code}`);
+ await pages[0].evaluate(()=>{window.copiedInvite=null;Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.copiedInvite=text;}}});});
+ await pages[0].click('[data-action="copy-invite"]');assert.equal(await pages[0].evaluate(()=>window.copiedInvite),invite);
+ await pages[0].evaluate(()=>{navigator.clipboard.writeText=async()=>{throw Error('Synthetic clipboard denied');};});
+ await pages[0].click('[data-action="copy-invite"]');assert.equal(await pages[0].locator('#invite-link').evaluate(el=>el===document.activeElement&&el.selectionEnd===el.value.length),true);
  for(let i=1;i<3;i++){
-  await pages[i].click('[data-entry="join"]');await pages[i].fill('#join-name',`Route agent ${i}`);await pages[i].fill('#join-code',code);await pages[i].click('#join-form button');await pages[i].locator('.selectable-code').waitFor();
+  const page=pages[i];if(i===1){
+   const joinsBefore=joins.length;await page.goto(invite);await page.locator('#join-code').waitFor();assert.equal(await page.inputValue('#join-code'),code);assert.equal(await page.locator('#join-name').evaluate(el=>el===document.activeElement),true);
+   assert.equal(await page.locator('.selectable-code').count(),0,'Opening link never joins automatically');await page.reload();await page.locator('#join-code').waitFor();assert.equal(await page.inputValue('#join-code'),code);
+   assert.equal(joins.length,joinsBefore);await page.fill('#join-name',`Route agent ${i}`);await page.fill('#join-code','ZZZZZZZZ');await page.click('#join-form button');await page.locator('#notice.error').waitFor();
+   assert.equal(await page.inputValue('#join-name'),`Route agent ${i}`);assert.equal(await page.inputValue('#join-code'),'ZZZZZZZZ');await page.fill('#join-code',code);
+   await overflow(page);await page.screenshot({path:'/tmp/shift-recovery-invite-join-mobile.png',fullPage:true});
+   assert.equal(joins.length,joinsBefore+1,'Only the explicit failed Join was sent');
+  }else{await page.click('[data-entry="join"]');await page.fill('#join-name',`Route agent ${i}`);await page.fill('#join-code',code);}
+  await page.click('#join-form button');await page.locator('.selectable-code').waitFor();assert.equal(new URL(page.url()).hash,'#analyse');
  }
+ await overflow(pages[1]);await pages[1].screenshot({path:'/tmp/shift-recovery-invite-lobby-mobile.png',fullPage:true});
+ await pages[0].screenshot({path:'/tmp/shift-recovery-invite-lobby-desktop.png',fullPage:true});
+ // An invite cannot silently discard an already joined room, including after reload.
+ await pages[1].goto(`${origin}/#join=ZZZZZZZZ`);await pages[1].reload();await pages[1].locator('.selectable-code').waitFor();assert.equal((await pages[1].locator('.selectable-code').textContent()).trim(),code);
+
  await pages[0].waitForFunction(()=>!document.querySelector('[data-action="start"]')?.disabled);await pages[0].click('[data-action="start"]');
  const route=reviewRoutes[1];assert.equal(route.interviews.length,4,'Update the authored schedule if the editorial route changes');
  const schedule=[route.interviews.slice(0,3),[route.interviews[3],{suspectId:'dev',topics:['clue']},{suspectId:'kit',topics:['clue']}],[{suspectId:'nell',topics:['clue']},{suspectId:'oscar',topics:['clue']},{suspectId:'wren',topics:['clue']}]];

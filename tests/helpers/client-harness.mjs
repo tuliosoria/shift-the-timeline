@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {createUiState,uiContext,STAGES} from '../../public/ui-state.js';
 export const appSource=await readFile(new URL('../../public/app.js',import.meta.url),'utf8');
-export function clientHarness(initial) {
- const saved=new Map(),elements=new Map(),requests=[],historyCalls=[],announcements=[];
+export function clientHarness(initial,options={}) {
+ const saved=new Map(Object.entries(options.saved??{})),elements=new Map(),requests=[],historyCalls=[],announcements=[];
  const storage={getItem:k=>saved.get(k)??null,setItem:(k,v)=>saved.set(k,v),removeItem:k=>saved.delete(k)};
  function element(id) { if(!elements.has(id))elements.set(id,{id,innerHTML:'',textContent:'',value:'',dataset:{},className:'',disabled:false,open:false,focus(){this.focused=true;},showModal(){this.open=true;},close(){this.open=false;},addEventListener(){},querySelector(){return null;},querySelectorAll(){return [];}});return elements.get(id); }
  const document={body:{classList:{toggle(){}}},activeElement:null,querySelector:selector=>element(selector.replace(/^#/,'')),getElementById:element,querySelectorAll:()=>[],addEventListener(){}};
  const sandbox={questionTopic,createUiState,uiContext,STAGES,document,sessionStorage:storage,localStorage:storage,
-  location:{hash:'',pathname:'/',search:''},history:{pushState(...args){historyCalls.push(['push',...args]);},replaceState(...args){historyCalls.push(['replace',...args]);}},
+  location:{origin:'https://shift.example',hash:'',pathname:'/',search:'',...options.location},history:{pushState(...args){historyCalls.push(['push',...args]);},replaceState(...args){historyCalls.push(['replace',...args]);}},
   navigator:{clipboard:{writeText:async()=>{}}},crypto:{getRandomValues(bytes){bytes.fill(requests.length+1);return bytes;}},
   AbortSignal:{timeout(){}},setTimeout(){},clearTimeout(){},URL,URLSearchParams,structuredClone,console,
   fetch:async(path,options)=>{requests.push({path,body:options?.body?JSON.parse(options.body):null});return {ok:true,status:200,json:async()=>({...initial,version:initial.version+1})};},
