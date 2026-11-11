@@ -128,6 +128,10 @@ jobs:
           tenant-id: ${{ vars.SHIFT_AZURE_TENANT_ID }}
           subscription-id: ddb0b48c-aa74-4420-bf1b-49a3f7eaa970
           enable-AzPSSession: false
+      # Temporary read-only diagnosis under the existing exact-main deployment identity.
+      # A denied read is reported without raw errors; no permissions are added.
+      - name: Diagnose AI settings without exposing credentials
+        run: python scripts/azure-ai-diagnostic.py
       - name: Deploy verified package without changing configuration
         env:
           GH_TOKEN: ${{ github.token }}
