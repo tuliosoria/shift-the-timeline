@@ -28,7 +28,7 @@ npm run dev:demo
 
 Open http://127.0.0.1:3000. This is a synthetic technical fixture, not the editorial mystery. Use three separate browser profiles or contexts to represent three players; ordinary tabs share identity.
 
-For the authorised private English case, place the complete versioned module at `private/train-case.en-GB.mjs`, then run `npm run dev`. Alternatively set `SHIFT_CASE_FILE` explicitly when running `npm start`. The original-language source need not be overwritten. Private modules export `TRAIN_CASE` and `CASES`, and the entire `private/` directory is ignored by Git.
+For the authorised private English case, place the complete versioned module at `private/train-case.en-GB.mjs`, then run `npm run dev`. Alternatively set `SHIFT_CASE_FILE` explicitly when running `npm start`. The original-language source need not be overwritten. Private modules export `TRAIN_CASE` and `CASES`, and the entire `private/` directory is ignored by Git. The chat redesign made the case format stricter: until the private case gains a `brief` for every suspect and a case-level `deductions` list (6–20 entries, at least 3 marked `key: true`), `npm run dev` refuses to load it. `clockStart` is optional and defaults to 20:00. See [case authoring](docs/CASE_AUTHORING.md) for the exact shape; `SHIFT_CASE_FILE=private/train-case.en-GB.mjs npm run check:case` validates it without starting the server.
 
 Without `SHIFT_TABLE`, local rooms are in memory and disappear when the server restarts. Production requires durable storage, HTTPS, origin verification and a pinned private case artefact. Changing a case version must not silently reinterpret existing rooms.
 
