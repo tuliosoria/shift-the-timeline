@@ -95,8 +95,22 @@ try {
   await invite(page, b);
   await page.waitForFunction(code => document.querySelector('#join-code')?.value === code, b);
   assert.equal(await page.inputValue('#join-name'), 'Ada visiting');
-  await page.click('#join-form button');
+  // A newer invite arriving during a successful join must survive reload too.
+  let entryReached, releaseEntry;
+  const entryStarted = new Promise(resolve => { entryReached = resolve; });
+  const entryGate = new Promise(resolve => { releaseEntry = resolve; });
+  const slowEntry = async route => { const response = await route.fetch(); entryReached(); await entryGate; return route.fulfill({response}); };
+  await page.route(`**/api/rooms/${b}/join`, slowEntry);
+  await page.click('#join-form button'); await entryStarted;
+  await invite(page, c); releaseEntry();
   await page.locator('.lobby').waitFor();
+  await page.locator('#confirm-dialog[open]').waitFor();
+  assert.equal(await page.evaluate(() => location.hash), `#join=${c}`);
+  await page.reload();
+  await page.locator('#confirm-dialog[open]').waitFor();
+  assert.match(await page.locator('#confirm-body').textContent(), new RegExp(c));
+  await page.click('#confirm-cancel');
+  await page.unroute(`**/api/rooms/${b}/join`, slowEntry);
   assert.equal(await roomCode(page), b);
   assert.equal((await snapshot(page, b)).players.length, 2);
   assert.equal((await snapshot(page, a)).players.length, 3, 'switching does not remove the old seat');

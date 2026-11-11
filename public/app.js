@@ -152,7 +152,8 @@ async function run(work) {
       roomEpoch++;
       session = {code: data.code, playerId: data.playerId}; store.set(SESSION, session);
       if (resume?.code === session.code) { resume = null; store.remove(RESUME); }
-      history.replaceState(null, '', location.pathname);
+      // A newer invitation may have arrived while this entry request was in flight.
+      if (!requestedInvite || requestedInvite === session.code) history.replaceState(null, '', location.pathname);
       pending = null; store.remove(PENDING); busy = false; clearNotice();
       applyState(data.state);
     } else {
