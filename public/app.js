@@ -7,24 +7,30 @@ import {mountChat} from './chat.js';
 import {showUnlocked, freshDeductions} from './toast.js';
 
 const $ = s => document.querySelector(s);
-const SESSION = 'shift-session', PENDING = 'shift-pending';
+const SESSION = 'shift-session', PENDING = 'shift-pending', RESUME = 'shift-resume';
 const ROOM_EXPIRED = 'This room has expired. Open or join another case.';
 const store = {
-  get(key) { try { return JSON.parse((key === SESSION ? localStorage : sessionStorage).getItem(key)); } catch { return null; } },
-  set(key, value) { try { (key === SESSION ? localStorage : sessionStorage).setItem(key, JSON.stringify(value)); } catch { notice('Storage is unavailable. Keep this tab open to stay in the game.', true); } },
-  remove(key) { try { (key === SESSION ? localStorage : sessionStorage).removeItem(key); } catch {} },
+  get(key) { try { return JSON.parse(([SESSION, RESUME].includes(key) ? localStorage : sessionStorage).getItem(key)); } catch { return null; } },
+  set(key, value) { try { ([SESSION, RESUME].includes(key) ? localStorage : sessionStorage).setItem(key, JSON.stringify(value)); } catch { notice('Storage is unavailable. Keep this tab open to stay in the game.', true); } },
+  remove(key) { try { ([SESSION, RESUME].includes(key) ? localStorage : sessionStorage).removeItem(key); } catch {} },
 };
 let uiStorage;
 try { uiStorage = localStorage; } catch { uiStorage = {getItem() { throw Error('Storage unavailable'); }, setItem() { throw Error('Storage unavailable'); }}; }
 const ui = createUiState(uiStorage);
 
 const invitationCode = hash => /^#join=([A-HJ-NP-Za-hj-np-z2-9]{8})$/.exec(hash || '')?.[1]?.toUpperCase() ?? '';
+let resume = store.get(RESUME);
+if (!/^[A-HJ-NP-Z2-9]{8}$/.test(resume?.code ?? '') || typeof resume?.playerId !== 'string') resume = null;
+let roomEpoch = 0, requestedInvite = invitationCode(location.hash);
 let session = store.get(SESSION), pending = store.get(PENDING), state = null, busy = false, lastVersion = -1, confirmation = null, lastHeartbeat = 0;
 // `reading` keeps a finished chat on screen until the player moves on, even after the turn
 // itself has moved on (see views.screenFor): the transition waits for it.
 const local = {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, entry: 'create', cases: [], invite: ''};
 let chat = null, transition = {key: null, timer: null};
-if (!session && !pending && invitationCode(location.hash)) Object.assign(local, {entry: 'join', invite: invitationCode(location.hash)});
+if (!session && !pending && requestedInvite) {
+  Object.assign(local, {entry: 'join', invite: requestedInvite});
+  requestedInvite = ''; // Already shown: a slow catalogue must not overwrite subsequent typing.
+}
 
 const RENDER = {landing: views.renderLanding, lobby: views.renderLobby, briefing: views.renderBriefing, pick: views.renderPick, chat: views.renderChat,
   waiting: views.renderWaiting, transition: views.renderTransition, accuse: views.renderAccuse, reveal: views.renderReveal};
@@ -61,6 +67,7 @@ function chatFor(main) {
 
 function render() {
   document.body.classList.toggle('busy', busy);
+  local.resume = resume;
   if (state) Object.assign(local, ui.seen(state.code, state.me.id), {draft: ui.draft(uiContext(state))});
   const screen = views.screenFor(state, local), tabBar = views.renderTabBar(state, local);
   if (screen === 'chat') local.reading = views.chatKey(views.currentInterview(state, local));
@@ -109,7 +116,7 @@ function setBusy() {
 }
 
 function applyState(next) {
-  if (!next || (session && (next.code !== session.code || next.me?.id !== session.playerId))) return false;
+  if (!next || !session || next.code !== session.code || next.me?.id !== session.playerId) return false;
   if (state && next.code === state.code && next.version < lastVersion) return false;
   const moved = !state || state.round !== next.round || state.phase !== next.phase;
   const restored = !state;
@@ -126,6 +133,7 @@ function applyState(next) {
   if (moved) { local.selected = null; if (local.tab !== 'deductions') local.tab = 'investigate'; closeConfirmation(); }
   if (fresh.length) showUnlocked(fresh);
   render();
+  offerInvitation();
   if (arrived.length) $('#announcer').textContent = `Reply added to your private interview: ${arrived.map(m => m.reply).join(' ')}`;
   return true;
 }
@@ -136,9 +144,19 @@ async function run(work) {
   pending = work; store.set(PENDING, work); busy = true; render();
   try {
     if (work.entry) {
-      const {data} = await fetchJson(work.path, {body: work.body});
+      let data;
+      if (work.joinCode) {
+        // A cookie can already own a seat here, even after the lobby has closed.
+        // Only an explicit non-membership response permits creating a new seat.
+        try { const response = await fetchJson(`/api/rooms/${encodeURIComponent(work.joinCode)}/state`); data = {code: response.data.code, playerId: response.data.me.id, state: response.data}; }
+        catch (error) { if (error.status !== 401 || error.message !== 'Your session is not valid for this room.') throw error; }
+      }
+      data ??= (await fetchJson(work.path, {body: work.body})).data;
+      roomEpoch++;
       session = {code: data.code, playerId: data.playerId}; store.set(SESSION, session);
-      history.replaceState(null, '', location.pathname);
+      if (resume?.code === session.code) { resume = null; store.remove(RESUME); }
+      // A newer invitation may have arrived while this entry request was in flight.
+      if (!requestedInvite || requestedInvite === session.code) history.replaceState(null, '', location.pathname);
       pending = null; store.remove(PENDING); busy = false; clearNotice();
       applyState(data.state);
     } else {
@@ -164,6 +182,7 @@ async function run(work) {
     }
     else notice(error.status === 429 ? error.message : 'Connection lost. Your action may have arrived. Retry safely: it will not be sent twice.', true);
     render();
+    offerInvitation();
     return false;
   }
 }
@@ -172,8 +191,8 @@ function act(type, data = {}, extra = {}) {
   return run({...extra, code: session.code, context: uiContext(state), action: {...action, id: requestIdFor(action)}});
 }
 
-function openConfirmation({title, body, label, onConfirm}) {
-  confirmation = {onConfirm, round: state.round, phase: state.phase};
+function openConfirmation({title, body, label, onConfirm, onCancel, kind}) {
+  confirmation = {onConfirm, onCancel, kind, epoch: roomEpoch, round: state.round, phase: state.phase};
   $('#confirm-title').textContent = title;
   $('#confirm-body').innerHTML = body;
   $('#confirm-accept').textContent = label;
@@ -184,8 +203,8 @@ function closeConfirmation() { confirmation = null; if ($('#confirm-dialog').ope
 async function confirmAction() {
   const chosen = confirmation;
   closeConfirmation();
-  if (!chosen) return;
-  if (chosen.round !== state?.round || chosen.phase !== state?.phase) { notice('The turn moved on. Check your choice again.', true); return; }
+  if (!chosen || chosen.epoch !== roomEpoch || busy || pending) return;
+  if (chosen.kind !== 'room-switch' && (chosen.round !== state?.round || chosen.phase !== state?.phase)) { notice('The turn moved on. Check your choice again.', true); return; }
   await chosen.onConfirm();
 }
 
@@ -194,19 +213,78 @@ async function copy(text, done, fallback) {
   try { await navigator.clipboard.writeText(text); notice(done); } catch { notice(fallback); }
 }
 
-function resetSession() {
-  if (state) ui.forget(state.code, state.me.id); else if (session) ui.forget(session.code, session.playerId);
+function resetSession({preserve = false, invite = ''} = {}) {
+  if (!preserve && state) ui.forget(state.code, state.me.id); else if (!preserve && session) ui.forget(session.code, session.playerId);
   closeConfirmation();
-  session = null; state = null; pending = null; lastVersion = -1;
+  roomEpoch++;
+  session = null; state = null; pending = null; lastVersion = -1; lastHeartbeat = 0;
   Object.assign(local, {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, notebook: null, entry: 'create', invite: ''});
   store.remove(SESSION); store.remove(PENDING);
-  history.replaceState(null, '', location.pathname);
+  history.replaceState(null, '', invite ? `${location.pathname}#join=${invite}` : location.pathname);
+  if (invite) Object.assign(local, {entry: 'join', invite});
   render();
+  if (invite) $('#join-code').value = invite;
+}
+
+// Room navigation is local: never revoke the cookie or remove a participant.
+function cancelConfirmation() {
+  const chosen = confirmation;
+  closeConfirmation();
+  chosen?.onCancel?.();
+}
+function clearInvitation() { requestedInvite = ''; history.replaceState(null, '', location.pathname); }
+function switchRoom(invite = '') {
+  if (!state || busy || pending) return;
+  openConfirmation({kind: 'room-switch', ...views.switchRoomConfirmation(state, invite),
+    onCancel: () => { if (invite) clearInvitation(); },
+    onConfirm: () => {
+      resume = {...session}; store.set(RESUME, resume);
+      clearInvitation();
+      resetSession({preserve: true, invite});
+      local.entry = 'join'; render();
+      if (invite) $('#join-code').value = invite;
+      $('#join-name')?.focus();
+    }});
+}
+function offerInvitation() {
+  if (!requestedInvite || busy || pending) return;
+  if (session && !state) return; // Restore the current room before asking to leave it.
+  if (session?.code === requestedInvite) { clearInvitation(); return; }
+  if (state) {
+    if (!confirmation) switchRoom(requestedInvite);
+  } else {
+    Object.assign(local, {entry: 'join', invite: requestedInvite});
+    render();
+    // Explicit navigation overrides the previous room code, not the player's name.
+    $('#join-code').value = requestedInvite;
+    $('#join-name')?.focus();
+    requestedInvite = '';
+  }
+}
+async function resumeRoom() {
+  if (!resume || session || busy || pending) return;
+  const target = {...resume};
+  clearInvitation();
+  busy = true; render();
+  try {
+    const {data} = await fetchJson(`/api/rooms/${target.code}/state`);
+    if (data?.me?.id !== target.playerId) throw Object.assign(new Error('Your original place could not be restored.'), {status: 401});
+    roomEpoch++; session = target; store.set(SESSION, session);
+    resume = null; store.remove(RESUME);
+    busy = false; clearNotice(); applyState(data);
+  } catch (error) {
+    busy = false;
+    if (roomGone(error)) { resume = null; store.remove(RESUME); }
+    render(); notice(roomGone(error) ? 'That room or your place in it is no longer available.' : 'Could not reconnect to your room. Try again when the connection returns.', true);
+    offerInvitation();
+  }
 }
 
 const actions = {
   retry: () => pending && run(pending),
   reset: () => resetSession(),
+  'switch-room': () => switchRoom(),
+  resume: () => resumeRoom(),
   'notebook-back': () => {
     const saved = local.notebook;
     saveNotebook({interview: null, message: null, deduction: null});
@@ -244,7 +322,7 @@ function saveNotebook(changes) {
 document.addEventListener('click', event => {
   const b = event.target.closest('button');
   if (!b || b.disabled) return;
-  if (b.dataset.entry) { local.entry = b.dataset.entry; render(); return; }
+  if (b.dataset.entry) { if (busy || pending) return; local.entry = b.dataset.entry; render(); return; }
   if (b.dataset.tab) { local.tab = b.dataset.tab; saveNotebook({}); render(); $('#main').scrollTop = 0; $('#main').focus({preventScroll: true}); return; }
   if (b.dataset.notebook) { saveNotebook({section: b.dataset.notebook, interview: null, message: null, deduction: null}); render(); document.getElementById(`notebook-${b.dataset.notebook}`)?.focus(); return; }
   if (b.dataset.interview) {
@@ -263,14 +341,21 @@ document.addEventListener('submit', event => {
   if (busy || pending) return;
   const form = event.target, data = Object.fromEntries(new FormData(form));
   if (form.id === 'create-form') run({entry: true, path: '/api/rooms', body: {name: data.name, caseId: data.caseId, requestId: newRequestId()}});
-  if (form.id === 'join-form') run({entry: true, path: `/api/rooms/${encodeURIComponent(data.code.trim().toUpperCase())}/join`, body: {name: data.name, requestId: newRequestId()}});
+  if (form.id === 'join-form') {
+    const code = data.code.trim().toUpperCase();
+    run({entry: true, joinCode: code, path: `/api/rooms/${encodeURIComponent(code)}/join`, body: {name: data.name, requestId: newRequestId()}});
+  }
 });
-$('#confirm-cancel').addEventListener('click', () => closeConfirmation());
+$('#confirm-cancel').addEventListener('click', cancelConfirmation);
 $('#confirm-accept').addEventListener('click', () => confirmAction());
-$('#confirm-dialog').addEventListener('cancel', event => { event.preventDefault(); closeConfirmation(); });
+$('#confirm-dialog').addEventListener('cancel', event => { event.preventDefault(); cancelConfirmation(); });
 window.addEventListener('hashchange', () => {
   const code = invitationCode(location.hash);
-  if (code && !session && !state) { Object.assign(local, {entry: 'join', invite: code}); render(); $('#join-name')?.focus(); }
+  if (!code) { requestedInvite = ''; if (confirmation?.kind === 'room-switch') closeConfirmation(); return; }
+  requestedInvite = code;
+  closeConfirmation();
+  if (busy || pending) notice('Finish the current action or its safe retry before switching rooms. Your invitation will wait.', true);
+  offerInvitation();
 });
 
 function pollFailed(error) {
@@ -278,19 +363,21 @@ function pollFailed(error) {
   if (gone) {
     resetSession();
     notice(gone === 'expired' ? ROOM_EXPIRED : 'Your place in the room could not be restored. Join a new case.', true);
+    offerInvitation();
   } else notice('Connection interrupted. Reconnecting…', true);
 }
 const poller = pollLoop({
-  getState: () => (!session || busy || pending ? null : state ?? {code: session.code, version: -1}),
-  onState: next => { if (!busy && !pending && applyState(next) && $('#notice').textContent.startsWith('Connection interrupted')) clearNotice(); },
-  onError: error => { if (!busy && !pending && session) pollFailed(error); },
+  getState: () => (!session || busy || pending ? null : {...(state ?? {code: session.code, version: -1}), localEpoch: roomEpoch}),
+  onState: (next, source) => { if (source.localEpoch === roomEpoch && !busy && !pending && applyState(next) && $('#notice').textContent.startsWith('Connection interrupted')) clearNotice(); },
+  onError: (error, source) => { if (source?.localEpoch === roomEpoch && !busy && !pending && session) pollFailed(error); },
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) poller.now(); });
 // Heartbeat lets the server tell an absent host or voter from one who is still at the table.
 setInterval(async () => {
   if (!session || !state || state.phase === 'reveal' || busy || pending || document.hidden || Date.now() - lastHeartbeat < 30000) return;
   lastHeartbeat = Date.now();
-  try { const beat = await command(session.code, {type: 'heartbeat'}); if (!busy && !pending && beat?.version > lastVersion) applyState(beat); } catch {}
+  const epoch = roomEpoch;
+  try { const beat = await command(session.code, {type: 'heartbeat'}); if (epoch === roomEpoch && !busy && !pending && beat?.version > lastVersion) applyState(beat); } catch {}
 }, 5000);
 
 render();
@@ -303,4 +390,5 @@ try {
   if (local.invite) $('#join-name')?.focus();
   if (pending) await run(pending);
   else if (session) poller.now();
+  else offerInvitation();
 } catch { notice('The server is unavailable. Reload when your connection returns.', true); }

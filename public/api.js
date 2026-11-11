@@ -69,13 +69,14 @@ export function pollLoop({getState, onState, onError = () => {}, isHidden = () =
     clearTimeout(timer);
     if (stopped || running) return;
     running = true;
+    let state;
     try {
-      const state = getState();
+      state = getState();
       if (state?.code) {
         const {status, data} = await fetchJson(`/api/rooms/${encodeURIComponent(state.code)}/state?since=${state.version}`);
         if (status === 200 && data) onState(data, state);
       }
-    } catch (error) { onError(error); }
+    } catch (error) { onError(error, state); }
     finally {
       running = false;
       if (!stopped) timer = setTimeout(tick, delay() + Math.floor(Math.random() * 300));

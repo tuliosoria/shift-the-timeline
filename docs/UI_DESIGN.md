@@ -49,3 +49,21 @@ An exact asset allowlist is shared by HTTP serving and packaging. Arbitrary path
 The complete English editorial case is a separately versioned private input. Public tests and screenshots use synthetic content. No private solution, credential or real player transcript belongs in this repository, browser assets or validation screenshots. Suspect briefs and locked deduction text are never sent to clients.
 
 See [validation and remaining limits](VALIDATION_UI.md) and [art/font credits](../AI_AND_CREDITS.md).
+
+
+## Room navigation
+
+The lobby and Case file expose **Switch room** with an explicit confirmation.
+This is local navigation, not leaving the roster: the original seat, private
+interviews and room/player-scoped drafts remain. The last selected room can be
+resumed from the landing page; entering an earlier room code first checks the
+same browser cookie's existing seat before offering a new join. An expired room
+or lost cookie cannot be recovered this way. No room lifetime is extended by a
+read, and the game continues while the player is away. A host is warned about
+the existing two-minute takeover rule.
+
+An invitation received in another room names both rooms and offers Stay/Cancel
+or opening the new join screen. Replacing an invitation uses the latest code
+without replacing the typed codename. No switch is allowed while a write or
+uncertain retry is outstanding. Late state responses, errors and heartbeats
+from the previous room cannot replace or clear the newly selected room.

@@ -100,6 +100,7 @@ export function renderLanding(state, local) {
 <p class="table-guide">3–4 players · one phone each.<br>Play together and compare your discoveries out loud.</p>
 <div class="segmented" role="group" aria-label="Room options"><button type="button" data-entry="create" aria-pressed="${entry === 'create'}">New room</button><button type="button" data-entry="join" aria-pressed="${entry === 'join'}">Join with a code</button></div>
 ${form}
+${local.resume ? `<button type="button" class="btn ghost" data-action="resume" data-submit>Return to room ${esc(local.resume.code)}</button><p class="hint">Reconnect to your previous seat on this browser, while the room is still available.</p>` : ''}
 <p class="ai-notice">${esc(dialogueNotice(local.dialogueMode))}</p>
 </section>`;
 }
@@ -118,7 +119,7 @@ export function renderLobby(state, local) {
 <ul class="roster">${roster}</ul>
 <div class="cta">${start}
 ${state.hostRecoverable && !state.me.host ? '<p class="hint">The host has been away for two minutes.</p><button type="button" class="btn ghost" data-action="claimHost" data-submit>Take over as host</button>' : ''}
-<p class="ai-notice">${esc(dialogueNotice(local.dialogueMode))}</p></div>
+<p class="ai-notice">${esc(dialogueNotice(local.dialogueMode))}</p><button type="button" class="btn ghost" data-action="switch-room" data-submit>Switch room</button></div>
 </section>`;
 }
 
@@ -336,7 +337,13 @@ export function renderCaseFile(state) {
 <blockquote class="prediction">${esc(c.prediction)}</blockquote>
 <dl class="facts"><dt>Victim</dt><dd>${esc(c.victim)}</dd><dt>Place</dt><dd>${esc(c.place)}</dd><dt>Method</dt><dd>${esc(c.method)}</dd><dt>The crime</dt><dd>${esc(state.clock?.crimeAt)}, tomorrow</dd></dl>
 <h2 class="label">Room</h2>
+<button type="button" class="btn ghost" data-action="switch-room" data-submit>Switch room</button>
 <p class="room-line"><span class="room-code small">${esc(state.code)}</span><button type="button" class="btn ghost small" data-action="copy-invite">Copy invite link</button></p>
 ${state.hostRecoverable && !state.me.host ? '<p class="hint">The host has been away for two minutes.</p><button type="button" class="btn ghost" data-action="claimHost" data-submit>Take over as host</button>' : ''}
 </section>`;
+}
+
+export function switchRoomConfirmation(state, invite = '') {
+  return {title: invite ? `Open invitation to ${invite}?` : 'Switch rooms?', label: invite ? 'Open invitation' : 'Choose another room',
+    body: `<p>You are in room <b>${esc(state.code)}</b>. ${invite ? `Open the join screen for <b>${esc(invite)}</b>?` : 'Return to the join screen?'}</p><p>Your seat stays at this table. Your interviews and saved drafts are kept. Return on this browser while the room is still available; this does not pause or extend the game.</p>${state.me.host ? '<p>You are the host. If you leave, another agent can take over after two minutes without contact.</p>' : ''}`};
 }
