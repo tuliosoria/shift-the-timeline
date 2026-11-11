@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDocument, fire, fakeTarget} from './helpers/fake-dom.mjs';
+import {createUiState, uiContext} from '../public/ui-state.js';
 const chat = await import('../public/chat.js').catch(error => { if (error.code === 'ERR_MODULE_NOT_FOUND') return {}; throw error; });
 
 let version = 1;
@@ -233,4 +234,73 @@ test('a touch device treats the focused field as the keyboard', () => {
   assert.equal(open(), false);
   $('#question').focus();
   assert.equal(open(), true);
+});
+
+// The app's command owner restores a definitely rejected question in persisted UI state
+// before rendering. The original chat may already be destroyed; its settle callback is
+// deliberately left with the old outgoing snapshot, just as when navigating between tabs.
+for (const returnBeforeRejection of [false, true]) test(`rejected draft survives destroyed chat (return before rejection: ${returnBeforeRejection})`, async () => {
+  const doc = createDocument('<main id="main"></main><div id="announcer"></div>');
+  const root = doc.getElementById('main'), ui = createUiState({getItem: () => null, setItem() {}});
+  const snapshot = state(), context = uiContext(snapshot), question = 'Where was the missing key?';
+  let settle;
+  const mount = () => chat.mountChat(root, {draft: ui.draft(context), onDraft: text => ui.writeDraft(context, text),
+    onSend: () => new Promise(resolve => { settle = resolve; })});
+  let view = mount(); view.update(snapshot, {draft: ui.draft(context)});
+  root.querySelector('#question').value = question; fire(root.querySelector('#question'), 'input');
+  fire(root.querySelector('.send'), 'click');
+  view.update(snapshot, {busy: true, outgoing: {text: question, count: 0}, draft: ui.draft(context)});
+  view.destroy(); root.innerHTML = '<section>Deductions</section>';
+  if (returnBeforeRejection) {
+    view = mount(); view.update(snapshot, {busy: true, outgoing: {text: question, count: 0}, draft: ui.draft(context)});
+    assert.equal(root.querySelector('#question').value, '', 'a held retry is not a draft');
+  }
+  // Definite rejection: app.run restores only if there is no newer saved draft.
+  if (!ui.draft(context)) ui.writeDraft(context, question);
+  if (returnBeforeRejection) view.update(snapshot, {busy: false, draft: ui.draft(context)});
+  settle(false); await new Promise(resolve => setTimeout(resolve));
+  if (!returnBeforeRejection) { view = mount(); view.update(snapshot, {draft: ui.draft(context)}); }
+  assert.equal(root.querySelector('#question').value, question);
+  assert.equal(root.querySelector('.send').disabled, false);
+  assert.equal(ui.draft(context), question);
+  assert.equal(root.querySelectorAll('#transcript .b.me').length, 0, 'refusal removes the optimistic bubble');
+});
+
+test('owner-restored drafts never overwrite newer typing or cross interview contexts', async () => {
+  const doc = createDocument('<main id="main"></main><div id="announcer"></div>');
+  const root = doc.getElementById('main'), ui = createUiState({getItem: () => null, setItem() {}});
+  const snapshot = state(), context = uiContext(snapshot);
+  const mount = current => {
+    const key = uiContext(current);
+    const view = chat.mountChat(root, {draft: ui.draft(key), onDraft: text => ui.writeDraft(key, text), onSend() {}});
+    view.update(current, {draft: ui.draft(key)});
+    return view;
+  };
+  let view = mount(snapshot);
+  root.querySelector('#question').value = 'A newer thought'; fire(root.querySelector('#question'), 'input');
+  if (!ui.draft(context)) ui.writeDraft(context, 'Rejected older question');
+  view.update(snapshot, {draft: ui.draft(context)});
+  assert.equal(root.querySelector('#question').value, 'A newer thought');
+  // Even a late render with an older saved value must not overwrite the current field.
+  view.update(snapshot, {draft: 'Rejected older question'});
+  assert.equal(root.querySelector('#question').value, 'A newer thought');
+  view.destroy();
+  const next = {...snapshot, round: 2, me: {...snapshot.me, interviews: [{round: 2, suspectId: 'ben', closed: false, messages: []}]}};
+  view = mount(next);
+  assert.equal(root.querySelector('#question').value, '', 'previous interview recovery is not a next-turn draft');
+  assert.equal(ui.draft(context), 'A newer thought');
+});
+
+test('confirmed sends do not rehydrate the cleared draft', async () => {
+  const doc = createDocument('<main id="main"></main><div id="announcer"></div>');
+  const root = doc.getElementById('main');
+  let settle;
+  const view = chat.mountChat(root, {draft: 'Saved before sending?', onSend: () => new Promise(resolve => { settle = resolve; })});
+  view.update(state(), {draft: 'Saved before sending?'});
+  fire(root.querySelector('.send'), 'click');
+  view.update(state(), {busy: true, outgoing: {text: 'Saved before sending?', count: 0}, draft: ''});
+  assert.equal(root.querySelector('#question').value, '');
+  view.update(state([{...message(1), question: 'Saved before sending?'}]), {draft: ''});
+  settle(true); await new Promise(resolve => setTimeout(resolve));
+  assert.equal(root.querySelector('#question').value, '');
 });

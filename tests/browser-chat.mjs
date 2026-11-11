@@ -27,6 +27,42 @@ try {
   await page.click('[data-action=question]');
   await page.waitForSelector('#question');
 
+  // A definitive refusal can arrive after switching tabs destroys the sending chat.
+  // Exercise the real app command owner, not only the chat component: restore its saved
+  // question in the remounted composer, but preserve anything typed there in the meantime.
+  for (const newerDraft of ['', 'A newer question about the platform?']) {
+    const question = 'Where was the missing key?', errorText = newerDraft ? 'Synthetic second refusal.' : 'Synthetic first refusal.';
+    let release, reached;
+    const gate = new Promise(resolve => { release = resolve; });
+    const intercepted = new Promise(resolve => { reached = resolve; });
+    const refuseAsk = async route => {
+      if (route.request().postDataJSON()?.type !== 'ask') return route.continue();
+      reached(); await gate;
+      return route.fulfill({status: 400, contentType: 'application/json', body: JSON.stringify({error: errorText})});
+    };
+    await page.route('**/actions', refuseAsk);
+    await page.fill('#question', question);
+    await page.press('#question', 'Enter');
+    await intercepted;
+    await page.locator('#question').blur();
+    await page.click('[data-tab=deductions]');
+    await page.click('[data-tab=investigate]');
+    assert.equal(await page.inputValue('#question'), '', 'held request is not resurrected as a draft');
+    if (newerDraft) await page.fill('#question', newerDraft);
+    release();
+    await page.locator('#notice.error', {hasText: errorText}).waitFor();
+    assert.equal(await page.inputValue('#question'), newerDraft || question);
+    assert.equal(await page.locator('#transcript .b.me').count(), 0, 'refused question is not in the transcript');
+    assert.equal(await page.locator('.send').isEnabled(), true);
+    assert.equal(await page.evaluate(() => sessionStorage.getItem('shift-pending')), null, 'definite refusal has no held retry');
+    await page.unroute('**/actions', refuseAsk);
+    // Recovery is saved, not merely patched into the visible textarea.
+    await page.reload();
+    await page.locator('#question').waitFor();
+    assert.equal(await page.inputValue('#question'), newerDraft || question);
+  }
+  asks = 0; // the synthetic refused attempts above never reached the game server
+
   // A double tap on Send asks once, keeps focus in the composer and shows the typing bubble.
   await page.fill('#question', 'Where were you at eight?');
   await page.dblclick('.send');
