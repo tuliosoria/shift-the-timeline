@@ -112,7 +112,9 @@ export function renderLobby(state, local) {
 <div class="room"><span class="room-code" aria-label="Room code ${esc(state.code.split('').join(' '))}">${esc(state.code)}</span><div class="row"><button type="button" class="btn" data-action="copy-invite">Copy invite link</button><button type="button" class="btn ghost" data-action="copy-code">Copy code</button></div></div>
 <h2 class="label">Agents · ${n} of ${max}</h2>
 <ul class="roster">${roster}</ul>
-<div class="cta">${start}<p class="ai-notice">${esc(AI_NOTICE)}</p></div>
+<div class="cta">${start}
+${state.hostRecoverable && !state.me.host ? '<p class="hint">The host has been away for two minutes.</p><button type="button" class="btn ghost" data-action="claimHost" data-submit>Take over as host</button>' : ''}
+<p class="ai-notice">${esc(AI_NOTICE)}</p></div>
 </section>`;
 }
 

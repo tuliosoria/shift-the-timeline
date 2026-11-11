@@ -194,3 +194,13 @@ test('reveal shows the outcome, the culprit and per-player hits', () => {
   assert.match(html, /Ana/); assert.match(html, /Léo/);
   assert.match(html, /1 of 2/);
 });
+
+// Lobby players have no tab bar, so recovery must be reachable in the lobby itself.
+test('lobby exposes confirmed host recovery only for an eligible non-host', () => {
+  const lobby = state({phase:'lobby', round:0, hostRecoverable:true}, {id:'p2', host:false});
+  assert.equal(views.renderTabBar(lobby, local()), '');
+  assert.match(views.renderLobby(lobby, local()), /data-action="claimHost" data-submit/);
+  assert.match(views.renderLobby(lobby, local()), /away for two minutes/);
+  assert.doesNotMatch(views.renderLobby({...lobby, hostRecoverable:false}, local()), /data-action="claimHost"/);
+  assert.doesNotMatch(views.renderLobby({...lobby, me:{...lobby.me, host:true}}, local()), /data-action="claimHost"/);
+});
