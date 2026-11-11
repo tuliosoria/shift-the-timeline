@@ -28,6 +28,17 @@ try {
  await pages[0].waitForSelector('#suspect-search');
  await pages[0].locator('[data-stage=deduce]').first().click();
  await pages[0].fill('#hypothesis','Keep this local hypothesis through Back and Forward.');
+ // Native skip-to-content links focus the current work instead of routing to Analyse.
+ await pages[0].locator('.skip').focus();await pages[0].keyboard.press('Enter');
+ assert.equal(new URL(pages[0].url()).hash,'#deduce');
+ assert.equal(await pages[0].locator('[aria-current=step]').getAttribute('data-stage'),'deduce');
+ assert.equal(await pages[0].evaluate(()=>document.activeElement.id),'main');
+ assert.equal(await pages[0].inputValue('#hypothesis'),'Keep this local hypothesis through Back and Forward.');
+ await pages[0].locator('[data-stage=interrogate]').first().click();
+ await pages[0].goBack();await pages[0].waitForURL('**/#deduce');
+ assert.equal(await pages[0].locator('[aria-current=step]').getAttribute('data-stage'),'deduce');
+ await pages[0].goForward();await pages[0].waitForURL('**/#interrogate');
+ await pages[0].goBack();await pages[0].waitForURL('**/#deduce');
  await pages[0].locator('[data-stage=analyse]').first().click();
  await pages[0].click('[data-action=dossier][data-id="suspect-1"]');
  await pages[0].click('[data-action=select]');
@@ -133,6 +144,10 @@ try {
  fixtureMessage.narration={status:'complete',text:inventedVoice};fixtureRoom.version++;
  await pages[1].reload();await pages[1].locator('[data-stage=interrogate]').first().click();
  await pages[1].waitForSelector('[data-action=review-topic][data-id=alibi]');
+ await pages[1].locator('.skip').focus();await pages[1].keyboard.press('Enter');
+ assert.equal(await pages[1].locator('[aria-current=step]').getAttribute('data-stage'),'interrogate');
+ assert.equal(await pages[1].evaluate(()=>document.activeElement.id),'main');
+ assert.equal(await pages[1].locator('.bubble.question').count(),1);
  let asks=0;pages[1].on('request',r=>{if(r.url().endsWith('/actions')&&r.postDataJSON()?.type==='ask')asks++;});
  await pages[1].click('[data-action=review-topic][data-id=alibi]');
  assert.equal(asks,0);assert.match(await pages[1].evaluate(()=>document.activeElement.id),/^answer-/);
@@ -198,6 +213,9 @@ try {
  let reviewAsks=0;pages[1].on('request',r=>{if(r.url().endsWith('/actions')&&r.postDataJSON()?.type==='ask')reviewAsks++;});
  await pages[1].locator('.review-nav [data-stage=interrogate]').click();
  await pages[1].waitForSelector('.transcript');
+ await pages[1].locator('.skip').focus();await pages[1].keyboard.press('Enter');
+ assert.equal(await pages[1].locator('.review-nav [aria-current=page]').getAttribute('data-stage'),'interrogate');
+ assert.equal(await pages[1].evaluate(()=>document.activeElement.id),'main');
  assert.equal(await pages[1].locator('#question-form').count(),0);
  assert.equal(await pages[1].locator('.review-nav [aria-current=page]').count(),1);
  // Search own canonical evidence across rounds without sharing or asking again.
