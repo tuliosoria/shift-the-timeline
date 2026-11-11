@@ -4,7 +4,7 @@ import {createUiState, uiContext} from './ui-state.js';
 import * as views from './views.js';
 import {setScene} from './backdrop.js';
 import {mountChat} from './chat.js';
-import {showUnlocked} from './toast.js';
+import {showUnlocked, freshDeductions} from './toast.js';
 
 const $ = s => document.querySelector(s);
 const SESSION = 'shift-session', PENDING = 'shift-pending';
@@ -19,9 +19,10 @@ const ui = createUiState(uiStorage);
 
 const invitationCode = hash => /^#join=([A-HJ-NP-Za-hj-np-z2-9]{8})$/.exec(hash || '')?.[1]?.toUpperCase() ?? '';
 let session = store.get(SESSION), pending = store.get(PENDING), state = null, busy = false, lastVersion = -1, confirmation = null, lastHeartbeat = 0;
-// `reading` keeps a finished chat on screen until the player moves on (see views.screenFor).
+// `reading` keeps a finished chat on screen until the player moves on, even after the turn
+// itself has moved on (see views.screenFor): the transition waits for it.
 const local = {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, entry: 'create', cases: [], invite: ''};
-let chat = null;
+let chat = null, transition = {key: null, timer: null};
 if (!session && !pending && invitationCode(location.hash)) Object.assign(local, {entry: 'join', invite: invitationCode(location.hash)});
 
 const RENDER = {landing: views.renderLanding, lobby: views.renderLobby, briefing: views.renderBriefing, pick: views.renderPick, chat: views.renderChat,
@@ -66,7 +67,7 @@ function render() {
   const entryValues = state ? {} : Object.fromEntries([...main.querySelectorAll('input[id]')].map(el => [el.id, el.value]));
   const header = views.renderHeader(state, local);
   $('#header').innerHTML = header;
-  $('#header').hidden = !header;
+  $('#header').hidden = !header || screen === 'transition';
   main.dataset.view = view;
   $('#tabbar').innerHTML = tabBar;
   if (view === 'chat') {
@@ -80,7 +81,19 @@ function render() {
     if (focusId) { const el = document.getElementById(focusId); el?.focus({preventScroll: true}); try { if (caret?.[0] != null) el.setSelectionRange(...caret); } catch {} }
   }
   setScene(screen);
+  playTransition(screen);
   setBusy();
+}
+
+// The transition moves on by itself unless the player prefers reduced motion; then it waits for Continue.
+function playTransition(screen) {
+  const key = screen === 'transition' ? JSON.stringify([state.code, state.me.id, views.stageOf(state)]) : null;
+  if (key === transition.key) return;
+  clearTimeout(transition.timer);
+  transition = {key, timer: null};
+  if (!key) return;
+  $('#announcer').textContent = [...$('#main').querySelectorAll('.transition .title, .transition .time, .transition .sub')].map(el => el.textContent).join('. ');
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) transition.timer = setTimeout(() => { if (transition.key === key) actions.continue(); }, views.TRANSITION_MS);
 }
 function setBusy() {
   document.body.classList.toggle('busy', busy);
@@ -92,10 +105,10 @@ function applyState(next) {
   if (state && next.code === state.code && next.version < lastVersion) return false;
   const moved = !state || state.round !== next.round || state.phase !== next.phase;
   // Toasts only for deductions unlocked while watching: never on first load or reload.
-  const known = state && state.code === next.code && state.me.id === next.me.id ? new Set(state.me.deductions.map(d => d.id)) : null;
+  const fresh = freshDeductions(state, next);
   state = next; lastVersion = next.version;
-  if (moved) { local.selected = null; local.tab = 'investigate'; local.reading = null; closeConfirmation(); }
-  if (known) { const fresh = next.me.deductions.filter(d => !known.has(d.id)); if (fresh.length) showUnlocked(fresh); }
+  if (moved) { local.selected = null; local.tab = 'investigate'; closeConfirmation(); }
+  if (fresh.length) showUnlocked(fresh);
   render();
   return true;
 }
@@ -169,19 +182,16 @@ const actions = {
   'copy-code': () => copy(state.code, 'Room code copied.', `Room code: ${state.code}`),
   'copy-invite': () => copy(inviteLink(), 'Invite link copied. Send it to the table.', `Invite link: ${inviteLink()}`),
   begin: () => { ui.markSeen(state.code, state.me.id, {briefingSeen: true, lastSeenRound: state.round}); render(); },
-  continue: () => { ui.markSeen(state.code, state.me.id, {lastSeenRound: state.round}); render(); },
+  continue: () => { ui.markSeen(state.code, state.me.id, {lastSeenRound: views.stageOf(state)}); render(); },
   'leave-chat': () => { local.reading = null; render(); $('#main').focus({preventScroll: true}); },
   start: () => act('start'),
   question: () => local.selected && act('select', {suspectId: local.selected, round: state.round}),
   summon: () => {
     const s = state.suspects.find(x => x.id === local.selected);
     if (!s || state.me.vote) return;
-    openConfirmation({title: `Summon ${s.name}?`, label: `Summon ${s.name.split(' ')[0]}`,
-      body: `<p>Your summons is private and final. If ${views.esc(s.name.split(' ')[0])} is innocent, an innocent person is arrested.</p><p><b>This cannot be undone.</b></p>`,
-      onConfirm: () => act('vote', {suspectId: s.id})});
+    openConfirmation({...views.summonConfirmation(s), onConfirm: () => act('vote', {suspectId: s.id})});
   },
-  advance: () => state.me.host && openConfirmation({title: 'Advance for everyone?', label: 'Advance now',
-    body: '<p>Anyone still talking loses their remaining questions this turn. Agree it with the table first.</p>',
+  advance: () => state.me.host && openConfirmation({...views.ADVANCE_CONFIRM,
     onConfirm: () => act('advance', {round: state.round, confirmed: true})}),
   claimHost: () => state.hostRecoverable && openConfirmation({title: 'Take over as host?', label: 'Take over',
     body: '<p>The host has been out of contact for two minutes. They stay in the game and keep their conversations.</p>',

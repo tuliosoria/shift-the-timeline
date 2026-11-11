@@ -192,6 +192,18 @@ input:focus, select:focus { outline: none; border-color: var(--brass); box-shado
 .transition .title { font-size: 30px; }
 .time { margin: 4px 0 6px; font: 400 76px/1 var(--serif); letter-spacing: .02em; color: var(--brass); font-variant-numeric: tabular-nums; text-shadow: 0 6px 30px rgba(0, 0, 0, .6); }
 .transition .cta, .waiting .cta, .sealed .cta { position: static; margin: 32px 0 0; padding: 0; background: none; }
+/* The transition plays over the pocket-watch film: the lines rise in turn, the hour lands last and a thin
+   brass bar runs out the 2.5 s before the next turn. Reduced motion: everything still, Continue to move on. */
+.transition { padding-top: calc(var(--safe-top) + 24px); }
+.transition > :not(.cta) { animation: rise .6s ease-out both; }
+.transition .title { animation-delay: .15s; }
+.transition .time { animation: land .9s cubic-bezier(.2, .8, .2, 1) .35s both; }
+.transition .sub { animation-delay: .7s; }
+.hourglass { width: 120px; height: 2px; margin: 22px auto 0; border-radius: 1px; background: rgba(232, 194, 122, .2); overflow: hidden; }
+.hourglass i { display: block; height: 100%; background: var(--brass); transform-origin: left; animation: run var(--ms, 2500ms) linear both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes land { from { opacity: 0; transform: scale(.92); letter-spacing: .12em; } }
+@keyframes run { from { transform: scaleX(0); } }
 .waiting { padding-top: 12vh; }
 .waiting .sub { font-size: 15px; color: var(--ivory); }
 
@@ -249,6 +261,7 @@ dialog b { color: var(--ivory); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .typing i { opacity: .7; }
+  .hourglass { display: none; }
 }
 @media (max-width: 359px) {
   :root { --gutter: 14px; }

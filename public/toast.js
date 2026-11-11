@@ -25,3 +25,11 @@ export function createToaster({document: doc = globalThis.document, duration = 4
 
 let shared;
 export function showUnlocked(deductions) { (shared ??= createToaster()).showUnlocked(deductions); }
+
+// Deductions in `next` that `previous` did not have, for the same room and player. Nothing on
+// first load, after a reload or when switching rooms: only unlocks that happen while watching.
+export function freshDeductions(previous, next) {
+  if (!previous?.me || !next?.me || previous.code !== next.code || previous.me.id !== next.me.id) return [];
+  const known = new Set(previous.me.deductions.map(d => d.id));
+  return next.me.deductions.filter(d => !known.has(d.id));
+}

@@ -53,7 +53,34 @@ test('route: a closed current interview shows waiting', () => {
   const s = state({}, {interviews:[interview({closed:true, messages:[message(), message({id:'m2'}), message({id:'m3'})]})]});
   assert.equal(views.screenFor(s, local()), 'waiting');
 });
-test('route: accusation phase shows accuse', () => { assert.equal(views.screenFor(state({phase:'accusation', round:4}), local({lastSeenRound:4})), 'accuse'); });
+test('route: accusation phase shows accuse once time is up has been seen', () => {
+  assert.equal(views.screenFor(state({phase:'accusation', round:4}), local({lastSeenRound:4})), 'transition');
+  assert.equal(views.screenFor(state({phase:'accusation', round:4}), local({lastSeenRound:5})), 'accuse');
+  assert.equal(views.screenFor(state({phase:'accusation', round:4}), local({lastSeenRound:2})), 'transition', 'a returning player sees one transition');
+});
+test('route: the transition waits while I read my previous-turn last reply', () => {
+  const done = interview({closed:true, messages:[message(), message({id:'m2'}), message({id:'m3'})]});
+  const s = state({round:2, clock:{turn:2, time:'02:00', hoursLeft:18, crimeAt:'20:00'}}, {interviews:[done]});
+  assert.equal(views.screenFor(s, local({lastSeenRound:1, reading:'1:mara'})), 'chat');
+  assert.equal(views.currentInterview(s, local({lastSeenRound:1, reading:'1:mara'})), done);
+  assert.match(views.renderChat(s, local({lastSeenRound:1, reading:'1:mara'})), /That's all your questions for this turn\./);
+  assert.equal(views.screenFor(s, local({lastSeenRound:1, reading:null})), 'transition');
+  assert.equal(views.screenFor(s, local({lastSeenRound:2, reading:'1:mara'})), 'pick', 'after the transition an old chat never comes back');
+  const last = state({phase:'accusation', round:4}, {interviews:[interview({round:4, closed:true, messages:[message(), message({id:'m2'}), message({id:'m3', status:'pending', reply:null})]})]});
+  assert.equal(views.screenFor(last, local({lastSeenRound:4})), 'chat', 'the last turn reply is seen before the summons');
+});
+test('transition shows hours later and the new time, or time is up before the summons', () => {
+  const html = views.renderTransition(state({round:2, clock:{turn:2, time:'02:00', hoursLeft:18, crimeAt:'20:00'}}), local({lastSeenRound:1}));
+  assert.match(html, /6 hours later/);
+  assert.match(html, /02:00/);
+  assert.match(html, /data-action="continue"/);
+  const up = views.renderTransition(state({phase:'accusation', round:4, clock:{turn:4, time:'14:00', hoursLeft:0, crimeAt:'20:00'}}), local({lastSeenRound:4}));
+  assert.match(up, /Time's up/);
+  assert.match(up, /20:00/);
+  assert.match(up, /Summon your suspect/);
+  assert.equal(views.stageOf(state({round:3})), 3);
+  assert.equal(views.stageOf(state({phase:'accusation', round:4})), 5);
+});
 test('route: reveal phase shows reveal', () => { assert.equal(views.screenFor(state({phase:'reveal', round:4, result:{outcome:'partial', correct:1, total:2, culpritId:'mara', solution:{motive:'Money.'}, votes:[]}}), local({lastSeenRound:4})), 'reveal'); });
 
 test('pick has no search input', () => {
@@ -118,15 +145,43 @@ test('briefing shows the prediction, the rules and Begin', () => {
   assert.match(html, /Begin/);
   assert.match(html, /24 hours/);
 });
-test('waiting names unfinished players and gives the host Advance now', () => {
-  const s = state({players:[{id:'p1', name:'Ana', host:true, ready:true}, {id:'p2', name:'Léo', host:false, ready:false}]}, {interviews:[interview({closed:true, messages:[message()]})]});
-  const html = views.renderWaiting(s, local());
-  assert.match(html, /Waiting for: Léo/);
-  assert.match(html, /Advance now/);
-  assert.ok(!views.renderWaiting({...s, me:{...s.me, host:false}}, local()).includes('Advance now'));
+const finished = (over = {}) => state({players:[{id:'p1', name:'Ana', host:true, ready:true}, {id:'p2', name:'Léo', host:false, ready:false}, {id:'p3', name:'Maya Stone', host:false, ready:false}, {id:'p4', name:'Rui', host:false, ready:true}], ...over}, {interviews:[interview({closed:true, messages:[message()]})]});
+test('waiting lists unfinished players by name', () => {
+  const html = views.renderWaiting(finished(), local());
+  assert.match(html, /Waiting for: Léo, Maya Stone/);
+  assert.ok(!html.includes('Rui'), 'finished players are not listed');
+  const all = views.renderWaiting(finished({players:[{id:'p1', name:'Ana', host:true, ready:true}, {id:'p2', name:'Léo', host:false, ready:true}]}), local());
+  assert.ok(!all.includes('Waiting for'));
+  assert.match(views.renderWaiting(finished({players:[{id:'p1', name:'Ana', host:true, ready:true}, {id:'p2', name:'<b>Eve</b>', host:false, ready:false}]}), local()), /Waiting for: &lt;b&gt;Eve&lt;\/b&gt;/);
+});
+test('host sees Advance now only as host', () => {
+  const s = finished();
+  assert.match(views.renderWaiting(s, local()), /data-action="advance"[^>]*>Advance now</);
+  const guest = {...s, me:{...s.me, id:'p2', host:false}};
+  assert.ok(!views.renderWaiting(guest, local()).includes('Advance now'));
+  assert.ok(!views.renderWaiting(guest, local()).includes('data-action="advance"'));
+  assert.match(views.ADVANCE_CONFIRM.body, /loses their remaining questions/);
 });
 test('accuse CTA summons the selected suspect', () => {
   assert.match(views.renderAccuse(state({phase:'accusation', round:4}), local({selected:'basil'})), /Summon Basil →/);
+});
+test('accuse requires confirm text "This cannot be undone."', () => {
+  const c = views.summonConfirmation(suspects[2]);
+  assert.equal(c.title, 'Summon Basil Wren?');
+  assert.equal(c.label, 'Summon Basil');
+  assert.match(c.body, /This cannot be undone\./);
+  assert.match(views.summonConfirmation({...suspects[0], name:'<i>Eve</i> Doe'}).body, /&lt;i&gt;Eve&lt;\/i&gt;/);
+  assert.match(views.renderAccuse(state({phase:'accusation', round:4}), local({selected:'basil'})), /This cannot be undone\./);
+});
+test('reveal shows who got it right', () => {
+  const players = [...state().players, {id:'p3', name:'Maya', host:false}];
+  const s = state({phase:'reveal', round:4, players, result:{outcome:'partial', correct:1, total:3, culpritId:'mara', solution:{motive:'Money.'}, votes:[{playerId:'p1', suspectId:'mara', correct:true}, {playerId:'p2', suspectId:'ada', correct:false}, {playerId:'p3', suspectId:null, correct:false}]}});
+  const html = views.renderReveal(s, local());
+  assert.match(html, /The timeline wavers\./);
+  assert.match(html, /1 of 3 summoned the killer\./);
+  assert.match(html, /class="hit"><b>Ana <small>\(you\)<\/small><\/b><span>Martha Vale<\/span>.*Got it right/);
+  assert.match(html, /class="miss"><b>Léo<\/b><span>Ada Finch<\/span>.*Wrong suspect/);
+  assert.match(html, /class="miss"><b>Maya<\/b><span>No summons<\/span>.*No summons/);
 });
 test('reveal shows the outcome, the culprit and per-player hits', () => {
   const s = state({phase:'reveal', round:4, result:{outcome:'partial', correct:1, total:2, culpritId:'mara', solution:{motive:'Money.'}, votes:[{playerId:'p1', suspectId:'mara', correct:true}, {playerId:'p2', suspectId:'ada', correct:false}]}});

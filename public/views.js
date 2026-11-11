@@ -14,7 +14,6 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const maxQuestions = state => state.config?.maxQuestions ?? 3;
 const rounds = state => state.config?.rounds ?? 4;
 const pendingLast = interview => interview?.messages?.at(-1)?.status === 'pending';
-const myPending = state => state.me.interviews.some(pendingLast);
 
 const icon = {
   investigate: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
@@ -30,24 +29,32 @@ function face(s, className = 'face') {
   return `<span class="tile" style="--tile:${safeColor(s?.color)}" aria-hidden="true">${esc(initials)}</span>`;
 }
 
-// The interview the player is looking at. After the turn moves on, a previous-turn
-// interview whose reply is still pending stays on screen until that reply lands.
+// Where the player stands on the timeline: the turn, or one past the last turn once the summons begins.
+// `local.lastSeenRound` records the last stage whose transition the player has seen.
+export const stageOf = state => state?.phase === 'investigation' ? state.round : rounds(state) + 1;
+
+// After the turn moves on, the previous-turn chat stays on screen while its last reply is
+// pending or the player is still reading it; the transition waits until they move on.
+function heldInterview(state, local) {
+  if (!['investigation', 'accusation'].includes(state?.phase) || stageOf(state) <= (local?.lastSeenRound ?? 0)) return null;
+  return state.me.interviews.find(i => i.round < stageOf(state) && (pendingLast(i) || local?.reading === chatKey(i))) ?? null;
+}
+
+// The interview the player is looking at: a held previous-turn chat, else this turn's.
 export function currentInterview(state, local) {
-  const interviews = state?.me?.interviews ?? [];
-  if (state?.phase === 'investigation' && state.round > (local?.lastSeenRound ?? 0)) {
-    const held = interviews.find(i => i.round < state.round && pendingLast(i));
-    if (held) return held;
-  }
-  return interviews.find(i => i.round === state?.round) ?? null;
+  const held = heldInterview(state, local);
+  if (held || state?.phase !== 'investigation') return held;
+  return state.me.interviews.find(i => i.round === state.round) ?? null;
 }
 
 export function screenFor(state, local) {
   if (!state) return 'landing';
   if (state.phase === 'lobby') return 'lobby';
-  if (state.phase === 'accusation') return 'accuse';
   if (state.phase === 'reveal') return 'reveal';
-  if (!local.briefingSeen) return 'briefing';
-  if (state.round > local.lastSeenRound && !myPending(state)) return 'transition';
+  if (state.phase === 'investigation' && !local.briefingSeen) return 'briefing';
+  if (heldInterview(state, local)) return 'chat';
+  if (stageOf(state) > (local.lastSeenRound ?? 0)) return 'transition';
+  if (state.phase === 'accusation') return 'accuse';
   const interview = currentInterview(state, local);
   if (!interview) return 'pick';
   // A player who watched the last reply arrive keeps reading it until they choose to move on.
@@ -125,13 +132,20 @@ export function renderBriefing(state, local) {
 </section>`;
 }
 
+// Full-screen interlude between turns, and "time's up" before the summons. The app moves on by
+// itself after TRANSITION_MS; under reduced motion it stays still until the player taps Continue.
+export const TRANSITION_MS = 2500;
 export function renderTransition(state, local) {
-  const hours = state.config?.hoursPerRound ?? 6;
+  const up = state.phase !== 'investigation', hours = state.config?.hoursPerRound ?? 6;
+  const [eyebrow, title, time, sub] = up
+    ? ['The summons', "Time's up", state.clock?.crimeAt, 'The forecast is about to come true. Summon your suspect.']
+    : [`Turn ${state.round} of ${rounds(state)}`, `${hours} hours later`, state.clock?.time, `${state.clock?.hoursLeft} hours until the crime.`];
   return `<section class="screen transition" aria-labelledby="transition-title">
-<p class="eyebrow">Turn ${state.round} of ${rounds(state)}</p>
-<h1 id="transition-title" class="title">${hours} hours later</h1>
-<p class="time">${esc(state.clock?.time)}</p>
-<p class="sub">${state.clock?.hoursLeft} hours until the crime.</p>
+<p class="eyebrow">${esc(eyebrow)}</p>
+<h1 id="transition-title" class="title">${title}</h1>
+<p class="time">${esc(time)}</p>
+<p class="sub">${esc(sub)}</p>
+<div class="hourglass" aria-hidden="true" style="--ms:${TRANSITION_MS}ms"><i></i></div>
 <div class="cta"><button type="button" class="btn ghost" data-action="continue">Continue</button></div>
 </section>`;
 }
@@ -196,6 +210,9 @@ export function renderChat(state, local) {
 </section>`;
 }
 
+export const ADVANCE_CONFIRM = Object.freeze({title: 'Advance for everyone?', label: 'Advance now',
+  body: '<p>Anyone still talking loses their remaining questions this turn. Agree it with the table first.</p>'});
+
 const waitingFor = (state, done) => state.players.filter(p => p.id !== state.me.id && !done(p)).map(p => p.name);
 
 export function renderWaiting(state, local) {
@@ -211,6 +228,12 @@ ${state.me.host ? '<button type="button" class="btn danger" data-action="advance
 ${state.hostRecoverable && !state.me.host ? '<button type="button" class="btn ghost" data-action="claimHost" data-submit>Take over as host</button>' : ''}
 </div>
 </section>`;
+}
+
+export function summonConfirmation(s) {
+  const first = firstName(s?.name);
+  return {title: `Summon ${s?.name}?`, label: `Summon ${first}`,
+    body: `<p>Your summons is private and final. If ${esc(first)} is innocent, an innocent person is arrested.</p><p><b>This cannot be undone.</b></p>`};
 }
 
 export function renderAccuse(state, local) {
@@ -235,9 +258,10 @@ ${suspectGrid(state, local)}
 }
 
 const OUTCOMES = {complete: 'The timeline shifts.', partial: 'The timeline wavers.', defeat: 'The timeline holds.'};
+const verdict = v => v.correct ? 'Got it right' : v.suspectId ? 'Wrong suspect' : 'No summons';
 export function renderReveal(state, local) {
   const r = state.result, culprit = suspect(state, r.culpritId);
-  const votes = r.votes.map(v => `<li class="${v.correct ? 'hit' : 'miss'}"><b>${esc(playerName(state, v.playerId))}${v.playerId === state.me.id ? ' <small>(you)</small>' : ''}</b><span>${v.suspectId ? esc(suspect(state, v.suspectId)?.name) : 'No summons'}</span><span class="mark" aria-label="${v.correct ? 'Correct' : 'Wrong'}">${v.correct ? '✓' : '✗'}</span></li>`).join('');
+  const votes = r.votes.map(v => `<li class="${v.correct ? 'hit' : 'miss'}"><b>${esc(playerName(state, v.playerId))}${v.playerId === state.me.id ? ' <small>(you)</small>' : ''}</b><span>${v.suspectId ? esc(suspect(state, v.suspectId)?.name) : 'No summons'}</span><span class="mark" aria-hidden="true">${v.correct ? '✓' : '✗'}</span><span class="visually-hidden">${verdict(v)}</span></li>`).join('');
   return `<section class="screen reveal">
 <p class="eyebrow">The truth</p>
 <h1 class="title">${OUTCOMES[r.outcome] ?? 'The timeline is revealed.'}</h1>
