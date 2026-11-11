@@ -131,17 +131,17 @@ test('header shows the case title and the story clock', () => {
   assert.match(html, /The Last Light/);
   assert.match(html, /Turn 2 of 4 · 02:00 · 18h left/);
 });
-test('tab bar appears only during investigation and accusation', () => {
+test('tab bar keeps private evidence available through the reveal', () => {
   const s = state({}, {deductions:[{id:'d1', text:'x', suspectId:'mara', round:1}]});
   const html = views.renderTabBar(s, local());
   assert.match(html, /Investigate/); assert.match(html, /Deductions/); assert.match(html, /1\/5/); assert.match(html, /Case file/);
   assert.equal(views.renderTabBar(state({phase:'lobby', round:0}), local()), '');
-  assert.equal(views.renderTabBar(state({phase:'reveal'}), local()), '');
+  assert.match(views.renderTabBar(state({phase:'reveal'}), local()), /Outcome.*Deductions.*Case file/);
 });
-test('landing and lobby carry the AI notice', () => {
+test('landing and lobby carry the AI notice when the server reports AI mode', () => {
   const notice = "Suspects are voiced by AI. Don't type personal information.";
-  assert.ok(views.renderLanding(null, local()).includes(notice.replace("'", '&#39;')));
-  assert.ok(views.renderLobby(state({phase:'lobby', round:0}), local()).includes(notice.replace("'", '&#39;')));
+  assert.ok(views.renderLanding(null, local({dialogueMode:'ai'})).includes(notice.replace("'", '&#39;')));
+  assert.ok(views.renderLobby(state({phase:'lobby', round:0}), local({dialogueMode:'ai'})).includes(notice.replace("'", '&#39;')));
 });
 test('briefing shows the prediction, the rules and Begin', () => {
   const html = views.renderBriefing(state(), local({briefingSeen:false}));

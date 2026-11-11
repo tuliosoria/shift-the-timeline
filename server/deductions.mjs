@@ -39,7 +39,8 @@ export function resolveWithAi(caseData, player, interview, message, { reply, unl
 
 export function deductionView(caseData, player) {
   const byId = new Map((caseData.deductions ?? []).map(d => [d.id, d]));
-  return (player.deductions ?? []).filter(u => byId.has(u.id)).map(u => ({ id: u.id, text: byId.get(u.id).text, suspectId: u.suspectId, round: u.round }));
+  return (player.deductions ?? []).filter(u => byId.has(u.id)).map(u => ({ id: u.id, text: byId.get(u.id).text, suspectId: u.suspectId, round: u.round,
+    ...(typeof u.messageId === 'string' ? {messageId: u.messageId} : {}) }));
 }
 
 // Smallest number of distinct suspects whose sources (any topic) cover every key deduction; Infinity if none up to 9.
