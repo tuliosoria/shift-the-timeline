@@ -14,7 +14,7 @@ import {publicDemoAttacks,syntheticProviderResponse} from './helpers/public-demo
 const origin='https://synthetic-shift.example';
 const env={SHIFT_RUNTIME:'azure',NODE_ENV:'production',SHIFT_ORIGIN:origin,SHIFT_PG_HOST:'synthetic.postgres.database.azure.com',SHIFT_PG_USER:'shift_app',SHIFT_PG_DATABASE:'shift',SHIFT_CASE_FILE:'/synthetic/case.json',SHIFT_CASE_SHA256:'0'.repeat(64),SHIFT_ALLOW_NEW_ROOMS:'true',SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic-key-never-transmitted',SHIFT_AI_POLICY:JSON.stringify({...PROPOSED_LIMITS,model:'synthetic-model',inputRate:0.4,outputRate:1.6})};
 
-test('three-player public-demo campaign answers every adversarial question privately through four turns and reveal',{skip:'pending Task 5 content: the public demo has no suspect briefs or deductions yet'},async()=>{
+test('three-player public-demo campaign answers every adversarial question privately through four turns and reveal',async()=>{
  const attacks=publicDemoAttacks(caseData.suspects.find(s=>s.id===caseData.culpritId).name);
  const originalFetch=globalThis.fetch;let escaped=0;globalThis.fetch=async()=>{escaped++;throw new Error('External network forbidden');};
  const store=Object.assign(new MemoryStore(),{checkReady:async()=>true,cleanupExpired:async()=>0});

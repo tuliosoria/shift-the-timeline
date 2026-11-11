@@ -2,10 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {GameService} from '../server/game.mjs';
 import {validateCase} from '../server/case-loader.mjs';
+import {minimumSuspectCover} from '../server/deductions.mjs';
+import {buildChatContext} from '../server/ai/chat-context.mjs';
 import {caseData,catalog,reviewRoutes} from '../examples/public-demo.mjs';
 let serial=0;const request=()=>`public-demo-${++serial}-request`;
 function setup(count=3){const g=new GameService({caseData,catalog}),host=g.create('A',caseData.id,request()),players=[host];for(let i=1;i<count;i++)players.push(g.join(host.code,`Agent ${i}`,request()));return{g,host,players,act:(p,type,data={})=>g.act(host.code,p.token,{id:request(),type,...data})};}
-test.skip('public authored demo validates separately from synthetic and private cases (pending Task 5 content)',()=>{const result=validateCase({caseData,catalog});assert.equal(result.caseData.suspects.length,15);assert.notEqual(caseData.id,'demo');assert.match(catalog[0].description,/public/i);assert.ok(reviewRoutes.length>=3);assert.equal(new Set(caseData.suspects.map(s=>s.id)).size,15);});
+test('public authored demo validates separately from synthetic and private cases',()=>{const result=validateCase({caseData,catalog});assert.equal(result.caseData.suspects.length,15);assert.notEqual(caseData.id,'demo');assert.match(catalog[0].description,/public/i);assert.ok(reviewRoutes.length>=3);assert.equal(new Set(caseData.suspects.map(s=>s.id)).size,15);});
+const keyDeductions=()=>caseData.deductions.filter(d=>d.key);
+test('every key deduction has sources from at least 2 different suspects',()=>{
+ assert.ok(keyDeductions().length>=6);
+ for(const d of keyDeductions())assert.ok(new Set(d.sources.map(s=>s.suspectId)).size>=2,d.id);
+});
+// One player interviews one suspect per turn over four turns, so sees at most four suspects.
+test('no single player can cover the key deductions',()=>{assert.ok(minimumSuspectCover(caseData)>=5);});
+// Three players have twelve interviews; nine leaves slack for detours and repeats.
+test('three players can cover the key deductions',()=>{assert.ok(minimumSuspectCover(caseData)<=9);});
+test('prediction mentions 24 hours and no longer mentions fixed accounts',()=>{
+ assert.match(caseData.prediction,/\b(24|twenty-four) hours\b/i);assert.match(caseData.prediction,/four turns of six hours/i);
+ assert.doesNotMatch(caseData.prediction,/fixed accounts|does not unlock new testimony/i);
+});
+// The job record store holds 16 KB; the context must leave room for history and metadata.
+test('every suspect chat context fits the job record budget',()=>{
+ const question='Q'.repeat(300);
+ for(const s of caseData.suspects){const {instructions,input}=buildChatContext({caseData,suspectId:s.id,history:[],question});assert.ok(Buffer.byteLength(instructions+input)<=12000,s.id);}
+});
 for(const route of reviewRoutes)test(`authored route is mechanically available without AI: ${route.name}`,()=>{
  assert.ok(route.interviews.length<=6);assert.ok(route.interviews.length>=2);const unique=new Set(route.interviews.map(i=>i.suspectId));assert.equal(unique.size,route.interviews.length);
  const s=setup();s.act(s.host,'start');let cursor=0,obtained=[];

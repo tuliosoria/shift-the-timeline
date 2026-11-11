@@ -9,7 +9,7 @@ test('Azure package builder pins public demo and does not read credentials or pr
  assert.match(source,/sourcemap:false/);assert.match(source,/THIRD_PARTY_LICENSES/);
 });
 
-test.skip('packaged Azure maintenance server is runnable and refuses game access (pending Task 5 content)',async()=>{
+test('packaged Azure maintenance server is runnable and refuses game access',async()=>{
  const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');
  await promisify(execFile)(process.execPath,['scripts/package-azure.mjs']);
  const {createBootstrapServer}=await import('../build/azure/server/azure-bootstrap.mjs');
