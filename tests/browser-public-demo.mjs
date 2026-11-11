@@ -36,10 +36,21 @@ async function open(context) {
 }
 async function pick(page, suspectId, screenshot) {
   await page.locator('.screen.pick').waitFor();
+  const portraits = page.locator('.screen.pick .card img.face');
+  assert.equal(await portraits.count(), caseData.suspects.length, 'the public cast has portraits, not initials');
+  for (const portrait of await portraits.all()) {
+    await portrait.scrollIntoViewIfNeeded();
+    await portrait.evaluate(img => img.decode());
+    assert.ok(await portrait.evaluate(img => img.naturalWidth > 0), 'portrait loads on a phone');
+  }
   await page.click(`[data-suspect="${suspectId}"]`);
+  const selectedPortrait = await page.locator(`[data-suspect="${suspectId}"] img`).getAttribute('src');
   if (screenshot) await page.screenshot({path: screenshot});
   await page.click('[data-action=question]');
   await page.locator('#question').waitFor();
+  const avatar = page.locator('.chead img.avatar');
+  assert.equal(await avatar.getAttribute('src'), selectedPortrait, 'chat keeps the selected face');
+  await avatar.evaluate(img => img.decode());
 }
 async function ask(page, question, n) {
   await page.fill('#question', question);

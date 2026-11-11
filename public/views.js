@@ -9,6 +9,13 @@ export const dialogueNotice = mode => mode === 'ai' ? `${AI_NOTICE} Authored rep
   : mode === 'canonical' ? 'Suspects use authored replies. Questions match a topic, so rephrasing may repeat an answer.'
     : 'Interview mode is loading. Please avoid personal information in your questions.';
 const PORTRAITS = new Set(['mara', 'ines', 'bento', 'celia', 'noa', 'rui', 'vera', 'davi', 'lia', 'tomas', 'helena', 'joel', 'olga', 'samira', 'elio']);
+// The public museum demo uses a different cast. Reuse the shipped fictional art
+// only for that case; never infer asset paths from arbitrary case data.
+const PUBLIC_DEMO_PORTRAITS = new Map(Object.entries({
+  ada: 'lia', basil: 'davi', cora: 'celia', dev: 'joel', rowan: 'tomas',
+  leena: 'helena', kit: 'noa', priya: 'ines', oscar: 'bento', gia: 'samira',
+  hugo: 'rui', nell: 'mara', milo: 'elio', tess: 'olga', wren: 'vera',
+}));
 export const firstName = name => String(name ?? '').trim().split(/\s+/)[0] || 'them';
 const safeColor = c => /^#[0-9a-f]{3,8}$/i.test(c ?? '') ? c : '#4a5a6a';
 const suspect = (state, id) => state.suspects.find(s => s.id === id);
@@ -26,8 +33,9 @@ const icon = {
 };
 
 // A portrait only for the shipped allowlist; every other id gets a large initials tile.
-function face(s, className = 'face') {
-  if (PORTRAITS.has(s?.id)) return `<img class="${className}" src="/assets/portraits/${s.id}.webp" alt="" width="512" height="512" loading="lazy" decoding="async">`;
+function face(state, s, className = 'face') {
+  const portraitId = state.case?.id === 'bracken-quay-demo' ? PUBLIC_DEMO_PORTRAITS.get(s?.id) : s?.id;
+  if (PORTRAITS.has(portraitId)) return `<img class="${className}" src="/assets/portraits/${portraitId}.webp" alt="" width="512" height="512" loading="lazy" decoding="async">`;
   const initials = s?.initials || String(s?.name ?? '?').split(/\s+/).map(w => w[0]).slice(0, 2).join('');
   return `<span class="tile" style="--tile:${safeColor(s?.color)}" aria-hidden="true">${esc(initials)}</span>`;
 }
@@ -160,7 +168,7 @@ export function renderTransition(state, local) {
 function suspectGrid(state, local, {taken = new Map(), asked = new Map()} = {}) {
   return `<div class="grid" role="group" aria-label="Suspects">${state.suspects.map(s => {
     const selected = local.selected === s.id, notes = [asked.get(s.id), taken.get(s.id)].filter(Boolean);
-    return `<button type="button" class="card" id="suspect-choice-${esc(s.id)}" data-suspect="${esc(s.id)}" aria-pressed="${selected}">${face(s)}<span class="n">${esc(s.name)}<small>${esc(s.role)}</small></span>${notes.length ? `<span class="badge">${esc(notes.join(' · '))}</span>` : ''}</button>`;
+    return `<button type="button" class="card" id="suspect-choice-${esc(s.id)}" data-suspect="${esc(s.id)}" aria-pressed="${selected}">${face(state, s)}<span class="n">${esc(s.name)}<small>${esc(s.role)}</small></span>${notes.length ? `<span class="badge">${esc(notes.join(' · '))}</span>` : ''}</button>`;
   }).join('')}</div>`;
 }
 
@@ -189,7 +197,7 @@ export const typingLabel = name => `${firstName(name)} is replying`;
 
 export function renderChatHead(state, local) {
   const {interview, s, q} = chatParts(state, local), asked = interview.messages.length;
-  return `${face(s, 'avatar')}<div class="who"><b>${esc(s?.name)}</b><small>${esc(s?.role)}</small></div><div class="count" aria-label="${asked} of ${q} questions asked"><div class="dots" aria-hidden="true">${Array.from({length: q}, (_, i) => `<i class="${i < asked ? 'u' : ''}"></i>`).join('')}</div>${asked} of ${q}</div>`;
+  return `${face(state, s, 'avatar')}<div class="who"><b>${esc(s?.name)}</b><small>${esc(s?.role)}</small></div><div class="count" aria-label="${asked} of ${q} questions asked"><div class="dots" aria-hidden="true">${Array.from({length: q}, (_, i) => `<i class="${i < asked ? 'u' : ''}"></i>`).join('')}</div>${asked} of ${q}</div>`;
 }
 
 export function renderTranscript(state, local) {
@@ -250,7 +258,7 @@ export function renderAccuse(state, local) {
     return `<section class="screen accuse sealed">
 <p class="eyebrow">The summons</p>
 <h1 class="title">Your summons is sealed.</h1>
-<div class="sealed-card">${face(suspect(state, state.me.vote))}<b>${esc(suspect(state, state.me.vote)?.name)}</b></div>
+<div class="sealed-card">${face(state, suspect(state, state.me.vote))}<b>${esc(suspect(state, state.me.vote)?.name)}</b></div>
 <p class="sub">${waiting.length ? `Waiting for: ${esc(waiting.join(', '))}` : 'Everyone has chosen. The timeline is turning…'}</p>
 ${state.me.host && state.canFinalizeAccusations ? '<div class="cta"><button type="button" class="btn danger" data-action="finalizeAccusations" data-submit>Reveal without them</button></div>' : ''}
 ${state.hostRecoverable && !state.me.host ? '<div class="cta"><button type="button" class="btn ghost" data-action="claimHost" data-submit>Take over as host</button></div>' : ''}
@@ -274,7 +282,7 @@ export function renderReveal(state, local) {
 <p class="eyebrow">The truth</p>
 <h1 class="title">${OUTCOMES[r.outcome] ?? 'The timeline is revealed.'}</h1>
 <p class="sub">${r.correct} of ${r.total} summoned the killer.</p>
-<div class="culprit">${face(culprit)}<div><small>The killer</small><b>${esc(culprit?.name)}</b><span>${esc(culprit?.role)}</span></div></div>
+<div class="culprit">${face(state, culprit)}<div><small>The killer</small><b>${esc(culprit?.name)}</b><span>${esc(culprit?.role)}</span></div></div>
 <ul class="votes">${votes}</ul>
 ${r.solution?.motive ? `<h2 class="label">Why</h2><p class="solution">${esc(r.solution.motive)}</p>` : ''}
 ${r.solution?.plan ? `<h2 class="label">How</h2><p class="solution">${esc(r.solution.plan)}</p>` : ''}
