@@ -36,10 +36,23 @@ async function open(context) {
 }
 async function pick(page, suspectId, screenshot) {
   await page.locator('.screen.pick').waitFor();
+  const portraits = page.locator('.screen.pick .card img.face');
+  assert.equal(await portraits.count(), caseData.suspects.length, 'the public cast has portraits, not initials');
+  // Polls can replace the grid while we inspect it. Re-query current images on
+  // every check instead of holding nodes across scrolling/layout frames.
+  await page.waitForFunction(count => {
+    const images = [...document.querySelectorAll('.screen.pick .card img.face')];
+    for (const img of images) img.loading = 'eager';
+    return images.length === count && images.every(img => img.complete && img.naturalWidth > 0);
+  }, caseData.suspects.length);
   await page.click(`[data-suspect="${suspectId}"]`);
+  const selectedPortrait = await page.locator(`[data-suspect="${suspectId}"] img`).getAttribute('src');
   if (screenshot) await page.screenshot({path: screenshot});
   await page.click('[data-action=question]');
   await page.locator('#question').waitFor();
+  const avatar = page.locator('.chead img.avatar');
+  assert.equal(await avatar.getAttribute('src'), selectedPortrait, 'chat keeps the selected face');
+  await avatar.evaluate(img => img.decode());
 }
 async function ask(page, question, n) {
   await page.fill('#question', question);

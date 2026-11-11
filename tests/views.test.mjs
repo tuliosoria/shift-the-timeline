@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {caseData as publicCase} from '../examples/public-demo.mjs';
+import {publicAsset, readPublicAsset} from '../server/public-assets.mjs';
 const views = await import('../public/views.js').catch(error => { if (error.code === 'ERR_MODULE_NOT_FOUND') return {}; throw error; });
 
 const suspects = [
@@ -99,6 +101,36 @@ test('pick shows a portrait only for allowlisted ids and an initials tile otherw
   assert.ok(html.includes('src="/assets/portraits/mara.webp"'));
   assert.ok(!html.includes('/assets/portraits/ada.webp'));
   assert.match(html, /class="tile"[^>]*style="--tile:#7a5c3e"[^>]*>AF</);
+});
+test('every public-demo suspect has a distinct shipped portrait in pick, chat and accusation', async () => {
+  const demo = state({case: publicCase, suspects: publicCase.suspects});
+  const portraits = new Set();
+  for (const person of publicCase.suspects) {
+    const single = {...demo, suspects: [person]};
+    const pick = views.renderPick(single, local());
+    const src = pick.match(/<img[^>]+src="([^"]+)"/)?.[1];
+    assert.ok(src, `Missing portrait for ${person.id}`);
+    portraits.add(src);
+    const asset = publicAsset(src);
+    assert.equal(asset?.type, 'image/webp', `Portrait is served: ${person.id}`);
+    assert.ok((await readPublicAsset(asset.file)).length > 0);
+    const chat = views.renderChat({...single, me: {...single.me, interviews: [interview({suspectId: person.id})]}}, local());
+    assert.ok(chat.includes(`src="${src}"`), 'chat retains the same face');
+    const accuse = views.renderAccuse({...single, phase: 'accusation'}, local());
+    assert.ok(accuse.includes(`src="${src}"`), 'accusation retains the same face');
+    const sealed = views.renderAccuse({...single, phase: 'accusation', me: {...single.me, vote: person.id}}, local());
+    assert.ok(sealed.includes(`src="${src}"`), 'sealed vote retains the same face');
+    const reveal = views.renderReveal({...single, phase: 'reveal', result: {outcome: 'complete', correct: 1, total: 1, culpritId: person.id, votes: []}}, local());
+    assert.ok(reveal.includes(`src="${src}"`), 'reveal retains the same face');
+  }
+  assert.equal(portraits.size, publicCase.suspects.length, 'each suspect is visually distinct');
+});
+test('unknown public-demo suspects retain the safe initials fallback', () => {
+  for (const id of ['new-suspect', '../../private/secret', 'constructor', 'toString']) {
+    const html = views.renderPick(state({case: publicCase, suspects: [{id, name: 'New Suspect', initials: 'NS'}]}), local());
+    assert.ok(!html.includes('<img'));
+    assert.match(html, /class="tile"[^>]*>NS</);
+  }
 });
 test('chat counter shows "1 of 3"', () => {
   const html = views.renderChat(state({}, {interviews:[interview({messages:[message()]})]}), local());

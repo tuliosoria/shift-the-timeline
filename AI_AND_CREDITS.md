@@ -10,6 +10,8 @@ When AI is configured, a model voices every suspect answer in character, with me
 
 The 15 fictional suspect portraits and three illustrated stage icons were created with OpenAI image generation. Four portraits were revised to make the cast more visually distinct. Their appearance is artistic direction, not evidence about guilt. Art was based only on public fictional profiles, never the private solution.
 
+The Bracken Quay public demo reuses the existing 15 portraits with an explicit, case-scoped cast mapping. This is presentation art, not a change to the characters, clues or solution. The original case's portrait assignments and assets are unchanged.
+
 Browser assets are WebP derivatives with transparency, sized to 512px for portraits and 192px for stage icons. Original generated PNGs are retained separately and are not included in the deployment bundle. The 18 browser illustrations total approximately 634 KiB. Mockup previews are concept images, not screenshots proving browser behaviour.
 
 ## Background films
