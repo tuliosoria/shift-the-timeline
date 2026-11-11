@@ -24,6 +24,46 @@ try {
  for(let i=1;i<3;i++){const joined=await call(pages[i],`/api/rooms/${code}/join`,{id:randomUUID(),name:`Agent ${i}`});await pages[i].evaluate(s=>localStorage.setItem('shift-session',JSON.stringify(s)),{code,playerId:joined.playerId});await pages[i].reload();await pages[i].waitForSelector('.selectable-code');}
  const act=(p,type,extra={})=>call(p,`/api/rooms/${code}/actions`,{id:randomUUID(),type,...extra});
  await pages[0].waitForFunction(()=>!document.querySelector('[data-action=start]').disabled);await pages[0].click('[data-action=start]');
+ // Back/Forward dismiss an unconfirmed choice and newer navigation wins over a delayed reply.
+ await pages[0].waitForSelector('#suspect-search');
+ await pages[0].locator('[data-stage=deduce]').first().click();
+ await pages[0].fill('#hypothesis','Keep this local hypothesis through Back and Forward.');
+ await pages[0].locator('[data-stage=analyse]').first().click();
+ await pages[0].click('[data-action=dossier][data-id="suspect-1"]');
+ await pages[0].click('[data-action=select]');
+ await pages[0].waitForSelector('#confirm-dialog[open]');
+ await pages[0].goBack();
+ await pages[0].waitForSelector('#hypothesis');
+ assert.equal(await pages[0].locator('#confirm-dialog').evaluate(el=>el.open),false);
+ assert.equal(await pages[0].inputValue('#hypothesis'),'Keep this local hypothesis through Back and Forward.');
+ assert.equal(await pages[0].evaluate(()=>document.activeElement.id),'stage-heading');
+ assert.equal(store.rooms.get(code).players.find(p=>p.name==='Original host').interviews.length,0);
+ await pages[0].goForward();await pages[0].waitForSelector('#suspect-search');
+ assert.equal(await pages[0].locator('#confirm-dialog').evaluate(el=>el.open),false);
+ let releaseSelection,selectionArrived,selectionRequests=0;
+ const selectedReply=new Promise(resolve=>selectionArrived=resolve),holdSelection=new Promise(resolve=>releaseSelection=resolve);
+ const delaySelection=async route=>{
+  if(route.request().postDataJSON()?.type!=='select'){await route.continue();return;}
+  selectionRequests++;const response=await route.fetch();selectionArrived();await holdSelection;await route.fulfill({response});
+ };
+ await pages[0].route('**/actions',delaySelection);
+ let selectionTimer;
+ try {
+ await pages[0].click('[data-action=select]');await pages[0].click('#confirm-accept');
+ await Promise.race([selectedReply,new Promise((_,reject)=>{selectionTimer=setTimeout(()=>reject(new Error('Selection response did not reach the browser test route')),10000);})]);
+ clearTimeout(selectionTimer);
+ await pages[0].goBack();await pages[0].waitForSelector('#hypothesis');
+ releaseSelection();
+ await pages[0].waitForFunction(()=>sessionStorage.getItem('shift-pending')===null);
+ assert.equal(await pages[0].locator('[aria-current=step]').getAttribute('data-stage'),'deduce');
+ assert.equal(await pages[0].inputValue('#hypothesis'),'Keep this local hypothesis through Back and Forward.');
+ assert.equal(await pages[0].evaluate(()=>document.activeElement.id),'stage-heading');
+ assert.equal(selectionRequests,1);
+ assert.equal(store.rooms.get(code).players.find(p=>p.name==='Original host').interviews.length,1);
+ } finally {clearTimeout(selectionTimer);releaseSelection();await pages[0].unroute('**/actions',delaySelection);}
+ await pages[0].goForward();await pages[0].waitForSelector('#suspect-search');
+ assert.equal(await pages[0].locator('[aria-current=step]').getAttribute('data-stage'),'analyse');
+ assert.equal(await pages[0].locator('#confirm-dialog').evaluate(el=>el.open),false);
  // Canonical topics remain private and repeat attempts cannot waste a slot.
  await act(pages[1],'select',{round:1,suspectId:'suspect-1'});
  await act(pages[1],'ask',{round:1,question:'Where were you?',topic:'alibi'});
