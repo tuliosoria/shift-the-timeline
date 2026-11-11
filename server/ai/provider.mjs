@@ -1,4 +1,19 @@
 import {PROPOSED_LIMITS} from './budget.mjs';
+const MAX_RESPONSE_BYTES=16384;
+// Enforce the transport ceiling while reading, not after buffering an arbitrary body.
+// Cancel without awaiting an upstream cancellation acknowledgement, which can stall.
+function cancelBody(body){try{void body?.cancel().catch(()=>{});}catch{}}
+async function boundedResponseText(response){
+ const reader=response.body?.getReader();if(!reader)throw new Error('Provider response body unavailable');
+ const chunks=[];let size=0,finished=false;
+ try{
+  for(;;){const {done,value}=await reader.read();if(done){finished=true;break;}
+   size+=value.byteLength;if(size>MAX_RESPONSE_BYTES)throw new Error('Provider response too large');
+   chunks.push(value);
+  }
+  return new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks,size));
+ }finally{if(!finished)cancelBody(reader);reader.releaseLock();}
+}
 export function createProvider({model,getSecret,fetchImpl=fetch}){
  if(typeof model!=='string'||!model||typeof getSecret!=='function')throw new Error('Explicit approved model and secret provider required');
  const send=async(context,{now=Date.now,deadline=now()+20000,startBy=deadline}={})=>{
@@ -13,7 +28,7 @@ export function createProvider({model,getSecret,fetchImpl=fetch}){
   const secret=await getSecret();if(typeof secret!=='string'||!secret)throw new Error('Secret unavailable');
   const remaining=Math.min(20000,Math.floor(deadline-now()));if(remaining<=0||now()>=startBy)throw new Error('Provider start deadline expired');
   const response=await fetchImpl('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${secret}`,'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(remaining)});
-  if(!response.ok)throw new Error('Provider request unsuccessful');const raw=await response.text();if(Buffer.byteLength(raw)>16384)throw new Error('Provider response too large');const data=JSON.parse(raw);if(data.status==='incomplete'||data.incomplete_details)throw new Error('Provider response incomplete');const text=data.output?.flatMap(o=>o.type==='message'?o.content??[]:[]).filter(c=>c.type==='output_text').map(c=>c.text).join('');const parsed=JSON.parse(text);if(!parsed||Object.keys(parsed).length!==2||typeof parsed.reply!=='string'||!parsed.reply.trim()||Buffer.byteLength(parsed.reply)>1200||!Array.isArray(parsed.unlocked)||parsed.unlocked.length>3||parsed.unlocked.some(id=>typeof id!=='string'))throw new Error('Invalid provider output');const inputTokens=data.usage?.input_tokens,outputTokens=data.usage?.output_tokens;if(!Number.isSafeInteger(inputTokens)||inputTokens<1||inputTokens>PROPOSED_LIMITS.inputTokens||!Number.isSafeInteger(outputTokens)||outputTokens<1||outputTokens>PROPOSED_LIMITS.outputTokens)throw new Error('Provider usage outside envelope');return {reply:parsed.reply,unlocked:parsed.unlocked,inputTokens,outputTokens};
+  if(!response.ok){cancelBody(response.body);throw new Error('Provider request unsuccessful');}const raw=await boundedResponseText(response);const data=JSON.parse(raw);if(data.status==='incomplete'||data.incomplete_details)throw new Error('Provider response incomplete');if(data.error!=null||data.status!==undefined&&data.status!=='completed')throw new Error('Provider response not completed');const text=data.output?.flatMap(o=>o.type==='message'?o.content??[]:[]).filter(c=>c.type==='output_text').map(c=>c.text).join('');const parsed=JSON.parse(text);if(!parsed||Object.keys(parsed).length!==2||typeof parsed.reply!=='string'||!parsed.reply.trim()||Buffer.byteLength(parsed.reply)>1200||!Array.isArray(parsed.unlocked)||parsed.unlocked.length>3||parsed.unlocked.some(id=>typeof id!=='string'))throw new Error('Invalid provider output');const inputTokens=data.usage?.input_tokens,outputTokens=data.usage?.output_tokens;if(!Number.isSafeInteger(inputTokens)||inputTokens<1||inputTokens>PROPOSED_LIMITS.inputTokens||!Number.isSafeInteger(outputTokens)||outputTokens<1||outputTokens>PROPOSED_LIMITS.outputTokens)throw new Error('Provider usage outside envelope');return {reply:parsed.reply,unlocked:parsed.unlocked,inputTokens,outputTokens};
  };
  return Object.defineProperty(send,'model',{value:model,enumerable:true});
 }

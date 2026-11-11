@@ -1,37 +1,32 @@
-# Azure handoff: mobile chat redesign (action needed by Arthur)
+# Azure handoff: active hosted AI and release reference
 
-**Status:** the mobile chat redesign (4 turns × 6 hours, AI-voiced suspects, unlockable deductions, new client) is on `main` and auto-deploys through the `deploy-azure` job. That job **does not change App Service configuration**, and two live settings predate the redesign. The first deploy could not start because of them. The server now tolerates both, so the site runs. It logs a fixed `azure_startup_notice` line for each one until Arthur updates the settings below. **This is no longer urgent, but it is needed to switch AI back on.**
+## Verified release receipt: 11 November 2026
 
-Current tolerance (added after the first failed deploy):
-- **Stale `SHIFT_AI_POLICY`**: AI is switched off (canonical answers) and the server logs `{"event":"azure_startup_notice","reason":"ai_policy_invalid"}`. It no longer exits. Missing consent or key is still fatal.
-- **Stale `SHIFT_CASE_SHA256`**: the server accepts the case only if its digest matches the `case-manifest.json` in the same verified release package, and logs `{"event":"azure_startup_notice","reason":"case_pin_superseded"}`. Any other mismatch is still rejected.
+[PR #48](https://github.com/tuliosoria/shift-the-timeline/pull/48) is merged and deployed as `370ab445f624a45d9d0b3ba212a3bebc8bf9633e`. [Main CI and deployment](https://github.com/tuliosoria/shift-the-timeline/actions/runs/43105541051) passed; live `/healthz` returned HTTP 200 and `/api/release` matched that exact commit. Six actual hosted AI replies in an isolated three-player game passed independent factuality, deduction and privacy review. This verifies that release, not subsequent changes or arbitrary player questions. It is not a browser-reconnect or load-test result.
 
-## What the settings are out of date about
+The active model is `gpt-6-luna`, with explicit medium reasoning and a **6,000-input/1,024-output-token envelope**. Output allowance includes reasoning as well as visible JSON. The approved production policy remains **uncapped**: `uncapped:true`, room/day/month financial limits all `null`, and concurrency **2**. The restore did not change credentials or security permissions. No case-pin or AI-policy update is currently requested by this handoff.
 
-1. **Case pin.** `SHIFT_CASE_SHA256` pins the public-demo case bytes. The Bracken Quay case was rewritten (suspect briefs, deductions, `clockStart: '18:00'`), so its digest changed. Without the package-manifest tolerance it would be rejected (`Case integrity mismatch`).
-2. **AI policy.** The live app has AI enabled with the old policy envelope (2,500/350 tokens, old limits). The new code accepts only 6,000/1,024 tokens and the new limits; `readAzureConfig` treats the old policy as invalid and switches AI off.
+The mobile chat rules are four turns of six hours, three questions per turn, private interviews and unlockable deductions. The landing page and lobby describe the active dialogue mode; there is no per-question consent checkbox. Failed or unadmitted AI questions use authored fallback without an automatic paid retry. See [AI orchestration](AI_ORCHESTRATION.md) for exact provider scope, privacy and quality limitations.
 
-## Steps (in this order)
+## Future release checks
 
-Use the explicit subscription `ddb0b48c-aa74-4420-bf1b-49a3f7eaa970`, group `rg-shift-playtest-centralus`, app `shift-zndzouh3e74wy`. Never print or paste secrets.
+The main-only `deploy-azure` job deploys after validation when its repository enable variable is true. A main merge can therefore deploy automatically; treat release approval separately from code review. The job does not change App Service configuration. Packaging or merging code alone is not permission to change financial policy, credentials or security settings.
 
-1. **Turn AI off explicitly** (the server is already canonical; this makes it intentional):
-   `SHIFT_AI_ENABLED=false`
-2. **Update the case pin** to the new public-demo digest:
-   `SHIFT_CASE_SHA256=b7f54d17a7413032ffd9c3eaf66faffa2ab5e1b065902cd4d15dfaccabdc342b`
-   Cross-check it against the `Azure public-demo staging package ready. Case SHA256: …` line in the CI `validate` job log for the deployed commit, and against `case-manifest.json` inside the release artifact. If they differ, use the CI value.
-3. Read both settings back, let the app restart, then verify:
-   - `GET /healthz` → `ok`
-   - `GET /api/release` → the current `main` commit
-   - `GET /api/cases` → `dialogueMode: "canonical"`, case `bracken-quay-demo`
-   - Play one turn on a phone.
-4. **Later, to switch AI back on** (only after the paid live evaluation in `docs/evidence/ai-chat-2026-11/README.md` passes): follow "Updating SHIFT_AI_POLICY" in `docs/AZURE_DEPLOYMENT.md`. Set the new `SHIFT_AI_POLICY` first (keep the current `model`, `inputRate` and `outputRate`), read it back, and then set `SHIFT_AI_ENABLED=true`. Confirm that `/api/cases` reports `dialogueMode: "ai"`.
+For an authorised release, verify the exact tested commit, successful deployment, `/healthz`, `/api/release` and `/api/cases` dialogue mode. Mode metadata alone does not prove a successful model call. Any fresh paid evaluation needs its own authorised scope and allowance; a test allowance does not replace the uncapped production policy. Record its actual results separately, including untested behaviour and remaining quality limitations.
 
-## Notes
+The [Azure deployment runbook](AZURE_DEPLOYMENT.md) describes policy compatibility and rollback. Read the existing non-secret policy before any separately authorised correction, preserve its financial mode, model, rates and concurrency, and never print credentials or raw app-setting responses. Do not replay the historical cold-start remediation below against a working deployment.
 
-- Rooms created before the deploy are rejected (`Case version unavailable.`) and the client sends those players back to the landing screen. Players create a new room.
-- Future case content changes need the same pin update. Consider making the deploy job update `SHIFT_CASE_SHA256` from the artifact's `case-manifest.json`, so that `main` pushes cannot strand the app.
-- Design and plan: `docs/superpowers/specs/2026-11-10-mobile-chat-redesign-design.md` and `docs/superpowers/plans/2026-11-10-mobile-chat-redesign.md`.
+## Historical cold-start issue: reference only
+
+The first mobile chat redesign encountered a stale public-demo case pin and the older 2,500/350-token AI policy. Earlier versions of this document asked the operator to turn AI off and update settings. Those instructions are superseded by the verified release receipt above and are **not outstanding operational work**.
+
+The compatibility behaviour remains useful for diagnosis:
+
+- A stale or invalid `SHIFT_AI_POLICY` causes canonical dialogue and the fixed notice `{"event":"azure_startup_notice","reason":"ai_policy_invalid"}`. Current Azure builds do not construct a provider or admit paid jobs in that state. Missing required operator consent or an unavailable credential remains a configuration error.
+- If `SHIFT_CASE_SHA256` is stale, the case is accepted only when its digest matches `case-manifest.json` in the same verified release package. The fixed notice is `{"event":"azure_startup_notice","reason":"case_pin_superseded"}`. An unrelated mismatch is still rejected. Do not substitute a digest copied from an old handoff for the exact release manifest.
+- Rooms whose case version is unavailable are rejected rather than silently interpreted using another case; players must create a compatible room.
+
+Design history: `docs/superpowers/specs/2026-11-10-mobile-chat-redesign-design.md` and `docs/superpowers/plans/2026-11-10-mobile-chat-redesign.md`. Historical design plans are not live configuration receipts.
 
 ## Temporary existing-identity diagnostic
 
@@ -50,7 +45,7 @@ produces only `azure_ai_diagnostic` / `unavailable` and is not retried. Do not g
 additional permissions to make it pass.
 
 A successful read does not prove settings-write permission or access to the
-resolved Key Vault secret. It cannot restore AI or perform its paid evaluation.
-Merging this diagnostic still runs the existing automatic deployment workflow;
-review and explicitly authorize that particular deployment before merging. Remove
-the temporary workflow step after the investigation; preserve useful offline tests.
+resolved Key Vault secret. It cannot itself change AI configuration or perform a paid evaluation.
+The diagnostic remains part of the existing automatic deployment workflow. Any
+removal should be reviewed as a source change, preserving useful offline tests;
+its presence is not evidence that additional settings or permissions are needed.

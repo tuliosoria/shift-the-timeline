@@ -1,6 +1,6 @@
 # SHIFT: The Timeline
 
-> **Action needed (Azure, not urgent):** after the November 2026 mobile chat redesign, two live settings (case pin and AI policy) need updating; until then the site runs with AI switched off. See [Azure handoff](docs/AZURE_HANDOFF_2026-11.md).
+> **Azure release receipt, 11 November 2026:** PR #48 is live at `370ab445`, with hosted AI verified and the 6,000/1,024-token policy active. Production spending remains uncapped, with concurrency 2. Later commits require their own release verification. See [Azure handoff](docs/AZURE_HANDOFF_2026-11.md).
 
 A cooperative investigation game in British English for 3–4 players, played as a phone-first chat. A crime is foretold; each player privately interviews suspects, unlocks deductions and makes an individual accusation.
 
@@ -11,7 +11,7 @@ The game is a messenger-style interrogation. You pick a suspect, ask questions i
 - Rules: 3–4 players, 15 suspects, four turns of six story-hours each. Each turn you may ask three questions and talk to one suspect (revisiting an earlier suspect is allowed). The turn ends on your third answer. The game moves to the next turn when every player has finished or the host advances it after a confirmation.
 - The story clock is set by the case through the optional `clockStart` (default 20:00; the public demo, Bracken Quay, starts at 18:00).
 - Accusations are individual and irreversible. The reveal reports one of three outcomes: complete, partial or defeat.
-- Every answer is voiced by the suspect through AI when AI is configured (`dialogueMode: 'ai'`). The suspect remembers the earlier questions of the same interview. The model returns `{reply, unlocked}`. Canonical answers are the fallback whenever a call fails or the budget refuses it, so play never stalls. Without AI configuration the game uses canonical dialogue. There is no per-question consent; the landing page and lobby report the server's current dialogue mode, explaining authored topic-matched replies when AI is off and AI voices with authored fallback when it is on. See [AI orchestration](docs/AI_ORCHESTRATION.md) and [local AI](docs/LOCAL_AI.md).
+- Admitted questions receive an AI-voiced suspect reply when AI is configured (`dialogueMode: 'ai'`). The model receives up to two earlier resolved exchanges from the same interview. The model returns `{reply, unlocked}`. Canonical answers are the fallback whenever a call fails or the budget refuses it, so provider failure does not require another paid attempt; store or network outages may still delay recovery. Without AI configuration the game uses canonical dialogue. There is no per-question consent; the landing page and lobby report the server's current dialogue mode, explaining authored topic-matched replies when AI is off and AI voices with authored fallback when it is on. See [AI orchestration](docs/AI_ORCHESTRATION.md) and [local AI](docs/LOCAL_AI.md).
 - Deductions are listed per case, each with sources (`{suspectId, topic}`) and a key flag. They are individual: each player sees only their own unlocks. A canonical answer on a listed topic unlocks its sourced deductions, and the AI may only unlock deductions of the suspect being interviewed.
 - Your private notebook lives in Deductions: review every interview and follow a deduction back to the exact answer that unlocked it. Reviews never consume questions, remain available before the summons and after the reveal, and keep earlier unsent drafts labelled by turn. Notebook location and drafts recover on the same browser when storage is available; server-held testimony still requires a connection and a room that has not expired.
 - Switch rooms from the lobby or Case file without deleting your seat or private drafts. Invitations to another room ask before leaving the current table. Return to your previous seat from the landing screen, or enter its code again on the same browser while the room remains available. Switching does not pause the game; an absent host may be replaced after two minutes.
@@ -19,7 +19,7 @@ The game is a messenger-style interrogation. You pick a suspect, ask questions i
 - Rooms expire after six hours without actions or 24 hours from creation. Polling does not renew them.
 - Removed from earlier builds: the shared team board, evidence sharing, notes, correlations, the topic selector, the consent checkbox, board search and the case-film dialog.
 
-**No deployment or live AWS configuration has been performed for this release.** The collaborator’s editorial case and solution remain private. The public demo is separate and spoiler-visible in source; automated screenshots use synthetic content. Playtesting is still needed to assess pacing and difficulty.
+**Azure staging has been deployed and hosted AI verified for the release recorded above; the retained AWS AI deployment path remains disabled by default.** The collaborator’s editorial case and solution remain private. The public demo is separate and spoiler-visible in source; automated screenshots use synthetic content. Playtesting is still needed to assess pacing and difficulty.
 
 ## Local development
 
@@ -65,4 +65,4 @@ Players should avoid `examples/public-demo.mjs` and its companion notes until af
 
 ### Azure staging migration
 
-The opt-in Azure entry point uses PostgreSQL transactions and managed identity; existing AWS deployment paths are retained. See [Azure deployment and bootstrap](docs/AZURE_DEPLOYMENT.md) for prerequisites, costs, private networking and readiness gates. `npm run package:azure` builds an allowlisted server bundle with the **public development demo only**. It does not provision resources, copy credentials or enable paid AI. Live deployment remains subject to subscription quota and validation.
+The opt-in Azure entry point uses PostgreSQL transactions and managed identity; existing AWS deployment paths are retained. See [Azure deployment and bootstrap](docs/AZURE_DEPLOYMENT.md) for prerequisites, costs, private networking and readiness gates. `npm run package:azure` builds an allowlisted server bundle with the **public development demo only**. It does not provision resources, copy credentials or enable paid AI. Azure staging is already active as recorded above. Further releases require their own approved deployment and verification; packaging alone does not change the live service.

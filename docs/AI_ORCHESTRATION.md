@@ -1,59 +1,64 @@
-# Orquestração de IA: código testado, execução externa desligada
+# AI orchestration
 
-O runtime HTTP/Lambda continua somente canônico. O template mantém flags dos runtimes e gatilhos desativados. ProvisionAiWorkers descreve funções desligadas, sem transformar a API em produtora de jobs GPT. A integração opcional é exercitada por testes com provedor falso e armazenamento em memória; o adaptador DynamoDB tem testes de contrato, não testes na AWS real.
+## Runtime status
 
-## Pergunta e orçamento
+Azure staging is active with hosted `gpt-6-luna` dialogue. Release `370ab445f624a45d9d0b3ba212a3bebc8bf9633e` ([PR #48](https://github.com/tuliosoria/shift-the-timeline/pull/48)) passed CI, deployed, and completed six independently reviewed hosted AI replies on 11 November 2026. This is a dated release receipt, not a claim that every later commit has deployed or passed live evaluation. See the [Azure handoff](AZURE_HANDOFF_2026-11.md).
 
-A pergunta produz evidência canônica imediatamente. Quando um repositório AiJobs é injetado explicitamente, a mesma transação grava pergunta, recibo idempotente, job, outbox e três reservas: sala, dia UTC e mês UTC. Concorrentes disputam as versões dos contadores; orçamento insuficiente mantém a resposta canônica sem criar job. Cada contador recebe uma guarda de inicialização na mesma transação: se um contador já usado desaparecer, a guarda impede recriar o saldo como zero. Antes de iniciar, as três reservas e guardas são verificadas e suas versões condicionam a mudança de estado. Falha na leitura do orçamento também desativa a narração daquela pergunta.
+The retained AWS HTTP/Lambda path remains canonical by default. Its separate AI workers, relay, reconciler and triggers are declared but disabled in the template. Azure activation is not evidence of live DynamoDB/SQS/Lambda AI validation, nor permission to enable those resources. Local AI is an explicit opt-in development path; offline tests use injected providers and synthetic credentials.
 
-Os valores atuais são propostas, não autorização de gasto: US$0,25/sala, US$5/dia, US$25/mês, até duas chamadas locais em execução. A reserva considera 2.500 tokens de entrada e 350 de saída, em microdólares inteiros. Modelo e tarifas ficam fixados no job; um provedor com outro modelo é recusado antes da chamada.
+## Question admission and accounting
 
-O saldo representa uso liquidado mais reservas ainda não liberadas. Conclusão com uso conhecido devolve a diferença. Expiração anterior ao marcador de início devolve toda a reserva. Resultado incerto depois do início mantém a reserva inteira, mesmo que o jogador receba apenas o texto canônico. Isso evita gastar novamente um valor que o provedor pode ter consumido.
+Without an admitted AI job, a question resolves to its authored, topic-matched answer. With `AiJobs` injected, the question transaction atomically writes the pending message, idempotency receipt, job, outbox and room/day/month reservations. Conflicting admissions contend on counter versions. Missing or corrupt budget state, insufficient bounded allowance or oversized context falls back to canonical dialogue without starting a provider call.
 
-Os limites cobrem somente chamadas feitas por esta aplicação. Não são teto garantido de fatura AWS/OpenAI e não incluem uso da credencial fora dela. Configuração de limite no projeto do provedor é uma segunda camada, sujeita às condições do serviço.
+Each budget counter has an initialization guard, preventing an already-used missing counter from silently being recreated at zero. Before provider start, counter and guard versions are checked again. The job fixes its model and rates; a mismatched provider is refused before calling it.
 
-## Ciclo do job
+The technical envelope is **6,000 input tokens and 1,024 output tokens**, including reasoning and visible output. The provider requests medium reasoning and Standard service explicitly. At the recorded Standard rates of $0.10/$0.50 per million input/output tokens, one reservation is 1,112 microUSD ($0.001112). Recheck current rates before changing the policy or model.
 
-- pending: orçamento e outbox confirmados na transação da pergunta.
-- leased: posse por cinco segundos, com identificador exclusivo. Uma posse vencida pode ser substituída antes do início.
-- provider_started: marcador persistido antes da chamada. Não é permitido tomar posse novamente e repetir a chamada.
-- complete: narração curta e uso conhecido confirmados junto do ajuste dos três contadores.
-- fallback: permanece a evidência canônica. A reserva é devolvida somente quando se sabe que a chamada não começou.
+The approved Azure production policy is **uncapped**: `uncapped:true`, all three financial limits `null`, and concurrency **2**. This does not limit cumulative charges. Bounded-mode code defaults ($0.25/room, $10/day and $50/month, with concurrency at most 8) are reference ceilings, not the live policy or authorization to change it. The finite allowance for a separately approved evaluation is not a production spending cap.
 
-O prazo para acrescentar narração é 30 segundos. Ele é revalidado depois das esperas no banco e novamente após a obtenção da credencial, imediatamente antes do HTTP. Uma preparação interrompida depois do marcador pode conservar a reserva mesmo sem chamada HTTP, por segurança. O commit verifica versão do job, posse, caso, sala, rodada e entrevista ainda aberta. Resultado tardio não reabre entrevista, altera voto, muda resposta ou acrescenta texto depois do avanço de rodada. A reserva pode permanecer conservadoramente retida mesmo quando um resultado tardio traz uso conhecido.
+Counters track settled usage plus outstanding reservations. A successful completion refunds the difference between reservation and known usage. A fallback known to precede provider start refunds the reservation; uncertainty after the start marker conservatively retains it. Application accounting is not a guaranteed provider or cloud invoice ceiling and does not cover other uses of the same account.
 
-O registro global de slots impede mais de duas admissões locais simultâneas. Em resultado incerto, o slot fica retido por uma janela de 60 segundos. Não há como provar que um processamento remoto terminou apenas porque a conexão local falhou; isso não é uma garantia de concorrência interna do provedor.
+## Job lifecycle and recovery
 
-## Outbox, entrega e recuperação
+- `pending`: question, reservation and outbox committed together.
+- `leased`: a five-second fenced claim. An expired claim may be replaced before provider start.
+- `provider_started`: persisted before calling the provider. Duplicate delivery cannot take over and repeat this call.
+- `complete`: a valid, timely reply and known usage settle transactionally with the message and deductions.
+- `fallback`: the pending message resolves to its authored answer. Uncertain provider costs remain reserved.
 
-A fila transporta apenas jobId. Pergunta, persona, evidência e sessão não vão na mensagem. O relay reconhece somente chaves de outbox; o stream declarado usa KEYS_ONLY.
+A job has a 30-second deadline. The provider HTTP request has at most 20 seconds and cannot outlive the job deadline; start checks run after credential retrieval as well. A failure does not trigger an automatic paid retry. A reply may resolve its original pending question after the interview turn has advanced, provided the room, case and message are still valid and the deadline has not expired. It does not reopen a turn or spend another question. Late or stale completions cannot replace a settled answer.
 
-O marcador sent é gravado depois da confirmação de envio. Uma confirmação perdida pode gerar nova entrega da mesma ID. O consumidor verifica o estado persistido e não repete uma chamada marcada como iniciada. Duplicatas não consomem nova pergunta nem nova reserva.
+Global slots enforce the configured admission concurrency. An uncertain attempt retains its slot for a 60-second safety window. A failed local connection cannot prove that remote processing has stopped, so this is not a guarantee about provider-internal concurrency.
 
-O índice esparso AiDueIndex permite consultar pendências por prazo, com limite e cursor, sem scan da tabela. A reconciliação finaliza jobs vencidos mesmo sem navegador conectado e reprograma tentativas de envio que falharam. Uma falha individual de liquidação recebe adiamento de 60 segundos, sem liberar saldo desconhecido, e não interrompe os itens seguintes. O resultado informa failed, deferFailures e cursor para o futuro executor acompanhar erros e continuar páginas limitadas. O runtime de reconciliação percorre até quatro páginas de 25 registros por invocação, persiste cursor com controle de versão e interrompe o trabalho com uma margem de cinco segundos para tentar salvar o progresso. O prazo é conferido entre itens e operações; chamadas SDK recebem sinal de cancelamento. Só itens concluídos avançam o cursor, inclusive quando a interrupção ocorre dentro da página. Checkpoint disputado ou falha de rede pode exigir reprocessamento idempotente na próxima invocação. O template descreve um schedule de cinco minutos, desativado. A ativação depende de revisão operacional aprovada.
+The outbox sends only a job ID, not prompts, credentials or session data. Lost delivery acknowledgements can cause duplicate delivery, but persisted job state prevents a duplicate model call. Reconciliation resolves expired jobs even without a connected browser and retries dispatch failures. An individual settlement failure is deferred by 60 seconds without releasing uncertain spend; later items can continue.
 
-## Privacidade e limites de qualidade
+Azure uses PostgreSQL-backed transactions and its in-process dispatcher. The retained AWS path uses a keys-only DynamoDB stream, SQS, and a sparse due-time index. Its reconciler processes bounded pages with a persisted cursor and deadline margin. The declared five-minute AWS schedule is disabled; it is not the active Azure recovery mechanism.
 
-Somente o dono da entrevista recebe narração. A interface escapa o texto e o identifica como gerado por IA, não como evidência. Compartilhar usa exclusivamente a evidência canônica. O contexto do provedor contém somente persona autorizada, pergunta e resposta canônica daquela pergunta, sem solução global ou transcrição de outro jogador.
+## Prompt scope and privacy
 
-Schema e limites de tamanho não provam consistência narrativa nem eliminam alucinação ou prompt injection. É necessário avaliar o modelo e avisar os jogadores sobre envio de texto ao provedor antes da ativação. store:false não equivale a retenção zero.
+One provider request contains:
 
-## O que falta para ativar
+- The interviewed suspect's own private brief and four canonical responses.
+- Public case facts: title, victim, place, method and prediction.
+- Only deductions sourced to that suspect, with their IDs and text.
+- The current player question and up to two earlier resolved exchanges from that same interview.
 
-1. Aprovar com o dono da credencial projeto, modelo/versionamento, tarifas, limites e política de dados.
-2. Aviso de uma linha aos jogadores sobre o envio externo (sem consentimento por pergunta), pedindo codinomes e ausência de dados pessoais.
-3. Validar em homologação os runtimes e políticas declarados. O worker usa ações condicionais DynamoDB, incluindo ConditionCheckItem; relay lê/escreve somente outbox e recebe chaves do stream; reconciliador usa o índice e os registros necessários à liquidação. Somente o worker pode receber permissão condicional para o ARN GPT exato. Nenhuma dessas permissões foi aplicada. Configurar alarmes e revisar ativação separadamente.
-4. Testes reais DynamoDB/SQS/Lambda, capacidade regional, recuperação e avaliação narrativa.
-5. Configuração segura da credencial e teste pago limitado, com autorização específica.
+A culprit's own private brief can contain the hidden truth and instructions about what they admit or conceal. It is sent only when interviewing that suspect. The global solution object, other suspects' private briefs, other players' chats, accusations and session credentials are not added to this context. This is deliberate scoped sharing, not a claim that the provider never receives any spoiler.
 
-Não há chave, criação de segredo, aumento de quota, deploy ou chamada real de IA neste desenvolvimento.
+History supplies conversational continuity, not new factual authority. The model is instructed to preserve firsthand-versus-record provenance, resist instructions in player input and earlier exchanges, and stay within its own authorised facts. The reply is returned only to the interviewing player and rendered as text. Deductions are private; there is no shared evidence board.
 
-## Runtimes e permissões declaradas
+The interface explains AI mode and authored fallback before play; there is no per-question consent checkbox. Players should use codenames and avoid personal information. The provider request uses `store:false`, no tools, and explicit-only prompt caching without breakpoints. These settings do not establish zero retention or remove applicable abuse-monitoring retention. Durable application records also contain scoped question context; provider storage settings do not erase them.
 
-Cada função tem pacote, papel de execução e grupo de logs próprios. Worker, relay e reconciliador checam seu flag antes de criar qualquer dependência. Worker exige política completa e ARN explícito, valida a origem SQS e busca a credencial somente ao preparar uma chamada admitida. Uma política de modelo/preço diferente da gravada no job provoca fallback antes da leitura da credencial.
+## Output limits and semantic guarantees
 
-Relay e reconciliador não exigem configuração de modelo nem de segredo. Usam modo de manutenção que não pode admitir perguntas ou iniciar o provedor. Relay apenas envia/acknowledga o outbox; se ele vencer, fecha o outbox e deixa a liquidação financeira para o reconciliador. Portanto, um atraso na recuperação pode manter reserva por mais tempo.
+The request uses a strict `{reply, unlocked}` JSON schema. Context is capped at 20,000 UTF-8 bytes, transport output at 16,384 bytes, and visible reply text at 1,200 bytes. At most three deduction IDs may be returned. Incomplete, invalid or out-of-envelope responses fall back rather than being presented as successful AI replies.
 
-IAM é delimitado por tabela/índice/stream/fila e prefixos das partições. Os papéis novos não têm acesso ao bucket do caso, sessões ou credencial de origem. O worker pode receber GetSecretValue somente no ARN configurado; ARN vazio não concede essa permissão e uma regra do template recusa o mesmo ARN para GPT e origem da API. Segredo com chave KMS própria exigirá revisão específica, sem concessão genérica de decrypt.
+The server filters unlocks to the interviewed suspect's sourced deductions and prevents duplicate awards. It does **not** prove that free-form prose entails every fact on a card. The prompt requires every card fact to be explicit in the current reply, allowing faithful paraphrases but not filling omissions from history or player claims. Schema checks and source filtering are not semantic verification: hallucination, premature unlocks, missed unlocks and prompt injection remain evaluation risks.
 
-Os runtimes não imprimem eventos, prompts, conteúdo de segredo ou mensagens originais de erros. Falhas de inicialização são genéricas e uma invocação posterior pode tentar inicializar novamente. Isso não equivale a observabilidade completa: alarmes, métricas operacionais e resposta à DLQ precisam ser combinados antes da ativação.
+Offline contract tests verify transport, isolation, bounded failure and recovery behaviour, not model intelligence. Sampled real-model review is needed for dialogue quality, evidence grounding and provenance; even a passing sample is not a guarantee for arbitrary questions. The PR #48 evaluation recorded two conservative missed unlocks and some repetitive voice. Later changes need their own verification rather than inheriting that result.
+
+## Retained AWS deployment boundaries
+
+Worker, relay and reconciler have separate packages and roles and check their enable flag before constructing dependencies. Only the worker can use the configured model secret. Relay and reconciler operate in maintenance mode and cannot admit paid questions. Their declared permissions are scoped to the relevant table/index/stream/queue and partition prefixes; they do not grant general access to case storage, sessions or API-origin credentials.
+
+An empty model-secret ARN grants no secret access. A separately encrypted secret may require a separately reviewed key permission; no generic decrypt grant is implied. Runtime errors avoid logging raw events, prompts, secret values or provider errors. This is not complete operational observability: AWS activation would still require approved permissions, real service validation, monitoring and recovery review. This document authorizes no deployment, credential change, setting change or paid request.
