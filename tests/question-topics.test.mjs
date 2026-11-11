@@ -35,15 +35,14 @@ test('the four exact trimmed shortcuts retain their explicit UI topics',()=>{
 test('non-shortcut UI preview follows the server classifier exactly',()=>{
  for(const questions of Object.values(routes))for(const question of questions)assert.equal(questionTopic(question),inferTopic(question),question);
 });
-test('server automatic routing stays inference-only and explicit topics remain authoritative',()=>{
+test('server ask accepts no topic and never projects one',()=>{
  const g=new GameService({caseData:TRAIN_CASE,catalog:CASES}),a=g.create('Host',TRAIN_CASE.id,randomUUID());
  g.join(a.code,'Second',randomUUID());g.join(a.code,'Third',randomUUID());
  const act=(type,data={})=>g.act(a.code,a.token,{id:randomUUID(),type,...data});
  act('start');act('select',{round:1,suspectId:TRAIN_CASE.suspects[0].id});
- let state=act('ask',{round:1,question:topicLabels.motive});assert.equal(state.me.interviews[0].messages.at(-1).topic,'clue');
- state=act('ask',{round:1,question:topicLabels.motive,topic:questionTopic(topicLabels.motive)});assert.equal(state.me.interviews[0].messages.at(-1).topic,'motive');
- state=act('ask',{round:1,question:'Where were you?',topic:'relationship'});assert.equal(state.me.interviews[0].messages.at(-1).topic,'relationship');
- assert.throws(()=>act('ask',{round:1,question:'Something?',topic:'hidden'}),/Invalid question topic/);
+ const state=act('ask',{round:1,question:topicLabels.motive});
+ assert.ok(!('topic' in state.me.interviews[0].messages.at(-1)));
+ assert.throws(()=>act('ask',{round:1,question:'Where were you?',topic:'relationship'}),/Unexpected question field/);
 });
 test('public manifest exposes only the single routing module, not server or case data',async()=>{
  assert.deepEqual(publicAsset('/question-topics.js'),{url:'/question-topics.js',file:'question-topics.js',type:'text/javascript; charset=utf-8'});
@@ -53,35 +52,16 @@ test('public manifest exposes only the single routing module, not server or case
  assert.ok(!/^import\b/m.test(source),'The browser module has no imports or secret dependencies');
  for(const hidden of ['culpritId','responses','caseData','TRAIN_CASE'])assert.ok(!source.includes(hidden),hidden);
 });
-test('explicit and inferred duplicate topics reject without using a question or changing room activity',()=>{
- let time=1_000;const g=new GameService({caseData:TRAIN_CASE,catalog:CASES,now:()=>time}),a=g.create('Host',TRAIN_CASE.id,randomUUID());
- const peers=[a,g.join(a.code,'Second',randomUUID()),g.join(a.code,'Third',randomUUID())];
+test('repeating a topic is allowed; a rejected ask while pending does not change room activity',()=>{
+ let time=1_000;const g=new GameService({caseData:TRAIN_CASE,catalog:CASES,now:()=>time,deferAnswers:true}),a=g.create('Host',TRAIN_CASE.id,randomUUID());
+ g.join(a.code,'Second',randomUUID());g.join(a.code,'Third',randomUUID());
  const act=(type,data={})=>g.act(a.code,a.token,{id:randomUUID(),type,...data});
  act('start');act('select',{round:1,suspectId:TRAIN_CASE.suspects[0].id});
  const request={id:randomUUID(),type:'ask',round:1,question:'Where were you?'};
  const first=g.act(a.code,a.token,request),room=g.room(a.code),touched=room.touchedAt,seen=room.players[0].lastSeenAt,requests=room.players[0].requests.size;
  time+=30_000;
- for(const data of [{question:'When did that happen?'},{question:'Different wording',topic:'alibi'}])assert.throws(()=>act('ask',{round:1,...data}),e=>e.status===409&&/no question used/.test(e.message));
+ assert.throws(()=>act('ask',{round:1,question:'When did that happen?'}),e=>e.status===409&&/Wait for the answer/.test(e.message));
  assert.equal(g.view(a.code,a.token).version,first.version);assert.equal(room.touchedAt,touched);assert.equal(room.players[0].lastSeenAt,seen);assert.equal(room.players[0].requests.size,requests);
  assert.deepEqual(g.act(a.code,a.token,request),first,'same request remains a successful retry');
  assert.equal(g.view(a.code,a.token).me.interviews[0].messages.length,1);
- // Other players and later interviews still have their own topic allowance.
- const peer=peers[1];g.act(a.code,peer.token,{id:randomUUID(),type:'select',round:1,suspectId:TRAIN_CASE.suspects[0].id});
- const other=g.act(a.code,peer.token,{id:randomUUID(),type:'ask',round:1,question:'Where were you?'});assert.equal(other.me.interviews[0].messages[0].topic,'alibi');
- act('advance',{round:1,confirmed:true});act('select',{round:2,suspectId:TRAIN_CASE.suspects[0].id});
- const next=act('ask',{round:2,question:'Where were you?'});assert.equal(next.me.interviews[1].messages[0].topic,'alibi');
-});
-test('distinct-id concurrent duplicate questions commit once and reserve only one AI job/budget',async()=>{
- const {harness}=await import('./helpers/ai.mjs');const h=await harness();
- const commands=[randomUUID(),randomUUID()].map(id=>({id,type:'ask',round:1,question:'Tell me a clue.',topic:'clue'}));
- const results=await Promise.allSettled(commands.map(action=>h.game.act(h.code,'session-A',action)));
- assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
- const rejected=results.find(r=>r.status==='rejected');assert.equal(rejected.reason.status,409);assert.match(rejected.reason.message,/already covered/);
- const winner=commands[results.findIndex(r=>r.status==='fulfilled')];
- const state=await h.game.view(h.code,'session-A');assert.equal(state.me.interviews[0].messages.length,1);assert.equal(h.jobList().length,1);
- const job=h.jobList()[0];for(const key of job.budgetKeys)assert.equal((await h.store.getAi(key)).usedMicroUsd,job.reservedMicroUsd);
- const before=structuredClone([...h.store.ai]);
- const retry=await h.game.act(h.code,'session-A',winner);assert.equal(retry.version,state.version);assert.equal(h.jobList().length,1);
- await assert.rejects(()=>h.game.act(h.code,'session-A',{id:randomUUID(),type:'ask',round:1,question:'Another unrelated sentence'}),e=>e.status===409);
- assert.deepEqual([...h.store.ai],before);assert.equal((await h.game.view(h.code,'session-A')).version,state.version);
 });

@@ -10,7 +10,9 @@ function questionTopic(question) {
   game.join(host.code,'Second',randomUUID()); game.join(host.code,'Third',randomUUID());
   const act=(type,data={})=>game.act(host.code,host.token,{id:randomUUID(),type,...data});
   act('start');act('select',{round:1,suspectId:'suspect-1'});
-  return act('ask',{round:1,question}).me.interviews[0].messages[0].topic;
+  act('ask',{round:1,question});
+  // The topic is server-internal (not projected); read it from the room record.
+  return game.room(host.code).players[0].interviews[0].messages[0].topic;
 }
 for(const [question,topic] of [
  ['Where were you at 22:00?','alibi'],['When did you leave?','alibi'],['What time did you arrive?','alibi'],

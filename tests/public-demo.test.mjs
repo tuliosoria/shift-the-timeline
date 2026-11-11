@@ -9,16 +9,19 @@ test('public authored demo validates separately from synthetic and private cases
 for(const route of reviewRoutes)test(`authored route is mechanically available without AI: ${route.name}`,()=>{
  assert.ok(route.interviews.length<=6);assert.ok(route.interviews.length>=2);const unique=new Set(route.interviews.map(i=>i.suspectId));assert.equal(unique.size,route.interviews.length);
  const s=setup();s.act(s.host,'start');let cursor=0,obtained=[];
- for(let round=1;round<=3;round++)for(const player of s.players){
+ for(let round=1;round<=4;round++)for(const player of s.players){
   const interview=route.interviews[cursor++];const suspectId=interview?.suspectId??caseData.suspects[0].id;
   s.act(player,'select',{round,suspectId});
-  if(interview){assert.ok(interview.topics.length<=4);assert.equal(new Set(interview.topics).size,interview.topics.length);for(const topic of interview.topics){
-   s.act(player,'ask',{round,topic,question:`Tell me about ${topic}.`});
+  if(interview){assert.ok(interview.topics.length<=3);assert.equal(new Set(interview.topics).size,interview.topics.length);for(const topic of interview.topics){
+   s.act(player,'ask',{round,question:`Tell me about ${topic}.`});
    const answer=s.g.view(s.host.code,player.token).me.interviews.find(i=>i.round===round).messages.at(-1);
-   assert.equal(answer.answer,caseData.suspects.find(x=>x.id===suspectId).responses[topic]);assert.equal(answer.narration,undefined);obtained.push(answer.answer);
+   const expected=caseData.suspects.find(x=>x.id===suspectId).responses[topic];
+   assert.equal(answer.reply,expected);assert.ok(!('answer' in answer));obtained.push(answer.reply);
    const other=s.players.find(x=>x!==player);assert.ok(!JSON.stringify(s.g.view(s.host.code,other.token)).includes(answer.id));
-   s.act(player,'share',{round,messageId:answer.id});assert.ok(s.g.view(s.host.code,other.token).board.some(n=>n.messageId===answer.id));
-  }}s.act(player,'end',{round});
+  }}
+  // Fill the remaining questions so the interview closes and the turn can advance.
+  const asked=s.g.view(s.host.code,player.token).me.interviews.find(i=>i.round===round).messages.length;
+  for(let n=asked;n<3;n++)s.act(player,'ask',{round,question:'Anything else?'});
  }
  assert.ok(obtained.length>0);assert.equal(s.g.view(s.host.code,s.host.token).phase,'accusation');
  // This verifies outcome plumbing, not that an automated solver deduced guilt.
@@ -27,4 +30,4 @@ for(const route of reviewRoutes)test(`authored route is mechanically available w
 });
 test('public source availability does not expose solution in pre-reveal game state',()=>{const s=setup(4);s.act(s.host,'start');for(const p of s.players){const state=JSON.stringify(s.g.view(s.host.code,p.token));for(const secret of ['culpritId','responses',caseData.solution.plan])assert.ok(!state.includes(secret));}});
 test('demo source and spoiler notes are not added to served web assets',async()=>{const {publicAsset}=await import('../server/public-assets.mjs');for(const url of ['/examples/public-demo.mjs','/examples/public-demo-notes.md','/public-demo.mjs'])assert.equal(publicAsset(url),undefined);});
-for(const outcome of ['complete','partial','defeat'])test(`four-player demo reveal supports ${outcome} outcome`,()=>{const s=setup(4);s.act(s.host,'start');for(let round=1;round<=3;round++)for(const p of s.players){s.act(p,'select',{round,suspectId:caseData.suspects[0].id});s.act(p,'end',{round});}const innocent=caseData.suspects.find(p=>p.id!==caseData.culpritId).id;for(let i=0;i<s.players.length;i++)s.act(s.players[i],'vote',{suspectId:outcome==='complete'||outcome==='partial'&&i===0?caseData.culpritId:innocent});const result=s.g.view(s.host.code,s.host.token).result;assert.equal(result.outcome,outcome);assert.deepEqual(result.solution,caseData.solution);});
+for(const outcome of ['complete','partial','defeat'])test(`four-player demo reveal supports ${outcome} outcome`,()=>{const s=setup(4);s.act(s.host,'start');for(let round=1;round<=4;round++)for(const p of s.players){s.act(p,'select',{round,suspectId:caseData.suspects[0].id});for(let n=0;n<3;n++)s.act(p,'ask',{round,question:'Anything else?'});}const innocent=caseData.suspects.find(p=>p.id!==caseData.culpritId).id;for(let i=0;i<s.players.length;i++)s.act(s.players[i],'vote',{suspectId:outcome==='complete'||outcome==='partial'&&i===0?caseData.culpritId:innocent});const result=s.g.view(s.host.code,s.host.token).result;assert.equal(result.outcome,outcome);assert.deepEqual(result.solution,caseData.solution);});
