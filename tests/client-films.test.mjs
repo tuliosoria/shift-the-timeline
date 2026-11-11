@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {clientHarness,clientState} from './helpers/client-harness.mjs';
 test('scene entries follow the investigation without loading video in rendered game screens',()=>{
- const h=clientHarness(clientState());h.client.clearState();h.client.render();
+ const h=clientHarness(clientState());h.client.resetSession();h.client.render();
  assert.match(h.element('main').innerHTML,/data-film-open="train"/);
  h.client.setState(clientState({phase:'lobby'}));h.client.render();
  assert.match(h.element('main').innerHTML,/data-film-open="corridor"/);

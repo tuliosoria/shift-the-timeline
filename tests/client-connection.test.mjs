@@ -15,3 +15,43 @@ test('pending creation survives connection failure and replays only its original
 test('expired saved identity still follows normal reset instead of endless startup retries',async()=>{const {h}=setup({session:{code:'ABCDEFGH',playerId:'p1'}});fetches(h,p=>p==='/api/session'?reply({ok:true}):p==='/api/cases'?reply(catalogue):reply({error:'Expired'},401));assert.equal(await run(h,'connect()'),true);assert.equal(h.saved.has('shift-session'),false);assert.equal(run(h,'session'),null);assert.match(h.element('notice').textContent,/identity could not be restored/);assert.match(h.element('main').innerHTML,/id="create-form"/);});
 test('scheduled and visibility polling stay quiet until bootstrap succeeds',async()=>{const {h}=setup({session:{code:'ABCDEFGH',playerId:'p1'}});const calls=fetches(h,()=>reply({}));const schedule=appSource.split('\n').find(line=>line.startsWith('async function schedulePoll'));run(h,schedule+';schedulePoll()');let handler;h.sandbox.document.addEventListener=(_event,fn)=>{handler=fn;};run(h,appSource.split('\n').find(line=>line.startsWith("document.addEventListener('visibilitychange'")));handler();assert.equal(calls.length,0);});
 test('online retry and pre-connect invitation navigation preserve pending work',async()=>{const {h}=setup();let handler;h.sandbox.window={addEventListener:(_event,fn)=>{handler=fn;}};run(h,appSource.split('\n').find(line=>line.startsWith("window.addEventListener('popstate'")));h.sandbox.location.hash='#join=WXYZ2345';handler();assert.equal(run(h,'invitedRoom'),'WXYZ2345');assert.equal(run(h,'entryMode'),'join');run(h,"pending={entry:true};invitedRoom=''");handler();assert.equal(run(h,'invitedRoom'),'');let starts=0;h.sandbox.started=()=>{starts++;};run(h,"connect=async()=>started()");run(h,appSource.split('\n').find(line=>line.startsWith("window.addEventListener('online'")));handler();assert.equal(starts,1);});
+test('a rejected saved action restores its room without exposing new-room controls',async()=>{
+ const saved={code:'ABCDEFGH',playerId:'p1'},work={entry:false,path:'/api/rooms/ABCDEFGH/actions',body:{id:'old-selection-id',type:'select',round:1,suspectId:'ben'},context:null};
+ const {h,state}=setup({session:saved,pending:work});let releaseRead;
+ const calls=fetches(h,p=>p==='/api/session'?reply({ok:true}):p==='/api/cases'?reply(catalogue):p.endsWith('/actions')?reply({error:'The round has changed.'},409):new Promise(r=>releaseRead=r));
+ const connecting=run(h,'connect()');
+ for(let n=0;n<30&&!releaseRead;n++)await Promise.resolve();
+ assert.equal(typeof releaseRead,'function','Restore the saved room immediately after a definitive rejection');
+ assert.doesNotMatch(h.element('main').innerHTML,/id="create-form"|id="join-form"/);
+ releaseRead(reply(state));assert.equal(await connecting,true);
+ assert.equal(h.client.read().state.code,saved.code);assert.equal(h.client.read().pending,null);
+ assert.equal(calls.filter(c=>c.path.endsWith('/actions')).length,1);
+});
+test('manual retry after an uncertain reload cannot expose entry controls during a room outage',async()=>{
+ const saved={code:'ABCDEFGH',playerId:'p1'},work={entry:false,path:'/api/rooms/ABCDEFGH/actions',body:{id:'original-old-action',type:'select',round:1,suspectId:'ben'},context:null};
+ const {h,state}=setup({session:saved,pending:work});let first=true,roomFails=true;
+ const calls=fetches(h,p=>{if(p==='/api/session')return reply({ok:true});if(p==='/api/cases')return reply(catalogue);if(p.endsWith('/actions')){if(first){first=false;throw Error('Offline');}return reply({error:'The round has changed.'},409);}return roomFails?reply({error:'Temporary read outage'},503):reply(state);});
+ await run(h,'connect()');assert.equal(h.client.read().pending.body.id,work.body.id);
+ assert.match(h.element('main').innerHTML,/Restoring your saved room/);assert.doesNotMatch(h.element('main').innerHTML,/id="create-form"|id="join-form"/);
+ assert.equal(await h.client.runPending(),false);assert.equal(h.client.read().pending,null);assert.equal(h.saved.get('shift-session'),JSON.stringify(saved));
+ assert.match(h.element('notice').textContent,/Connection interrupted/);assert.match(h.element('main').innerHTML,/Checking your investigation again automatically/);assert.doesNotMatch(h.element('main').innerHTML,/id="create-form"|id="join-form"/);
+ roomFails=false;assert.equal(await h.client.poll(),true);assert.equal(h.client.read().state.code,saved.code);
+ assert.deepEqual(calls.filter(c=>c.path.endsWith('/actions')).map(c=>c.body),[work.body,work.body]);
+});
+test('terminal pending rejection restores the new round without discarding older drafts',async()=>{
+ const saved={code:'ABCDEFGH',playerId:'p1'},old={room:saved.code,player:'p1',round:1,phase:'investigation',suspect:null},work={entry:false,path:'/api/rooms/ABCDEFGH/actions',body:{id:'old-choice-request',type:'select',round:1,suspectId:'ben'},context:old};
+ const {h,state}=setup({session:saved,pending:work});state.phase='investigation';state.round=2;
+ h.client.ui.writeDraft(old,'note','Keep this earlier unsent note');
+ fetches(h,p=>p==='/api/session'?reply({ok:true}):p==='/api/cases'?reply(catalogue):p.endsWith('/actions')?reply({error:'The round has changed.'},409):reply(state));
+ await run(h,'connect()');assert.equal(h.client.read().state.round,2);
+ assert.equal(h.client.ui.read(old).note,'Keep this earlier unsent note');assert.match(h.element('main').innerHTML,/Keep this earlier unsent note/);
+ assert.match(h.element('notice').textContent,/The round has changed/);
+});
+test('an expired room after terminal pending rejection still returns to entry normally',async()=>{
+ const saved={code:'ABCDEFGH',playerId:'p1'},work={entry:false,path:'/api/rooms/ABCDEFGH/actions',body:{id:'expired-choice-id',type:'select',round:1,suspectId:'ben'},context:null};
+ for(const status of [401,404]){const {h}=setup({session:saved,pending:work});
+ fetches(h,p=>p==='/api/session'?reply({ok:true}):p==='/api/cases'?reply(catalogue):reply({error:'Unavailable'},status));
+ await run(h,'connect()');assert.equal(h.client.read().state,null);assert.equal(run(h,'session'),null);assert.equal(h.saved.has('shift-session'),false);
+ assert.match(h.element('main').innerHTML,/id="create-form"/);assert.doesNotMatch(h.element('main').innerHTML,/Restoring your saved room/);
+ }
+});
