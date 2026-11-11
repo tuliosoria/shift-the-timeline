@@ -45,7 +45,11 @@ function chatFor(main) {
   if (chat?.key === key) return chat;
   chat?.destroy();
   const context = uiContext(state);
-  chat = mountChat(main, {draft: ui.draft(context), onDraft: text => ui.writeDraft(context, text),
+  chat = mountChat(main, {draft: ui.draft(context), onDraft: text => {
+    const persistent = ui.persistent;
+    ui.writeDraft(context, text);
+    if (persistent && !ui.persistent) notice('Draft storage is unavailable. Keep this tab open; unsent text cannot survive a reload.', true);
+  },
     onSend: question => {
       const interview = views.currentInterview(state, local);
       // `count` (messages before this one) lets the chat tell a held retry from a delivered repeat.
@@ -62,13 +66,16 @@ function render() {
   if (screen === 'chat') local.reading = views.chatKey(views.currentInterview(state, local));
   const tab = tabBar ? local.tab : 'investigate';
   const view = tab === 'deductions' ? 'deductions' : tab === 'case' ? 'casefile' : screen;
+  const archived = state?.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview);
+  local.archiveDraft = archived ? ui.draft({room: state.code, player: state.me.id, round: archived.round, suspect: archived.suspectId}) : '';
+  local.draftsPersistent = ui.persistent;
   const main = $('#main'), active = document.activeElement, focusId = main.contains(active) ? active?.id : null;
   const caret = focusId ? [active.selectionStart, active.selectionEnd] : null;
   const keepScroll = main.dataset.view === view ? main.scrollTop : 0;
   const entryValues = state ? {} : Object.fromEntries([...main.querySelectorAll('input[id]')].map(el => [el.id, el.value]));
   const header = views.renderHeader(state, local);
   $('#header').innerHTML = header;
-  $('#header').hidden = !header || screen === 'transition';
+  $('#header').hidden = !header || view === 'transition';
   main.dataset.view = view;
   $('#tabbar').innerHTML = tabBar;
   if (view === 'chat') {
@@ -76,13 +83,13 @@ function render() {
     chatFor(main).update(state, {...local, busy, outgoing});
   } else {
     if (chat) { chat.destroy(); chat = null; }
-    main.innerHTML = view === 'deductions' ? views.renderDeductions(state) : view === 'casefile' ? views.renderCaseFile(state) : RENDER[screen](state, local);
+    main.innerHTML = view === 'deductions' ? views.renderDeductions(state, local) : view === 'casefile' ? views.renderCaseFile(state) : RENDER[screen](state, local);
     for (const [id, value] of Object.entries(entryValues)) { const el = document.getElementById(id); if (el && el.type !== 'hidden') el.value = value; }
     main.scrollTop = keepScroll;
     if (focusId) { const el = document.getElementById(focusId); el?.focus({preventScroll: true}); try { if (caret?.[0] != null) el.setSelectionRange(...caret); } catch {} }
   }
   setScene(screen);
-  playTransition(screen);
+  playTransition(view);
   setBusy();
 }
 
@@ -105,12 +112,21 @@ function applyState(next) {
   if (!next || (session && (next.code !== session.code || next.me?.id !== session.playerId))) return false;
   if (state && next.code === state.code && next.version < lastVersion) return false;
   const moved = !state || state.round !== next.round || state.phase !== next.phase;
+  const restored = !state;
   // Toasts only for deductions unlocked while watching: never on first load or reload.
   const fresh = freshDeductions(state, next);
+  const reviewing = local.tab === 'deductions' && state?.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview);
+  const pendingReplies = new Set(reviewing ? reviewing.messages.filter(m => m.status === 'pending').map(m => m.id) : []);
+  const arrived = next.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview)?.messages.filter(m => pendingReplies.has(m.id) && m.status !== 'pending') ?? [];
   state = next; lastVersion = next.version;
-  if (moved) { local.selected = null; local.tab = 'investigate'; closeConfirmation(); }
+  if (restored) {
+    local.notebook = ui.notebook(state.code, state.me.id);
+    local.tab = local.notebook.open ? 'deductions' : 'investigate';
+  }
+  if (moved) { local.selected = null; if (local.tab !== 'deductions') local.tab = 'investigate'; closeConfirmation(); }
   if (fresh.length) showUnlocked(fresh);
   render();
+  if (arrived.length) $('#announcer').textContent = `Reply added to your private interview: ${arrived.map(m => m.reply).join(' ')}`;
   return true;
 }
 
@@ -182,7 +198,7 @@ function resetSession() {
   if (state) ui.forget(state.code, state.me.id); else if (session) ui.forget(session.code, session.playerId);
   closeConfirmation();
   session = null; state = null; pending = null; lastVersion = -1;
-  Object.assign(local, {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, entry: 'create', invite: ''});
+  Object.assign(local, {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, notebook: null, entry: 'create', invite: ''});
   store.remove(SESSION); store.remove(PENDING);
   history.replaceState(null, '', location.pathname);
   render();
@@ -191,6 +207,12 @@ function resetSession() {
 const actions = {
   retry: () => pending && run(pending),
   reset: () => resetSession(),
+  'notebook-back': () => {
+    const saved = local.notebook;
+    saveNotebook({interview: null, message: null, deduction: null});
+    render();
+    document.getElementById(saved.deduction ? `source-${saved.deduction}` : `interview-${saved.interview}`)?.focus();
+  },
   'copy-code': () => copy(state.code, 'Room code copied.', `Room code: ${state.code}`),
   'copy-invite': () => copy(inviteLink(), 'Invite link copied. Send it to the table.', `Invite link: ${inviteLink()}`),
   begin: () => { ui.markSeen(state.code, state.me.id, {briefingSeen: true, lastSeenRound: state.round}); render(); },
@@ -214,14 +236,27 @@ const actions = {
     onConfirm: () => act('finalizeAccusations', {confirmed: true})}),
 };
 
+function saveNotebook(changes) {
+  local.notebook = {...local.notebook, ...changes, open: local.tab === 'deductions'};
+  ui.saveNotebook(state.code, state.me.id, local.notebook);
+}
+
 document.addEventListener('click', event => {
   const b = event.target.closest('button');
   if (!b || b.disabled) return;
   if (b.dataset.entry) { local.entry = b.dataset.entry; render(); return; }
-  if (b.dataset.tab) { local.tab = b.dataset.tab; render(); $('#main').scrollTop = 0; return; }
-  if (b.dataset.suspect) { local.selected = local.selected === b.dataset.suspect ? null : b.dataset.suspect; render(); return; }
+  if (b.dataset.tab) { local.tab = b.dataset.tab; saveNotebook({}); render(); $('#main').scrollTop = 0; $('#main').focus({preventScroll: true}); return; }
+  if (b.dataset.notebook) { saveNotebook({section: b.dataset.notebook, interview: null, message: null, deduction: null}); render(); document.getElementById(`notebook-${b.dataset.notebook}`)?.focus(); return; }
+  if (b.dataset.interview) {
+    if (!state.me.interviews.some(i => views.chatKey(i) === b.dataset.interview)) return;
+    saveNotebook({interview: b.dataset.interview, message: b.dataset.message || null, deduction: b.dataset.deduction || null});
+    render();
+    (document.getElementById(`review-message-${local.notebook.message}`) ?? $('#review-title'))?.focus();
+    return;
+  }
+  if (b.dataset.suspect) { local.selected = local.selected === b.dataset.suspect ? null : b.dataset.suspect; render(); $('#suspect-dossier')?.focus(); return; }
   const action = actions[b.dataset.action];
-  if (action && (!busy || b.dataset.action === 'reset')) action();
+  if (action && (!busy || ['reset', 'notebook-back'].includes(b.dataset.action))) action();
 });
 document.addEventListener('submit', event => {
   event.preventDefault();
@@ -261,7 +296,9 @@ setInterval(async () => {
 render();
 try {
   await fetchJson('/api/session', {body: {}});
-  local.cases = (await fetchJson('/api/cases')).data.cases;
+  const catalog = (await fetchJson('/api/cases')).data;
+  local.cases = catalog.cases;
+  local.dialogueMode = catalog.dialogueMode;
   render();
   if (local.invite) $('#join-name')?.focus();
   if (pending) await run(pending);

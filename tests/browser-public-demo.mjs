@@ -161,11 +161,24 @@ try {
   }
   await pages[0].click('[data-tab=deductions]');
   assert.ok(await pages[0].locator('.dlist .unlocked').count() > 0);
+  const reviewStart = await pages[0].evaluate(async code => (await fetch(`/api/rooms/${code}/state`)).json(), code);
+  await pages[0].locator('[data-deduction]').first().click();
+  assert.ok(await pages[0].locator('.source-answer').count() > 0, 'source remains available before a final summons');
+  assert.equal(await pages[0].locator('#question').count(), 0, 'history has no composer');
+  await pages[0].click('[data-action=notebook-back]');
   await pages[0].click('[data-tab=investigate]');
   const votes = ['rowan', 'rowan', 'oscar'];
   for (const [i, page] of pages.entries()) {
     await page.click(`[data-suspect="${votes[i]}"]`);
     await page.click('[data-action=summon]');
+    if (i === 0) {
+      await page.click('#confirm-cancel');
+      assert.equal(await page.locator(`[data-suspect="${votes[i]}"]`).getAttribute('aria-pressed'), 'true');
+      const cancelled = await page.evaluate(async code => (await fetch(`/api/rooms/${code}/state`)).json(), code);
+      assert.equal(cancelled.me.vote, null);
+      assert.deepEqual(cancelled.me.interviews, reviewStart.me.interviews, 'review and cancelled summons did not change testimony');
+      await page.click('[data-action=summon]');
+    }
     await confirm(page, /This cannot be undone\./);
     if (i < 2) await page.getByText('Your summons is sealed.').waitFor();
   }
@@ -177,6 +190,20 @@ try {
   assert.match(await reveal.locator('.votes').textContent(), /Agent Cy.*Oscar Bell.*Wrong suspect/);
   await overflow(pages[0]);
   await pages[0].screenshot({path: `${shot}/shift-reveal.png`, fullPage: true});
+  for (const [index, page] of pages.entries()) {
+    assert.match(await page.locator('.debrief').textContent(), /Your investigation/);
+    await page.click('.debrief [data-tab=deductions]');
+    await page.click('[data-notebook=interviews]');
+    assert.equal(await page.locator('.interview-list li').count(), 4);
+    await page.locator('[data-interview]').first().click();
+    assert.match(await page.locator('.review .eyebrow').textContent(), /Turn 4/);
+    assert.equal(await page.locator('#question').count(), 0);
+    const ownState = await page.evaluate(async code => (await fetch(`/api/rooms/${code}/state`)).json(), code);
+    assert.equal(ownState.me.vote, votes[index], 'review cannot change a sealed vote');
+    assert.equal(ownState.me.interviews.at(-1).suspectId, PLAN[3][index]);
+    await page.click('#tabbar [data-tab=investigate]');
+    await page.locator('.reveal').waitFor();
+  }
   assert.deepEqual(external, []);
   assert.deepEqual(errors, []);
   console.log('Browser public demo passed: 3 phones, 4 turns, toasts, waiting, absent-agent advance, time is up, summons and reveal.');

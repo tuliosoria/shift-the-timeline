@@ -100,6 +100,10 @@ body.busy .btn[data-submit] { opacity: .6; }
 .card[aria-pressed="true"] { outline: 3px solid var(--brass); outline-offset: -3px; }
 .card[aria-pressed="true"]::after { content: "✓"; position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; background: var(--brass); color: #1a1208; font: 700 13px/22px var(--sans); text-align: center; }
 .card:active { transform: scale(.985); }
+.dossier { margin: 0 0 14px; padding: 14px; border: 1px solid var(--brass); border-radius: 14px; background: var(--ink); overflow-wrap: anywhere; }
+.dossier h2 { margin: 0 0 6px; font: 700 19px/1.25 var(--serif); color: #fff; }
+.dossier > p:not(.eyebrow) { margin: 0 0 10px; font: 15px/1.5 var(--serif); }
+.dossier small { display: block; font: 12px/1.4 var(--sans); color: var(--muted); }
 
 /* Chat */
 .chat { flex: 1; min-height: 0; padding: 0; }
@@ -153,6 +157,7 @@ body.busy .btn[data-submit] { opacity: .6; }
 .wordmark { margin: 0; font: 400 68px/1 'Rye', var(--serif); letter-spacing: .04em; color: var(--brass); text-shadow: 0 2px 0 #6b4a1f, 0 10px 30px rgba(0, 0, 0, .6); }
 .tagline { margin: 8px 0 0; font: 600 12px var(--sans); letter-spacing: .5em; text-indent: .5em; text-transform: uppercase; color: var(--muted); }
 .landing .lead { text-align: center; }
+.table-guide { margin: -4px 0 18px; font: 13px/1.5 var(--sans); color: var(--muted); text-align: center; }
 .segmented { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: rgba(0, 0, 0, .4); }
 .segmented button { flex: 1; padding: 9px 6px; border: 0; border-radius: 9px; background: none; color: var(--muted); font: 600 13px var(--sans); }
 .segmented button[aria-pressed="true"] { background: var(--brass); color: #1a1208; }
@@ -239,6 +244,30 @@ input:focus, select:focus { outline: none; border-color: var(--brass); box-shado
 .facts dd { margin: 0; color: var(--ivory); }
 .room-line { display: flex; align-items: center; margin: 0 0 24px; }
 .casefile, .deductions { padding-bottom: 24px; }
+
+/* The notebook is a private, read-only companion to the live interview. */
+.notebook { padding-bottom: 24px; }
+.notebook .segmented button, .deductions .segmented button { min-height: 44px; }
+.interview-list, .review-transcript { list-style: none; margin: 0; padding: 0; }
+.interview-list { display: grid; gap: 10px; }
+.interview-link { text-align: left; }
+.interview-link span, .interview-link small { display: block; }
+.interview-link small { margin-top: 5px; color: var(--muted); font-weight: 400; }
+.evidence-link { display: block; padding: 12px 0 4px; min-height: 44px; border: 0; background: none; color: var(--brass); text-align: left; text-decoration: underline; text-underline-offset: 3px; font-size: 13px; }
+.review #notebook-back { align-self: flex-start; margin: 6px 0 18px; min-height: 44px; }
+.review-transcript { display: grid; gap: 14px; margin-top: 12px; }
+.review-transcript .b { width: fit-content; max-width: 92%; margin: 0; padding: 12px 14px; border-radius: 16px; overflow-wrap: anywhere; }
+.review-transcript .b.me { margin-left: auto; background: var(--wine); color: #fff; }
+.review-transcript .b.them { background: var(--ivory); color: var(--ink); }
+.review-transcript .b small { display: block; margin-bottom: 6px; font-size: 11px; font-weight: 700; }
+.review-exchange { display: grid; gap: 8px; border-radius: 12px; scroll-margin: 16px; }
+.source-answer { outline: 2px solid var(--brass); outline-offset: 5px; }
+.source-note, .saved-draft, .debrief { margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(0, 0, 0, .4); overflow-wrap: anywhere; }
+.source-note b { color: var(--brass); font-size: 12px; }
+.source-note p, .saved-draft p { margin: 8px 0 0; }
+.saved-draft p { white-space: pre-wrap; }
+.debrief .label, .saved-draft .label { margin-top: 0; }
+.notebook .title, .interview-link, .dlist, .debrief { overflow-wrap: anywhere; }
 
 /* Notices and confirmation */
 #notice { position: fixed; z-index: 10; left: 50%; top: calc(var(--safe-top) + 10px); width: min(400px, calc(100% - 32px)); padding: 0; transform: translate(-50%, -150%); opacity: 0; transition: transform .25s ease, opacity .25s ease; }

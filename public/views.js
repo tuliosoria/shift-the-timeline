@@ -5,6 +5,9 @@ import {topicLabels} from './question-topics.js';
 
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 export const AI_NOTICE = "Suspects are voiced by AI. Don't type personal information.";
+export const dialogueNotice = mode => mode === 'ai' ? `${AI_NOTICE} Authored replies take over if AI is unavailable.`
+  : mode === 'canonical' ? 'Suspects use authored replies. Questions match a topic, so rephrasing may repeat an answer.'
+    : 'Interview mode is loading. Please avoid personal information in your questions.';
 const PORTRAITS = new Set(['mara', 'ines', 'bento', 'celia', 'noa', 'rui', 'vera', 'davi', 'lia', 'tomas', 'helena', 'joel', 'olga', 'samira', 'elio']);
 export const firstName = name => String(name ?? '').trim().split(/\s+/)[0] || 'them';
 const safeColor = c => /^#[0-9a-f]{3,8}$/i.test(c ?? '') ? c : '#4a5a6a';
@@ -75,11 +78,11 @@ export function renderHeader(state, local) {
 }
 
 export function renderTabBar(state, local) {
-  if (!state || !['investigation', 'accusation'].includes(state.phase)) return '';
-  if (['briefing', 'transition'].includes(screenFor(state, local))) return '';
+  if (!state || !['investigation', 'accusation', 'reveal'].includes(state.phase)) return '';
+  if (screenFor(state, local) === 'briefing' || (screenFor(state, local) === 'transition' && local.tab !== 'deductions')) return '';
   const tab = local.tab ?? 'investigate', count = state.me.deductions.length;
   const item = (id, label, extra = '') => `<button type="button" class="tab" data-tab="${id}" ${tab === id ? 'aria-current="page"' : ''}>${icon[id]}<span>${label}${extra}</span></button>`;
-  return `<nav class="tabbar" aria-label="Game sections">${item('investigate', state.phase === 'accusation' ? 'Summon' : 'Investigate')}${item('deductions', 'Deductions', ` <small>${count}/${state.deductionTotal}</small>`)}${item('case', 'Case file')}</nav>`;
+  return `<nav class="tabbar" aria-label="Game sections">${item('investigate', state.phase === 'reveal' ? 'Outcome' : state.phase === 'accusation' ? 'Summon' : 'Investigate')}${item('deductions', 'Deductions', ` <small>${count}/${state.deductionTotal}</small>`)}${item('case', 'Case file')}</nav>`;
 }
 
 export function renderLanding(state, local) {
@@ -94,9 +97,10 @@ export function renderLanding(state, local) {
   return `<section class="screen landing">
 <div class="brand"><h1 class="wordmark">SHIFT</h1><p class="tagline">The Timeline</p></div>
 <p class="lead">A crime foretold. Someone dies in 24 hours.<br>Find the killer before it happens.</p>
+<p class="table-guide">3–4 players · one phone each.<br>Play together and compare your discoveries out loud.</p>
 <div class="segmented" role="group" aria-label="Room options"><button type="button" data-entry="create" aria-pressed="${entry === 'create'}">New room</button><button type="button" data-entry="join" aria-pressed="${entry === 'join'}">Join with a code</button></div>
 ${form}
-<p class="ai-notice">${esc(AI_NOTICE)}</p>
+<p class="ai-notice">${esc(dialogueNotice(local.dialogueMode))}</p>
 </section>`;
 }
 
@@ -114,7 +118,7 @@ export function renderLobby(state, local) {
 <ul class="roster">${roster}</ul>
 <div class="cta">${start}
 ${state.hostRecoverable && !state.me.host ? '<p class="hint">The host has been away for two minutes.</p><button type="button" class="btn ghost" data-action="claimHost" data-submit>Take over as host</button>' : ''}
-<p class="ai-notice">${esc(AI_NOTICE)}</p></div>
+<p class="ai-notice">${esc(dialogueNotice(local.dialogueMode))}</p></div>
 </section>`;
 }
 
@@ -155,7 +159,7 @@ export function renderTransition(state, local) {
 function suspectGrid(state, local, {taken = new Map(), asked = new Map()} = {}) {
   return `<div class="grid" role="group" aria-label="Suspects">${state.suspects.map(s => {
     const selected = local.selected === s.id, notes = [asked.get(s.id), taken.get(s.id)].filter(Boolean);
-    return `<button type="button" class="card" data-suspect="${esc(s.id)}" aria-pressed="${selected}">${face(s)}<span class="n">${esc(s.name)}<small>${esc(s.role)}</small></span>${notes.length ? `<span class="badge">${esc(notes.join(' · '))}</span>` : ''}</button>`;
+    return `<button type="button" class="card" id="suspect-choice-${esc(s.id)}" data-suspect="${esc(s.id)}" aria-pressed="${selected}">${face(s)}<span class="n">${esc(s.name)}<small>${esc(s.role)}</small></span>${notes.length ? `<span class="badge">${esc(notes.join(' · '))}</span>` : ''}</button>`;
   }).join('')}</div>`;
 }
 
@@ -167,6 +171,7 @@ export function renderPick(state, local) {
   return `<section class="screen pick">
 <h1 class="title">Who will you question?</h1>
 <p class="sub">Pick one suspect for this turn. Only you will see the conversation.</p>
+${chosen ? `<section class="dossier" id="suspect-dossier" tabindex="-1" aria-labelledby="dossier-name"><p class="eyebrow">Suspect file</p><h2 id="dossier-name">${esc(chosen.name)}</h2><p>${esc(chosen.profile)}</p><small>You can keep browsing. Starting the chat commits this turn to ${esc(firstName(chosen.name))}.</small></section>` : ''}
 ${suspectGrid(state, local, {taken, asked})}
 <div class="cta"><button type="button" class="btn" data-action="question" data-submit ${chosen ? '' : 'disabled data-locked="true"'}>${chosen ? `Question ${esc(firstName(chosen.name))} →` : 'Choose a suspect'}</button><p class="hint">You get ${q} questions.</p></div>
 </section>`;
@@ -272,19 +277,55 @@ export function renderReveal(state, local) {
 <ul class="votes">${votes}</ul>
 ${r.solution?.motive ? `<h2 class="label">Why</h2><p class="solution">${esc(r.solution.motive)}</p>` : ''}
 ${r.solution?.plan ? `<h2 class="label">How</h2><p class="solution">${esc(r.solution.plan)}</p>` : ''}
+<div class="debrief"><h2 class="label">Your investigation</h2><p>${plural(state.me.interviews.length, 'interview')} · ${plural(state.me.interviews.reduce((n, i) => n + i.messages.length, 0), 'question')} · ${state.me.deductions.length} of ${state.deductionTotal} deductions</p><p class="sub">Compare the truth with what you heard. Your conversations and deductions remain private.</p><button type="button" class="btn ghost" data-tab="deductions">Review your evidence</button></div>
 <div class="cta"><button type="button" class="btn ghost" data-action="reset">New investigation</button></div>
 </section>`;
 }
 
-export function renderDeductions(state) {
+// Resolve evidence only within this player's exact interview. A legacy deduction without
+// messageId may still use the message's unlock receipt, never guessed question text.
+export function deductionSource(state, deduction) {
+  const interview = state.me.interviews.find(i => i.round === deduction.round && i.suspectId === deduction.suspectId);
+  if (!interview) return null;
+  const message = interview.messages.find(m => deduction.messageId ? m.id === deduction.messageId : m.unlocked?.includes(deduction.id));
+  return {interview, message};
+}
+
+export function renderDeductions(state, local = {}) {
+  const notebook = local.notebook ?? {}, selected = state.me.interviews.find(i => chatKey(i) === notebook.interview);
+  if (selected) return renderInterviewReview(state, selected, notebook, local.archiveDraft, local.draftsPersistent);
+  const history = notebook.section === 'interviews';
+  const sections = `<div class="segmented" role="group" aria-label="Private notebook"><button type="button" id="notebook-deductions" data-notebook="deductions" aria-pressed="${!history}">Deductions</button><button type="button" id="notebook-interviews" data-notebook="interviews" aria-pressed="${history}">Interviews (${state.me.interviews.length})</button></div>`;
+  if (history) {
+    const interviews = [...state.me.interviews].sort((a, b) => b.round - a.round);
+    return `<section class="screen notebook"><h1 class="title">Your interviews</h1><p class="sub">Only you can read these. Reviewing never uses a question.</p>${sections}
+${interviews.length ? `<ol class="interview-list">${interviews.map(i => `<li><button type="button" class="btn ghost interview-link" id="interview-${esc(chatKey(i))}" data-interview="${esc(chatKey(i))}"><span>Turn ${i.round} · ${esc(suspect(state, i.suspectId)?.name)}</span><small>${plural(i.messages.length, 'question')} · ${pendingLast(i) ? 'Reply pending' : i.closed ? 'Closed' : 'In progress'}</small></button></li>`).join('')}</ol>` : '<p class="hint">Your first conversation will be saved here as you question a suspect.</p>'}</section>`;
+  }
   const unlocked = state.me.deductions, total = Math.max(state.deductionTotal ?? 0, unlocked.length);
-  const items = unlocked.map(d => `<li class="unlocked"><p>${esc(d.text)}</p><small>From ${esc(firstName(suspect(state, d.suspectId)?.name))} · Turn ${esc(d.round)}</small></li>`).join('')
+  const items = unlocked.map(d => {
+    const source = deductionSource(state, d);
+    return `<li class="unlocked"><p>${esc(d.text)}</p><small>From ${esc(firstName(suspect(state, d.suspectId)?.name))} · Turn ${esc(d.round)}</small>${source ? `<button type="button" class="evidence-link" id="source-${esc(d.id)}" data-interview="${esc(chatKey(source.interview))}" data-message="${esc(source.message?.id)}" data-deduction="${esc(d.id)}">${source.message ? 'Read source answer' : 'Review source interview'}</button>` : ''}</li>`;
+  }).join('')
     + Array.from({length: total - unlocked.length}, () => `<li class="locked" aria-label="Locked deduction">${icon.lock}</li>`).join('');
   return `<section class="screen deductions">
 <h1 class="title">Deductions</h1>
 <p class="sub">${unlocked.length} of ${total} unlocked</p>
+${sections}
 ${unlocked.length ? '' : '<p class="hint">They unlock as you talk to the suspects.</p>'}
 <ol class="dlist">${items}</ol>
+</section>`;
+}
+
+function renderInterviewReview(state, interview, notebook, draft, persistent = true) {
+  const s = suspect(state, interview.suspectId);
+  const source = state.me.deductions.find(d => d.id === notebook.deduction && deductionSource(state, d)?.interview === interview);
+  return `<section class="screen notebook review">
+<button type="button" id="notebook-back" class="btn ghost small" data-action="notebook-back">Back to ${notebook.section === 'interviews' ? 'interviews' : 'deductions'}</button>
+<p class="eyebrow">Private interview · Turn ${interview.round}</p><h1 class="title" id="review-title" tabindex="-1">${esc(s?.name)}</h1>
+<p class="sub">Read-only · reviewing uses no questions. Return to ${state.phase === 'reveal' ? 'Outcome' : state.phase === 'accusation' ? 'Summon' : 'Investigate'} when you are ready.</p>
+${source ? `<aside class="source-note"><b>Source for your deduction</b><p>${esc(source.text)}</p></aside>` : ''}
+<ol class="review-transcript">${interview.opening ? `<li class="b them"><small>${esc(s?.name)}</small>${esc(interview.opening)}</li>` : ''}${interview.messages.map((m, n) => `<li class="review-exchange${m.id === notebook.message ? ' source-answer' : ''}" id="review-message-${esc(m.id)}" tabindex="-1"><p class="b me"><small>You · Question ${n + 1}</small>${esc(m.question)}</p><p class="b them"><small>${esc(s?.name)}${m.status === 'canonical' ? ' · Scripted answer' : ''}</small>${m.status === 'pending' ? 'Reply pending. This conversation will update when it arrives.' : esc(m.reply)}</p></li>`).join('')}</ol>
+${draft ? `<aside class="saved-draft"><h2 class="label">Unsent draft · Turn ${interview.round}</h2><p>${esc(draft)}</p><p class="sub">${persistent ? 'Saved on this browser.' : 'Only in this open tab. Storage is unavailable; reloading will lose this draft.'} This text was never sent.</p></aside>` : ''}
 </section>`;
 }
 
