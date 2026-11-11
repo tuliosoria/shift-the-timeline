@@ -37,7 +37,7 @@ A versão de cfn-lint usada no CI é 1.60.0. O diretório publicável é somente
 
 O índice AiDueIndex e o stream KEYS_ONLY preparam o armazenamento para IA. ProvisionAiQueue e ProvisionAiWorkers começam false; workers exigem filas. Se provisionados futuramente, os três runtimes ainda terão flags false, mapeamentos Enabled=false e schedule DISABLED. AiSecretArn começa vazio e não concede leitura GPT; preencher um ARN em um change set futuro concede acesso somente ao papel do worker e exige autorização específica. AiPolicyJson é configuração de modelo/tarifas/limites, nunca uma chave.
 
-A API continua canônica e não produz jobs. Não altere flags ou gatilhos para tentar ativar IA sem concluir aviso/consentimento, aprovação do dono da credencial, integração da admissão e homologação. Não há passo automático que aplique IAM ou habilite execução.
+A API continua canônica e não produz jobs. Não altere flags ou gatilhos para tentar ativar IA sem concluir aviso de uma linha (sem consentimento por pergunta), aprovação do dono da credencial, integração da admissão e homologação. Não há passo automático que aplique IAM ou habilite execução.
 
 Não existe uma implantação validada nem URL jogável prometida por este PR. O template pode precisar de ajustes depois da validação real. O GPT permanece desconectado; não basta fornecer uma chave para habilitá-lo.
 

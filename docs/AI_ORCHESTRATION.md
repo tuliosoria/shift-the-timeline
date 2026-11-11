@@ -41,7 +41,7 @@ Schema e limites de tamanho não provam consistência narrativa nem eliminam alu
 ## O que falta para ativar
 
 1. Aprovar com o dono da credencial projeto, modelo/versionamento, tarifas, limites e política de dados.
-2. Aviso/consentimento dos jogadores para o envio externo, pedindo codinomes e ausência de dados pessoais.
+2. Aviso de uma linha aos jogadores sobre o envio externo (sem consentimento por pergunta), pedindo codinomes e ausência de dados pessoais.
 3. Validar em homologação os runtimes e políticas declarados. O worker usa ações condicionais DynamoDB, incluindo ConditionCheckItem; relay lê/escreve somente outbox e recebe chaves do stream; reconciliador usa o índice e os registros necessários à liquidação. Somente o worker pode receber permissão condicional para o ARN GPT exato. Nenhuma dessas permissões foi aplicada. Configurar alarmes e revisar ativação separadamente.
 4. Testes reais DynamoDB/SQS/Lambda, capacidade regional, recuperação e avaliação narrativa.
 5. Configuração segura da credencial e teste pago limitado, com autorização específica.

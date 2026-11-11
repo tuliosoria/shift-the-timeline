@@ -62,7 +62,7 @@ The application package must include the Azure entrypoint `server/azure-index.mj
 | `SHIFT_PG_DATABASE`, `SHIFT_PG_USER` | `shift`, `shift_app` |
 | `SHIFT_CASE_FILE`, `SHIFT_CASE_SHA256` | Server-only approved JSON case path and exact digest |
 | `SHIFT_ALLOW_NEW_ROOMS` | `false` until smoke checks pass |
-| `SHIFT_AI_ENABLED` | `false`; this deployment does not activate AI |
+| `SHIFT_AI_ENABLED` | `true` on the live playtest app, which also needs `SHIFT_AI_OPERATOR_CONSENT=true`, a Key Vault-resolved `OPENAI_API_KEY` and `SHIFT_AI_POLICY` (see below); `false` on any deployment that must stay canonical-only |
 
 There is no `SHIFT_PG_PASSWORD` in this template. The runtime obtains a short-lived managed-identity token for `https://ossrdbms-aad.database.windows.net/.default` on new connections and uses verified TLS. Never use `rejectUnauthorized:false`. Do not log tokens, database connection credentials, questions, private answers or case files.
 
@@ -144,7 +144,7 @@ A separately approved temporary exception may permit Azure-authenticated SCM net
 
 The provider pins `service_tier: "default"` (Standard) rather than inheriting a project-level Fast setting. It also sends `prompt_cache_options: {mode: "explicit"}` with no breakpoints, disabling implicit prompt-cache use and writes. `store: false` remains set. These choices do not establish Zero Data Retention or eliminate applicable abuse-monitoring retention.
 
-On 2026-11-10, the [official GPT-6 Luna model page](https://developers.openai.com/api/docs/models/gpt-6-luna) and [pricing page](https://developers.openai.com/api/docs/pricing) list Standard `gpt-6-luna` at USD $0.10 per million input tokens and $0.50 per million output tokens. The 2,500-input/350-output envelope reserves 425 microUSD ($0.000425) per call at those rates. Reverify prices before activation or changing models. Cache-write rates differ; do not remove the explicit-only/no-breakpoint setting without updating accounting.
+On 2026-11-10, the [official GPT-6 Luna model page](https://developers.openai.com/api/docs/models/gpt-6-luna) and [pricing page](https://developers.openai.com/api/docs/pricing) list Standard `gpt-6-luna` at USD $0.10 per million input tokens and $0.50 per million output tokens. The required 6,000-input/400-output envelope reserves 800 microUSD ($0.0008) per call at those rates, so a full room of 48 questions (4 players × 4 turns × 3 questions) reserves 38,400 microUSD, well inside the 250,000 room limit. Reverify prices before activation or changing models. Cache-write rates differ; do not remove the explicit-only/no-breakpoint setting without updating accounting.
 
 See the [prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) for explicit-only behavior and the [Fast mode guide](https://developers.openai.com/api/docs/guides/fast-mode) for project-default processing tiers. Test the exact model/request combination after explicit paid-call approval. No model, secret destination, paid budget, player-data transmission, or hosted AI activation is authorized by this document or code change.
 
@@ -153,16 +153,33 @@ See the [prompt-caching guide](https://developers.openai.com/api/docs/guides/pro
 The operator may explicitly choose `uncapped: true` with `roomMicroUsd`,
 `dayMicroUsd`, and `monthMicroUsd` all set to JSON `null`. This removes the
 application's financial ceilings; it does not create an unusually large hidden
-ceiling. On a publicly reachable game, consented requests can therefore incur
+ceiling. On a publicly reachable game, AI requests can therefore incur
 unbounded cumulative OpenAI charges. Provider account limits, if any, are
 separate and are not configured or guaranteed by this application.
 
-Token envelopes, two concurrent reservations maximum, request deadlines,
-per-question consent, durable reservation/settlement accounting and canonical
+The token envelope (exactly 6,000 input and 400 output tokens), up to 8 concurrent reservations, request deadlines,
+durable reservation/settlement accounting and canonical
 evidence authority remain enforced. Accounting rejects numeric overflow rather
 than losing precision. Omit `uncapped` to retain the existing bounded mode;
 invalid or mixed modes fail closed. Neither configuration mode authorizes
 activation or transferring credentials by itself.
+
+### Updating SHIFT_AI_POLICY
+
+`SHIFT_AI_POLICY` is a single JSON value. The app refuses to start unless its keys are exactly `model`, `inputRate`, `outputRate`, `inputTokens`, `outputTokens`, `roomMicroUsd`, `dayMicroUsd`, `monthMicroUsd` and `maxConcurrent` (plus `uncapped` only in the uncapped mode above). Keep `model`, `inputRate` and `outputRate` from the current setting. Each limit must be an integer between 1 and its ceiling. The 2026-11 chat redesign uses:
+
+```json
+{"model":"<current model>","inputRate":<current>,"outputRate":<current>,"roomMicroUsd":250000,"dayMicroUsd":10000000,"monthMicroUsd":50000000,"maxConcurrent":8,"inputTokens":6000,"outputTokens":400}
+```
+
+`inputTokens` and `outputTokens` must be exactly 6000 and 400. At startup the app also checks that a full room of 48 questions fits `roomMicroUsd` at the chosen rates, and fails closed if not. To update the existing app, put the JSON in a local file that contains no secrets, then run:
+
+```sh
+az webapp config appsettings show --resource-group <group> --name <app> --query "[?name=='SHIFT_AI_POLICY'].value" -o tsv   # read model and rates
+az webapp config appsettings set --resource-group <group> --name <app> --settings SHIFT_AI_POLICY=@shift-ai-policy.json
+```
+
+Set only `SHIFT_AI_POLICY`; never put `OPENAI_API_KEY` or other secrets in these commands. The setting restarts the app. Confirm `/healthz` returns HTTP 200 afterwards.
 
 ## Verified-main CI deployment (explicitly enabled only after integration checks)
 

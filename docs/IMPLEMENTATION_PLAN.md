@@ -27,7 +27,7 @@
 - [ ] Validação real desses runtimes e políticas em homologação autorizada.
 - [x] Testes simulados de concorrência de orçamento, mudança de período, entrega duplicada e resultado incerto.
 - [x] Projeção privada e renderização da narração opcional separada da evidência canônica.
-- [ ] QA de navegador e aviso/consentimento de dados antes de ativar envio externo.
+- [ ] QA de navegador e aviso de dados (sem consentimento por pergunta) antes de ativar envio externo.
 - [ ] Projeto/modelo, preço e política de dados aprovados pelo dono da credencial.
 - [ ] Configuração segura e teste pago limitado, autorizado separadamente.
 

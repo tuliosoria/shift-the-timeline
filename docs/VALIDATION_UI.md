@@ -1,5 +1,7 @@
 # Investigation interface validation
 
+> Superseded by the 2026-11 mobile chat redesign: the Analyse / Interrogate / Deduce flow, shared board, correlations and sharing described below no longer exist. See [UI design](UI_DESIGN.md).
+
 Date: 10 November 2026. No deployment or GPT activation.
 
 ## Implemented scope
