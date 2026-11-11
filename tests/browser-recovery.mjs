@@ -134,8 +134,41 @@ try {
   await page.waitForTimeout(3000);
   assert.equal(await page.locator('#notice', {hasText: 'Connection interrupted'}).count(), 0);
   await page.unroute(/\/state\?since=/);
+  // An absent lobby host must not strand the table before the first turn. Advance only
+  // the synthetic server clock; no two-minute sleep or production service is involved.
+  const absentHost = await server.game.create('absent-lobby-host', 'Absent host', server.game.caseData.id, randomUUID());
+  await server.game.join(absentHost.code, 'other-lobby-agent', 'Other agent', randomUUID());
+  await page.click('[data-entry=join]');
+  await page.fill('#join-name', 'New host');
+  await page.fill('#join-code', absentHost.code);
+  await page.click('#join-form button');
+  await page.locator('.screen.lobby').waitFor();
+  assert.equal(await page.locator('[data-action=claimHost]').count(), 0);
+  let clockOffset = 120001;
+  server.game.now = () => Date.now() + clockOffset;
+  await page.reload();
+  await page.locator('[data-action=claimHost]').waitFor();
+  await page.click('[data-action=claimHost]');
+  await page.click('#confirm-cancel');
+  assert.equal(sent('claimHost').length, 0, 'cancelling takeover sends nothing');
+
+  // A returning host removes eligibility; the existing server lease remains authoritative.
+  await server.game.act(absentHost.code, 'absent-lobby-host', {id: randomUUID(), type: 'heartbeat'});
+  await page.reload();
+  await page.locator('.screen.lobby').waitFor();
+  assert.equal(await page.locator('[data-action=claimHost]').count(), 0);
+  clockOffset += 120001;
+  await page.reload();
+  await page.click('[data-action=claimHost]');
+  await page.click('#confirm-accept');
+  await page.locator('[data-action=start]').waitFor();
+  assert.equal(sent('claimHost').length, 1, 'one confirmed takeover');
+  assert.equal(await page.locator('.roster li').count(), 3, 'the absent host keeps their seat');
+  await page.click('[data-action=start]');
+  await page.locator('[data-action=begin]').waitFor();
+  assert.equal((await server.game.view(absentHost.code, 'absent-lobby-host')).me.host, false);
   assert.deepEqual(errors, []);
-  console.log('Browser recovery passed: reload keeps session and draft, lost response retried with the same id, pending reply holds the transition, stale confirmation closes, retired case version returns to the landing.');
+  console.log('Browser recovery passed: reload keeps session and draft, lost response retried with the same id, pending reply holds the transition, stale confirmation closes, retired case version returns to the landing, absent lobby host can be replaced after confirmation.');
 } finally {
   await browser.close();
   await server.close();
