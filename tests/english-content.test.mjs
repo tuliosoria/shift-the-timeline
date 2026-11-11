@@ -45,7 +45,7 @@ test('inactive provider requests British English and keeps its original safety b
  }});
  await provider({...buildChatContext({caseData:{title:'T',victim:'V',place:'P',method:'M',prediction:'X',culpritId:'z',suspects:[{id:'s',name:'Ann',role:'Clerk',brief:'B',responses:{alibi:'a',motive:'m',clue:'c',relationship:'r'}}]},suspectId:'s',question:'What did you notice?'}),allowedIds:[]});
  assert.match(payload.input[0].content,/British English/);assert.ok(!payload.input[0].content.includes('Portuguese'));
- assert.match(payload.input[0].content,/Do not invent other facts/);assert.equal(payload.store,false);assert.equal(payload.service_tier,'default');assert.deepEqual(payload.prompt_cache_options,{mode:'explicit'});assert.equal(payload.max_output_tokens,400);assert.equal(payload.tools,undefined);
+ assert.match(payload.input[0].content,/Do not invent other facts/);assert.equal(payload.store,false);assert.equal(payload.service_tier,'default');assert.deepEqual(payload.prompt_cache_options,{mode:'explicit'});assert.equal(payload.max_output_tokens,1024);assert.equal(payload.tools,undefined);
 });
 test('backend transport, session and limiter messages contain no previous Portuguese copy',async()=>{
  for(const file of ['api','sessions','limits','origin','runtime','lambda','persistent-game']){

@@ -19,12 +19,12 @@ async function setup(overrides={},fetchImpl=async()=>response()){
  return {worker,store,game,code,ask,secrets:()=>secrets};
 }
 test('local AI configuration is explicit, loopback only, priced and bounded',()=>{
- assert.equal(readLocalAiConfig(env).reservation,3040);assert.equal(readLocalAiConfig(env).policy.roomMicroUsd,250000);
+ assert.equal(readLocalAiConfig(env).reservation,4039);assert.equal(readLocalAiConfig(env).policy.roomMicroUsd,250000);
  for(const key of Object.keys(env))assert.throws(()=>readLocalAiConfig({...env,[key]:undefined}));
  for(const origin of ['https://127.0.0.1:3000','http://example.com','http://0.0.0.0','http://user@localhost','http://localhost/path','http://localhost?x=1'])assert.throws(()=>readLocalAiConfig({...env,SHIFT_ORIGIN:origin}));
  for(const key of ['SHIFT_TABLE','SHIFT_CASE_BUCKET','SHIFT_CASE_KEY','SHIFT_CASE_SHA256','SHIFT_ORIGIN_SECRET_ARN','AWS_LAMBDA_FUNCTION_NAME'])assert.throws(()=>readLocalAiConfig({...env,[key]:'set'}));
  assert.throws(()=>readLocalAiConfig({...env,NODE_ENV:'production'}));
- // 6000×1 + 400×4 = 7600 microUSD per question cannot fit 48 questions in a 250000 room budget.
+ // 6000×1 + 1024×4 = 10096 microUSD per question cannot fit 48 questions in a 250000 room budget.
  for(const [key,values] of Object.entries({SHIFT_LOCAL_AI_MAX_CALLS:['13','1.5','0'],SHIFT_LOCAL_AI_MAX_RESERVE_MICROUSD:['250001','1'],SHIFT_LOCAL_AI_INPUT_RATE:['','NaN','-1','Infinity','1']}))for(const value of values)assert.throws(()=>readLocalAiConfig({...env,[key]:value}));
 });
 test('invalid configuration fails before loading case or accessing secret',async()=>{
@@ -52,8 +52,8 @@ test('same receipt retry and overlapping ticks make only one provider request',a
 });
 test('provider attempts have nonrefundable process-wide call and reserve caps',async()=>{
  let calls=0;const h=await setup({SHIFT_LOCAL_AI_MAX_CALLS:'1'},async()=>{calls++;return response();});
- await h.ask('a');await h.worker.tick();await h.ask('b');await h.worker.tick();assert.equal(calls,1);assert.equal(h.secrets(),1);assert.equal(h.worker.stats().reservedMicroUsd,3040);
- const h2=await setup({SHIFT_LOCAL_AI_MAX_CALLS:'12',SHIFT_LOCAL_AI_MAX_RESERVE_MICROUSD:'4000'},async()=>{calls++;return response();});
+ await h.ask('a');await h.worker.tick();await h.ask('b');await h.worker.tick();assert.equal(calls,1);assert.equal(h.secrets(),1);assert.equal(h.worker.stats().reservedMicroUsd,4039);
+ const h2=await setup({SHIFT_LOCAL_AI_MAX_CALLS:'12',SHIFT_LOCAL_AI_MAX_RESERVE_MICROUSD:'5000'},async()=>{calls++;return response();});
  await h2.ask('a');await h2.worker.tick();await h2.ask('b');await h2.worker.tick();assert.equal(h2.worker.stats().calls,1);await h2.worker.stop();await h.worker.stop();
 });
 test('failed provider attempts consume trial allowance and stopping prevents new work',async()=>{

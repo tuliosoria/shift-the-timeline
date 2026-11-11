@@ -6,8 +6,8 @@ import * as impl from '../../server/ai/jobs.mjs';
 let serial=0;
 const id=()=>`ai-request-${++serial}-xxxxxxxx`;
 const policy={model:'synthetic-model',inputRate:0.4,outputRate:1.6,roomMicroUsd:250000,dayMicroUsd:10000000,monthMicroUsd:50000000,maxConcurrent:8};
-// 6000 input × 0.4 + 400 output × 1.6 microUSD; a fake call of 10/5 tokens settles at 12.
-const RESERVE=3040,FAKE_COST=12;
+// 6000 input × 0.4 + 1024 output × 1.6 microUSD; a fake call of 10/5 tokens settles at 12.
+const RESERVE=4039,FAKE_COST=12;
 async function harness(overrides={},options={}){
  assert.equal(typeof impl.AiJobs,'function');let time=options.time??Date.UTC(2026,10,10,10);
  const store=options.store??new MemoryStore(),now=()=>time,caseData=options.caseData??TRAIN_CASE;

@@ -144,7 +144,7 @@ A separately approved temporary exception may permit Azure-authenticated SCM net
 
 The provider pins `service_tier: "default"` (Standard) rather than inheriting a project-level Fast setting. It also sends `prompt_cache_options: {mode: "explicit"}` with no breakpoints, disabling implicit prompt-cache use and writes. `store: false` remains set. These choices do not establish Zero Data Retention or eliminate applicable abuse-monitoring retention.
 
-On 2026-11-10, the [official GPT-6 Luna model page](https://developers.openai.com/api/docs/models/gpt-6-luna) and [pricing page](https://developers.openai.com/api/docs/pricing) list Standard `gpt-6-luna` at USD $0.10 per million input tokens and $0.50 per million output tokens. The required 6,000-input/400-output envelope reserves 800 microUSD ($0.0008) per call at those rates, so a full room of 48 questions (4 players × 4 turns × 3 questions) reserves 38,400 microUSD, well inside the 250,000 room limit. Reverify prices before activation or changing models. Cache-write rates differ; do not remove the explicit-only/no-breakpoint setting without updating accounting.
+On 2026-11-10, the [official GPT-6 Luna model page](https://developers.openai.com/api/docs/models/gpt-6-luna) and [pricing page](https://developers.openai.com/api/docs/pricing) list Standard `gpt-6-luna` at USD $0.10 per million input tokens and $0.50 per million output tokens. The required 6,000-input/1,024-output envelope reserves 1,112 microUSD ($0.001112) per call at those rates, so a full room of 48 questions (4 players × 4 turns × 3 questions) reserves 53,376 microUSD, well inside the 250,000 room limit. Reverify prices before activation or changing models. Cache-write rates differ; do not remove the explicit-only/no-breakpoint setting without updating accounting.
 
 See the [prompt-caching guide](https://developers.openai.com/api/docs/guides/prompt-caching) for explicit-only behavior and the [Fast mode guide](https://developers.openai.com/api/docs/guides/fast-mode) for project-default processing tiers. Test the exact model/request combination after explicit paid-call approval. No model, secret destination, paid budget, player-data transmission, or hosted AI activation is authorized by this document or code change.
 
@@ -157,7 +157,7 @@ ceiling. On a publicly reachable game, AI requests can therefore incur
 unbounded cumulative OpenAI charges. Provider account limits, if any, are
 separate and are not configured or guaranteed by this application.
 
-The token envelope (exactly 6,000 input and 400 output tokens), up to 8 concurrent reservations, request deadlines,
+The token envelope (exactly 6,000 input and 1,024 output tokens), up to 8 concurrent reservations, request deadlines,
 durable reservation/settlement accounting and canonical
 evidence authority remain enforced. Accounting rejects numeric overflow rather
 than losing precision. Omit `uncapped` to retain the existing bounded mode;
@@ -166,45 +166,29 @@ activation or transferring credentials by itself.
 
 ### Updating SHIFT_AI_POLICY
 
-`SHIFT_AI_POLICY` is a single JSON value. The app refuses to start unless its keys are exactly `model`, `inputRate`, `outputRate`, `inputTokens`, `outputTokens`, `roomMicroUsd`, `dayMicroUsd`, `monthMicroUsd` and `maxConcurrent` (plus `uncapped` only in the uncapped mode above). Keep `model`, `inputRate` and `outputRate` from the current setting. Each limit must be an integer between 1 and its ceiling. The 2026-11 chat redesign uses:
+`SHIFT_AI_POLICY` is a single JSON value. Its keys must be exactly `model`, `inputRate`, `outputRate`, `inputTokens`, `outputTokens`, `roomMicroUsd`, `dayMicroUsd`, `monthMicroUsd` and `maxConcurrent` (plus `uncapped` only in uncapped mode). Preserve the current model, rates, financial mode and concurrency unless separately authorised to change them. This build requires exactly 6000 input and 1024 output tokens; the output allowance includes both reasoning and visible JSON. Medium reasoning is explicit rather than inherited from provider defaults.
+
+A bounded example is:
 
 ```json
-{"model":"<current model>","inputRate":<current>,"outputRate":<current>,"roomMicroUsd":250000,"dayMicroUsd":10000000,"monthMicroUsd":50000000,"maxConcurrent":8,"inputTokens":6000,"outputTokens":400}
+{"model":"<current model>","inputRate":<current>,"outputRate":<current>,"roomMicroUsd":250000,"dayMicroUsd":10000000,"monthMicroUsd":50000000,"maxConcurrent":8,"inputTokens":6000,"outputTokens":1024}
 ```
 
-`inputTokens` and `outputTokens` must be exactly 6000 and 400. At startup the app also checks that a full room of 48 questions fits `roomMicroUsd` at the chosen rates, and fails closed if not.
+For an already-uncapped deployment, keep `uncapped:true` and all three financial limits `null`. Do not replace it with the bounded example. In bounded mode the validator also requires enough room allowance for 48 questions at the selected rates. A token-envelope correction is not permission to change financial policy or security settings.
 
-**Each build accepts only its own envelope.** Builds before the chat redesign require exactly 2500/350; the redesign requires exactly 6000/400. While AI is enabled, either mismatch stops the app at startup and App Service restarts it in a loop, so the whole site is down, not just AI. Changing an app setting restarts the app that is running now, so setting the new policy before the new build is live takes the old build down, and deploying the new build over the old policy does the same. With AI off the policy is not read, so turn AI off across the switch.
+**Each build accepts only its own envelope.** The original builds required 2500/350; the first chat redesign required 6000/400; this reliability correction requires 6000/1024. Current Azure builds reject a stale or invalid policy by serving canonical answers and emitting the fixed notice `{"event":"azure_startup_notice","reason":"ai_policy_invalid"}`. They do not construct a provider or admit paid jobs in that state. Missing operator consent or an unavailable credential remains a hard configuration error. Older builds without policy-tolerance support may stop on an invalid policy.
 
-Put the new JSON in a local file that contains no secrets, then follow these steps in order:
+Before changing anything, read only the non-secret policy using `az webapp config appsettings list` with an explicit subscription/group/app and a query selecting `SHIFT_AI_POLICY`; verify the exact release with `/api/release`. Save that non-secret policy for rollback. App-setting changes restart App Service.
 
-1. **Turn AI off.** The old build restarts in canonical mode and keeps serving.
+For a reviewed, explicitly authorised release:
 
-   ```sh
-   az webapp config appsettings show --resource-group <group> --name <app> --query "[?name=='SHIFT_AI_POLICY'].value" -o tsv   # read model and rates
-   az webapp config appsettings set --resource-group <group> --name <app> --settings SHIFT_AI_ENABLED=false
-   ```
+1. If moving through an older strict build, disable AI first and verify `/healthz` remains healthy. A current tolerant build already serving canonical mode need not be redeployed just to inspect settings.
+2. Deploy only the reviewed and verified source after deployment approval. When main-branch CI deployment is enabled, merging to `main` is a deployment action, not merely source publication.
+3. Confirm `/api/release` is the expected commit. Update only the token-envelope fields of the existing approved policy, preserving all other values. Read the setting back without printing unrelated settings or secrets.
+4. Enable AI only after isolated model-quality evaluation passes and activation is authorised. Verify `/healthz`, `/api/cases` (`dialogueMode:ai`) and actual completed AI replies in an isolated synthetic-player room. Metadata alone is not proof of successful model calls.
+5. If activation fails, restore canonical service by disabling AI or restoring the previously verified policy appropriate for the running tolerant build; verify health and `dialogueMode:canonical`. Never repeat an uncertain write without reading its current state first.
 
-   Read it back (`--query "[?name=='SHIFT_AI_ENABLED'].value" -o tsv` must print `false`) and confirm `/healthz` returns HTTP 200.
-2. **Set the new policy.** The app restarts again, still canonical, so the new policy is not read yet.
-
-   ```sh
-   az webapp config appsettings set --resource-group <group> --name <app> --settings SHIFT_AI_POLICY=@shift-ai-policy.json
-   ```
-
-   Read `SHIFT_AI_POLICY` back with the `show` command above and check it matches the file.
-3. **Deploy the new build** (a push to `main` deploys it through CI when that is enabled, so do steps 1 and 2 before merging) and confirm `/api/release` reports the expected commit and `/healthz` returns HTTP 200.
-4. **Turn AI back on.**
-
-   ```sh
-   az webapp config appsettings set --resource-group <group> --name <app> --settings SHIFT_AI_ENABLED=true
-   ```
-
-   Read it back (must print `true`), then confirm `/healthz` returns HTTP 200 and `/api/cases` reports `"dialogueMode":"ai"`.
-
-If the app does not come back at step 4, set `SHIFT_AI_ENABLED=false` again; the site returns in canonical mode. The startup log line `{"event":"azure_startup_failed","stage":"config","reason":"ai_policy_invalid"}` means the policy does not match the running build's envelope; it never includes the policy itself. Rolling back to an older build follows the same order in reverse: AI off, restore the old policy, deploy the old build, AI on.
-
-Change only `SHIFT_AI_ENABLED` and `SHIFT_AI_POLICY` here; never put `OPENAI_API_KEY` or other secrets in these commands.
+Do not change credentials, Key Vault permissions, ingress, or unrelated settings during this procedure. Never print `OPENAI_API_KEY` or copy a secret into a policy file. Model failures and incomplete responses retain the normal canonical-answer fallback; no paid retry is introduced.
 
 ## Verified-main CI deployment (explicitly enabled only after integration checks)
 

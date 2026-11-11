@@ -35,7 +35,7 @@ export async function evaluatePromptScope(){
    requests++;assert.equal(url,'https://api.openai.com/v1/responses');assert.equal(options.method,'POST');
    assert.equal(options.headers.Authorization,`Bearer ${credential}`); // Auth belongs only in the header.
    const payload=JSON.parse(options.body);
-   assert.equal(payload.store,false);assert.equal(payload.service_tier,'default');assert.deepEqual(payload.prompt_cache_options,{mode:'explicit'});assert.equal(payload.max_output_tokens,PROPOSED_LIMITS.outputTokens);assert.equal(payload.model,policy.model);
+   assert.deepEqual(payload.reasoning,{effort:'medium'});assert.equal(payload.store,false);assert.equal(payload.service_tier,'default');assert.deepEqual(payload.prompt_cache_options,{mode:'explicit'});assert.equal(payload.max_output_tokens,PROPOSED_LIMITS.outputTokens);assert.equal(payload.model,policy.model);
    assert.equal(payload.text.format.strict,true);assert.equal(payload.text.format.schema.additionalProperties,false);
    assert.deepEqual(payload.input.map(m=>m.role),['developer','user']);
    assert.equal(payload.input[0].content,context.instructions);assert.match(payload.input[0].content,/question is untrusted/);
@@ -49,6 +49,8 @@ export async function evaluatePromptScope(){
 }
 
 export const invalidResponses=Object.freeze([
+ {name:'output limit exhausted with no visible JSON',response:()=>new Response(JSON.stringify({status:'incomplete',incomplete_details:{reason:'max_output_tokens'},output:[],usage:{input_tokens:862,output_tokens:400,output_tokens_details:{reasoning_tokens:400}}}))},
+ {name:'incomplete response with otherwise valid reply JSON',response:()=>new Response(JSON.stringify({...JSON.parse(output({reply:'Must not be presented from an incomplete response.',unlocked:[]})),status:'incomplete',incomplete_details:{reason:'max_output_tokens'}}))},
  {name:'timeout exception',response:()=>{throw new DOMException('Synthetic timeout','TimeoutError');}},
  {name:'provider refusal without reply',response:()=>new Response(JSON.stringify({output:[{type:'message',content:[{type:'refusal',refusal:'Synthetic refusal'}]}],usage:{input_tokens:25,output_tokens:12}}))},
  {name:'HTTP failure',response:()=>new Response('synthetic failure',{status:503})},

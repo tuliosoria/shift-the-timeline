@@ -1,7 +1,7 @@
 import {CONFIG} from '../game.mjs';
 // Rates are USD per million tokens. Result is integer microUSD, rounded up.
 export function reserveCost({inputTokens,outputTokens,inputRate,outputRate}){for(const n of [inputTokens,outputTokens])if(!Number.isSafeInteger(n)||n<0)throw new Error('Invalid token count');for(const rate of [inputRate,outputRate])if(!Number.isFinite(rate)||rate<0)throw new Error('Approved price is required');const cost=Math.ceil(inputTokens*inputRate+outputTokens*outputRate);if(!Number.isSafeInteger(cost)||cost<=0)throw new Error('Invalid cost envelope');return cost;}
-export const PROPOSED_LIMITS=Object.freeze({inputTokens:6000,outputTokens:400,roomMicroUsd:250000,dayMicroUsd:10000000,monthMicroUsd:50000000,maxConcurrent:8});
+export const PROPOSED_LIMITS=Object.freeze({inputTokens:6000,outputTokens:1024,roomMicroUsd:250000,dayMicroUsd:10000000,monthMicroUsd:50000000,maxConcurrent:8});
 // Uncapped is an explicit financial policy, not a very large numeric ceiling.
 // Concurrency, per-request tokens and exact accounting remain safety invariants.
 export function validateSpendPolicy(policy){
