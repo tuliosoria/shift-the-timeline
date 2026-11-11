@@ -36,3 +36,7 @@ dialog{max-width:min(560px,calc(100vw - 32px));width:100%;max-height:calc(100dvh
 #private-evidence-search{margin-bottom:10px}
 
 .connection-panel{max-width:700px;margin:40px auto;padding:24px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.connection-panel h1{font-size:clamp(2rem,5vw,3.5rem)}.connection-panel button{margin-bottom:16px}.connection-panel p:last-child{margin-bottom:0}@media(max-width:560px){.connection-panel{margin:20px 0;padding:20px}}
+
+.evidence-source-controls{margin-top:14px;border-top:1px solid var(--subtle);padding-top:12px}.evidence-source-controls p{font-size:13px;margin:0 0 10px}.evidence-source-controls>div{display:flex;flex-wrap:wrap;gap:8px}.evidence-source-controls button{min-height:44px;max-width:100%}
+
+.evidence-source-controls button[aria-pressed="true"]{outline:2px solid var(--gold);outline-offset:-2px;background:#44483e}#correlation-heading{scroll-margin-top:160px}

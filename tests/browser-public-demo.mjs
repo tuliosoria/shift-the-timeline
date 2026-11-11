@@ -90,8 +90,38 @@ try {
    await page.fill('#source-search','');await overflow(page);
    await page.screenshot({path:'/tmp/shift-recovery-dossier-preview-mobile.png',fullPage:true});
 
+   // Pick the exact already-read board record without re-identifying truncated dropdown text.
+   const shortcutActions=actions.filter(type=>type!=='heartbeat').length,shortcutBoardSize=store.rooms.get(code).board.length;
+   const sourceAId=sources[0].value.slice(5),sourceBId=sources[1].value.slice(5);
+   const use=(id,slot)=>page.locator(`[data-action="use-source-${slot}"][data-id="${id}"]`);
+   await page.selectOption('#source-a','');await page.selectOption('#source-b','');await page.selectOption('#relation','contradicts');
+   await page.fill('#source-search','NO_SOURCE_MATCH');await page.setViewportSize({width:320,height:900});
+   await use(sourceBId,'b').focus();const beforePickTop=await use(sourceBId,'b').evaluate(el=>el.getBoundingClientRect().top);await page.keyboard.press('Enter');
+   assert.equal(await page.inputValue('#source-a'),'');assert.equal(await page.inputValue('#source-b'),sources[1].value);
+   assert.equal(await use(sourceBId,'b').getAttribute('aria-pressed'),'true');
+   assert.equal(await use(sourceBId,'b').evaluate(el=>el===document.activeElement),true);
+   assert.ok(Math.abs((await use(sourceBId,'b').evaluate(el=>el.getBoundingClientRect().top))-beforePickTop)<=2,'Local selection keeps the evidence at the same viewport position');
+   await use(sourceAId,'a').scrollIntoViewIfNeeded();const beforePointerTop=await use(sourceAId,'a').evaluate(el=>el.getBoundingClientRect().top);await use(sourceAId,'a').click();assert.ok(Math.abs((await use(sourceAId,'a').evaluate(el=>el.getBoundingClientRect().top))-beforePointerTop)<=2,'Pointer selection preserves card position too');assert.equal(await page.inputValue('#source-a'),sources[0].value);
+   assert.equal(await page.inputValue('#source-b'),sources[1].value);assert.equal(await page.inputValue('#hypothesis'),hypothesis);
+   assert.equal(await page.inputValue('#relation'),'contradicts');assert.equal(await page.inputValue('#source-search'),'NO_SOURCE_MATCH');
+   await use(sourceBId,'a').click();assert.match(await page.locator('#notice').textContent(),/two different sources/);
+   assert.equal(await page.inputValue('#source-a'),sources[0].value);assert.equal(await page.inputValue('#source-b'),sources[1].value);
+   await use(sourceBId,'b').locator('xpath=ancestor::article').screenshot({path:'/tmp/shift-recovery-evidence-shortcuts-mobile.png'});await overflow(page);
+   await page.locator(`[data-action="review-correlation"][data-id="${sourceAId}"]`).click();
+   assert.equal(await page.locator('#correlation-heading').evaluate(el=>el===document.activeElement),true);
+   assert.ok(sharedAnswers.includes(await page.locator('#source-preview-a p').last().textContent()));
+   await page.reload();await page.locator('#source-a').waitFor();assert.equal(await page.inputValue('#source-a'),sources[0].value);assert.equal(await page.inputValue('#source-b'),sources[1].value);assert.equal(await page.inputValue('#hypothesis'),hypothesis);
+   // Analyse's shared-findings list selects locally too; only Review draft changes stage.
+   await navigate(page,'analyse');await page.locator('#shared-panel summary').click();await use(sourceAId,'a').click();
+   assert.equal(new URL(page.url()).hash,'#analyse');await page.locator(`[data-action="review-correlation"][data-id="${sourceAId}"]`).click();
+   assert.equal(new URL(page.url()).hash,'#deduce');assert.equal(await page.inputValue('#hypothesis'),hypothesis);
+   assert.equal(actions.filter(type=>type!=='heartbeat').length,shortcutActions,'Choosing and reviewing local sources never sends a game action');
+   assert.equal(store.rooms.get(code).board.length,shortcutBoardSize);
+   await page.fill('#source-search','');await page.setViewportSize({width:390,height:900});
+
    await page.focus('#source-a');await page.selectOption('#source-a',sources[0].value);assert.equal(await page.locator('#source-a').evaluate(el=>el===document.activeElement),true);
    await page.selectOption('#source-b',sources[1].value);await page.selectOption('#relation','supports');
+   assert.equal(await use(sourceAId,'a').getAttribute('aria-pressed'),'true');await page.selectOption('#source-a','case:place');assert.equal(await use(sourceAId,'a').getAttribute('aria-pressed'),'false');await page.selectOption('#source-a',sources[0].value);assert.equal(await use(sourceAId,'a').getAttribute('aria-pressed'),'true');
    assert.equal(await page.inputValue('#hypothesis'),hypothesis);
    for(const id of ['source-preview-a','source-preview-b']){const text=await page.locator(`#${id} p`).last().textContent();assert.ok(sharedAnswers.includes(text),'Preview is exact full shared canonical answer');assert.match(await page.locator(`#${id}`).textContent(),/Shared case evidence/);}
    const originalViewport=page.viewportSize();await page.setViewportSize({width:1440,height:900});await overflow(page);await page.screenshot({path:'/tmp/shift-recovery-deduce-preview-desktop.png',fullPage:true});
@@ -121,7 +151,8 @@ try {
    // It enters the in-memory store and normal API/UI path, never a DOM-only fake.
    const syntheticId='synthetic-preview-layout';const syntheticText='Synthetic layout only\n'+'X'.repeat(300)+'\nA second visible line.';
    const fixtureRoom=store.rooms.get(code);fixtureRoom.board.push({id:syntheticId,type:'clue',source:'Synthetic layout fixture',text:syntheticText,by:'Layout fixture',round:1});fixtureRoom.version++;
-   await page.reload();await page.locator('#source-a').waitFor();await page.selectOption('#source-a',`clue:${syntheticId}`);
+   await page.reload();await page.locator('#source-a').waitFor();
+   const longShortcut=use(syntheticId,'a');await longShortcut.scrollIntoViewIfNeeded();const beforeLongTop=await longShortcut.evaluate(el=>el.getBoundingClientRect().top);await longShortcut.click();assert.ok(Math.abs((await longShortcut.evaluate(el=>el.getBoundingClientRect().top))-beforeLongTop)<=2,'Replacing a source with long evidence preserves the card anchor');
    assert.equal(await page.locator('#source-preview-a p').last().textContent(),syntheticText);
    assert.equal(await page.locator('#source-preview-a p').last().evaluate(el=>getComputedStyle(el).whiteSpace),'pre-wrap');
    await page.setViewportSize({width:390,height:900});await overflow(page);
@@ -173,6 +204,12 @@ try {
  for(let i=0;i<3;i++){
   const page=pages[i];await page.check(`input[name="suspectId"][value="${caseData.culpritId}"]`);
   if(i===1){
+   const beforeSourceReview=actions.filter(type=>type!=='heartbeat').length;
+   await navigate(page,'deduce');const reviewClue=store.rooms.get(code).board.find(entry=>entry.type==='clue');
+   await page.selectOption('#source-b','');await page.locator(`[data-action="use-source-a"][data-id="${reviewClue.id}"]`).click();
+   assert.equal(await page.inputValue('#source-a'),`clue:${reviewClue.id}`);assert.equal(await page.locator('#correlation-form [data-submit]').isDisabled(),true,'Full board remains locked for sharing');
+   await navigate(page,'analyse');assert.equal(await page.isChecked(`input[name="suspectId"][value="${caseData.culpritId}"]`),true);
+   assert.equal(actions.filter(type=>type!=='heartbeat').length,beforeSourceReview);
    await navigate(page,'interrogate');await navigate(page,'analyse');assert.equal(await page.isChecked(`input[name="suspectId"][value="${caseData.culpritId}"]`),true);
    await page.locator(`#vote-dossier-${publicSuspect.id} summary`).click();assert.equal(await page.isChecked(`input[name="suspectId"][value="${caseData.culpritId}"]`),true);
    const votesBeforeCancel=actions.filter(type=>type==='vote').length;await page.click('#vote-form button');await page.locator('#confirm-dialog[open]').waitFor();await page.click('#confirm-cancel');
