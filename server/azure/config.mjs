@@ -10,16 +10,18 @@ export function readAzureConfig(env={}) {
  if(!env.SHIFT_CASE_FILE?.startsWith('/')||!/^[a-f0-9]{64}$/.test(env.SHIFT_CASE_SHA256??''))fail();
  if(['SHIFT_TABLE','SHIFT_CASE_BUCKET','SHIFT_ORIGIN_SECRET_ARN','AWS_LAMBDA_FUNCTION_NAME'].some(k=>env[k]))fail();
  if(!['false','true'].includes(env.SHIFT_ALLOW_NEW_ROOMS??'false')||!['false','true'].includes(env.SHIFT_AI_ENABLED??'false'))fail();
- let policy=null;
+ let policy=null,aiPolicyRejected=false;
  if(env.SHIFT_AI_ENABLED==='true') {
   if(env.SHIFT_AI_OPERATOR_CONSENT!=='true'||!env.OPENAI_API_KEY||env.OPENAI_API_KEY.startsWith('@Microsoft.KeyVault('))fail();
-  // A policy that no longer matches this build's envelope gets its own startup reason; never its values.
-  const invalidPolicy=()=>{throw Object.assign(new Error('Invalid Azure deployment configuration.'),{code:'SHIFT_AI_POLICY_INVALID'});};
-  try{policy=JSON.parse(env.SHIFT_AI_POLICY);}catch{invalidPolicy();}
-  const keys=['model','inputRate','outputRate',...Object.keys(PROPOSED_LIMITS),...(policy?.uncapped===true?['uncapped']:[])];
-  if(!policy||typeof policy!=='object'||Array.isArray(policy)||Object.keys(policy).length!==keys.length||keys.some(k=>!Object.hasOwn(policy,k))||!/^[a-zA-Z0-9._-]{1,100}$/.test(policy.model??''))invalidPolicy();
-  try{validateSpendPolicy(policy);}catch{invalidPolicy();}
-  policy=Object.freeze(policy);
+  // A policy that no longer matches this build's envelope turns AI off (canonical answers) instead of
+  // stopping the server, so a code deploy can never strand the site on an older App Service setting.
+  try{
+   const parsed=JSON.parse(env.SHIFT_AI_POLICY);
+   const keys=['model','inputRate','outputRate',...Object.keys(PROPOSED_LIMITS),...(parsed?.uncapped===true?['uncapped']:[])];
+   if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)||Object.keys(parsed).length!==keys.length||keys.some(k=>!Object.hasOwn(parsed,k))||!/^[a-zA-Z0-9._-]{1,100}$/.test(parsed.model??''))throw new Error('invalid');
+   validateSpendPolicy(parsed);
+   policy=Object.freeze(parsed);
+  }catch{aiPolicyRejected=true;}
  }
- return Object.freeze({origin:origin.origin,host,user,database,caseFile:env.SHIFT_CASE_FILE,caseHash:env.SHIFT_CASE_SHA256,allowNewRooms:env.SHIFT_ALLOW_NEW_ROOMS==='true',policy});
+ return Object.freeze({origin:origin.origin,host,user,database,caseFile:env.SHIFT_CASE_FILE,caseHash:env.SHIFT_CASE_SHA256,allowNewRooms:env.SHIFT_ALLOW_NEW_ROOMS==='true',policy,aiPolicyRejected});
 }

@@ -1,4 +1,5 @@
 import {readFile,stat} from 'node:fs/promises';
+import {dirname,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {readAzureConfig} from './config.mjs';
 import {startupStep} from './diagnostics.mjs';
@@ -14,18 +15,32 @@ import {runJob} from '../ai/worker.mjs';
 import {createProvider} from '../ai/provider.mjs';
 import {createDispatchPool,createPooledTick} from '../ai/dispatch-pool.mjs';
 
-export async function readPinnedCase(config) {
+const startupNotice=reason=>JSON.stringify({event:'azure_startup_notice',reason});
+// The case must match the operator pin, or the digest recorded in the same verified release package
+// (case-manifest.json at the package root, written by package-azure). Anyone able to alter that
+// package could alter the server code too, so this adds no new trust; it keeps a content release
+// from stranding the site on an older SHIFT_CASE_SHA256 setting. Update the pin afterwards.
+async function packageDigest(caseFile){
+ try{const manifest=JSON.parse(await readFile(resolve(dirname(caseFile),'..','case-manifest.json'),'utf8'));return /^[a-f0-9]{64}$/.test(manifest?.sha256??'')?manifest.sha256:null;}catch{return null;}
+}
+export async function readPinnedCase(config,notice=console.warn) {
  const size=(await stat(config.caseFile)).size;
  if(size>200000||size<1)throw Object.assign(new Error('Case artifact unavailable.'),{code:'SHIFT_CASE_SIZE'});
  const bytes=await readFile(config.caseFile);
- if(bytes.length>200000||createHash('sha256').update(bytes).digest('hex')!==config.caseHash)throw Object.assign(new Error('Case integrity mismatch.'),{code:'SHIFT_CASE_INTEGRITY'});
+ const digest=createHash('sha256').update(bytes).digest('hex');
+ if(bytes.length>200000)throw Object.assign(new Error('Case integrity mismatch.'),{code:'SHIFT_CASE_INTEGRITY'});
+ if(digest!==config.caseHash){
+  if(digest!==await packageDigest(config.caseFile))throw Object.assign(new Error('Case integrity mismatch.'),{code:'SHIFT_CASE_INTEGRITY'});
+  notice(startupNotice('case_pin_superseded'));
+ }
  return validateCase(JSON.parse(bytes.toString('utf8')));
 }
-export async function createAzureRuntime({env=process.env,store,loadCaseImpl=readPinnedCase,fetchImpl=fetch,now=Date.now}) {
+export async function createAzureRuntime({env=process.env,store,loadCaseImpl=readPinnedCase,fetchImpl=fetch,now=Date.now,notice=console.warn}) {
  const config=await startupStep('config',()=>readAzureConfig(env));
+ if(config.aiPolicyRejected)notice(startupNotice('ai_policy_invalid'));
  if(!store||typeof store.checkReady!=='function'||typeof store.cleanupExpired!=='function')throw new Error('Durable PostgreSQL store required.');
  await startupStep('database',()=>store.checkReady());
- const data=await startupStep('case',()=>loadCaseImpl(config));
+ const data=await startupStep('case',()=>loadCaseImpl(config,notice));
  const jobs=config.policy?new AiJobs({store,policy:config.policy,now}):null;
  // No jobs or provider are constructed unless explicitly opted in at deployment.
  const provider=jobs?createProvider({model:config.policy.model,getSecret:async()=>env.OPENAI_API_KEY,fetchImpl}):null;

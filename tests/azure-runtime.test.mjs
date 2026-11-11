@@ -17,7 +17,8 @@ const request=(path,body,headers={})=>new Request(`${env.SHIFT_ORIGIN}${path}`,b
 const setup=(changes={},store=ready(),fetchImpl=()=>{throw new Error('Unexpected provider call');})=>createAzureRuntime({env:{...env,...changes},store,loadCaseImpl:async()=>validateCase({caseData:TRAIN_CASE,catalog:CASES}),fetchImpl});
 test('Azure config is explicit strict and AI remains off with only a key',()=>{
  assert.equal(readAzureConfig({...env,OPENAI_API_KEY:'synthetic-not-a-secret'}).policy,null);assert.equal(readAzureConfig(env).allowNewRooms,false);
- for(const patch of [{SHIFT_RUNTIME:'aws'},{NODE_ENV:'development'},{SHIFT_ORIGIN:'http://shift.example'},{SHIFT_ORIGIN:'https://shift.example/path'},{SHIFT_PG_HOST:'attacker.example'},{SHIFT_CASE_SHA256:'bad'},{SHIFT_ALLOW_NEW_ROOMS:'yes'},{SHIFT_TABLE:'legacy'},{SHIFT_AI_ENABLED:'true'},{SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic',SHIFT_AI_POLICY:JSON.stringify({...policy,maxConcurrent:999})}])assert.throws(()=>readAzureConfig({...env,...patch}),/Invalid Azure/);
+ for(const patch of [{SHIFT_RUNTIME:'aws'},{NODE_ENV:'development'},{SHIFT_ORIGIN:'http://shift.example'},{SHIFT_ORIGIN:'https://shift.example/path'},{SHIFT_PG_HOST:'attacker.example'},{SHIFT_CASE_SHA256:'bad'},{SHIFT_ALLOW_NEW_ROOMS:'yes'},{SHIFT_TABLE:'legacy'},{SHIFT_AI_ENABLED:'true'}])assert.throws(()=>readAzureConfig({...env,...patch}),/Invalid Azure/);
+ assert.equal(readAzureConfig({...env,SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic',SHIFT_AI_POLICY:JSON.stringify({...policy,maxConcurrent:999})}).aiPolicyRejected,true);
  assert.ok(readAzureConfig({...env,SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic',SHIFT_AI_POLICY:JSON.stringify(policy)}).policy);
 });
 test('pinned case accepts only hash-matched validated JSON',async()=>{

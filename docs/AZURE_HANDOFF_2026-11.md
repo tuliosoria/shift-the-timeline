@@ -1,17 +1,21 @@
 # Azure handoff: mobile chat redesign (action needed by Arthur)
 
-**Status when this was pushed:** the mobile chat redesign (4 turns × 6 hours, AI-voiced suspects, unlockable deductions, new client) was merged to `main`. The push auto-deploys through the `deploy-azure` job, which **does not change App Service configuration**. Two live settings no longer match the new build, so **the new build cannot start until they are changed**. The site is expected to be down (start-up failure/restart loop) until the steps below are done. The owner has no Azure login; Arthur needs to connect to Azure and apply them.
+**Status:** the mobile chat redesign (4 turns × 6 hours, AI-voiced suspects, unlockable deductions, new client) is on `main` and auto-deploys through the `deploy-azure` job. That job **does not change App Service configuration**, and two live settings predate the redesign. The first deploy could not start because of them. The server now tolerates both, so the site runs. It logs a fixed `azure_startup_notice` line for each one until Arthur updates the settings below. **This is no longer urgent, but it is needed to switch AI back on.**
 
-## Why it fails to start
+Current tolerance (added after the first failed deploy):
+- **Stale `SHIFT_AI_POLICY`**: AI is switched off (canonical answers) and the server logs `{"event":"azure_startup_notice","reason":"ai_policy_invalid"}`. It no longer exits. Missing consent or key is still fatal.
+- **Stale `SHIFT_CASE_SHA256`**: the server accepts the case only if its digest matches the `case-manifest.json` in the same verified release package, and logs `{"event":"azure_startup_notice","reason":"case_pin_superseded"}`. Any other mismatch is still rejected.
 
-1. **Case pin.** `SHIFT_CASE_SHA256` pins the public-demo case bytes. The Bracken Quay case was rewritten (suspect briefs, deductions, `clockStart: '18:00'`), so its digest changed. `readPinnedCase` rejects the mismatch (`Case integrity mismatch`).
-2. **AI policy.** The live app has AI enabled with the old policy envelope (2,500/350 tokens, old limits). The new code accepts only 6,000/400 tokens and the new limits; `readAzureConfig` rejects the old policy (start-up diagnostic reason `ai_policy_invalid`).
+## What the settings are out of date about
+
+1. **Case pin.** `SHIFT_CASE_SHA256` pins the public-demo case bytes. The Bracken Quay case was rewritten (suspect briefs, deductions, `clockStart: '18:00'`), so its digest changed. Without the package-manifest tolerance it would be rejected (`Case integrity mismatch`).
+2. **AI policy.** The live app has AI enabled with the old policy envelope (2,500/350 tokens, old limits). The new code accepts only 6,000/400 tokens and the new limits; `readAzureConfig` treats the old policy as invalid and switches AI off.
 
 ## Steps (in this order)
 
 Use the explicit subscription `ddb0b48c-aa74-4420-bf1b-49a3f7eaa970`, group `rg-shift-playtest-centralus`, app `shift-zndzouh3e74wy`. Never print or paste secrets.
 
-1. **Turn AI off** so the policy is not validated:
+1. **Turn AI off explicitly** (the server is already canonical; this makes it intentional):
    `SHIFT_AI_ENABLED=false`
 2. **Update the case pin** to the new public-demo digest:
    `SHIFT_CASE_SHA256=b7f54d17a7413032ffd9c3eaf66faffa2ab5e1b065902cd4d15dfaccabdc342b`

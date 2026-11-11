@@ -18,16 +18,9 @@ test('runtime marks config database and case startup failures separately',async(
  store.checkReady=async()=>true;
  try{await createAzureRuntime({env,store,loadCaseImpl:async()=>{throw Object.assign(new Error('private case contents'),{code:'ENOENT'});}});assert.fail('expected failure');}catch(error){assert.deepEqual(startupDiagnostic(error),{event:'azure_startup_failed',stage:'case',reason:'file_missing'});}
 });
-test('an invalid AI policy is reported as its own reason without echoing the policy',async()=>{
+test('missing AI consent or key is still a fatal config error (an invalid policy only turns AI off; see azure-config-tolerance)',async()=>{
  const ai={...env,SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic-DO-NOT-LOG-key'};
- // The superseded 2500/350 envelope, malformed JSON, a missing key and a bad model all name the policy.
  const stale=JSON.stringify({model:'synthetic-DO-NOT-LOG-model',inputRate:0.4,outputRate:1.6,inputTokens:2500,outputTokens:350,roomMicroUsd:250000,dayMicroUsd:10000000,monthMicroUsd:50000000,maxConcurrent:8});
- for(const policy of [stale,'{not json',JSON.stringify({model:'synthetic-model'}),undefined]){
-  const logs=[];
-  try{await createAzureRuntime({env:{...ai,SHIFT_AI_POLICY:policy}});assert.fail('expected failure');}
-  catch(error){reportStartupFailure(error,line=>logs.push(line));}
-  assert.deepEqual(logs,['{"event":"azure_startup_failed","stage":"config","reason":"ai_policy_invalid"}']);
- }
  // Missing consent or key is not a policy problem.
  for(const patch of [{SHIFT_AI_OPERATOR_CONSENT:undefined},{OPENAI_API_KEY:undefined}]){
   try{await createAzureRuntime({env:{...ai,...patch,SHIFT_AI_POLICY:stale}});assert.fail('expected failure');}

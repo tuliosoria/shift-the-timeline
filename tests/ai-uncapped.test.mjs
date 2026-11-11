@@ -22,7 +22,8 @@ test('uncapped mode is explicit null limits, bounded defaults remain unchanged',
   {roomMicroUsd:Number.MAX_SAFE_INTEGER}
  ]){
   assert.throws(()=>new AiJobs({store:new MemoryStore(),policy:{...policy,...patch}}));
-  assert.throws(()=>config({...bounded,...patch}),/Invalid Azure/);
+  // An invalid policy no longer stops the Azure server: AI is switched off instead.
+  const rejected=config({...bounded,...patch});assert.equal(rejected.policy,null);assert.equal(rejected.aiPolicyRejected,true);
  }
 });
 
