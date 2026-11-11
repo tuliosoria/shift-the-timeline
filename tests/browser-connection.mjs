@@ -59,6 +59,33 @@ try{
  await page.waitForSelector('.selectable-code');assert.equal(bootstrapCalls,callsBefore+1);
  assert.equal(await page.evaluate(()=>localStorage.getItem('shift-session')),originalSession);assert.equal(store.rooms.size,1);assert.equal(createBodies.length,2);
  assert.equal(await page.evaluate(()=>document.activeElement.id),'main');
+ // A stale in-room action must never turn a saved investigation into an enabled entry form.
+ const staleBody={id:'stale-selection-recovery',type:'select',round:1,suspectId:'suspect-1'};
+ const staleContext={room:created.code,player:created.playerId,round:1,phase:'investigation',suspect:null};
+ const fixture=store.rooms.get(created.code);fixture.phase='investigation';fixture.round=2;fixture.version++;
+ await page.evaluate(async({code,body,context})=>{
+  sessionStorage.setItem('shift-pending',JSON.stringify({entry:false,path:`/api/rooms/${code}/actions`,body,context}));
+  const {createUiState}=await import('/ui-state.js');createUiState(sessionStorage).writeDraft(context,'note','Earlier private draft remains recoverable.');
+ },{code:created.code,body:staleBody,context:staleContext});
+ let dropStale=true;const staleBodies=[];
+ await page.route('**/actions',async route=>{if(route.request().postDataJSON()?.type!=='select'){await route.continue();return;}staleBodies.push(route.request().postDataJSON());if(dropStale){dropStale=false;await route.abort('connectionfailed');}else await route.continue();});
+ holdBootstrap=false;roomFailure=true;await page.reload();
+ await page.waitForSelector('[data-action=retry]');
+ assert.equal(await page.locator('#create-form,#join-form').count(),0);
+ assert.match(await page.locator('#main').textContent(),/Restoring your saved room/);
+ await page.locator('[data-action=retry]').focus();await page.keyboard.press('Enter');
+ await page.waitForFunction(()=>sessionStorage.getItem('shift-pending')===null&&document.querySelector('#notice').textContent.includes('Connection interrupted'));
+ assert.equal(await page.locator('#create-form,#join-form').count(),0);
+ assert.equal(await page.evaluate(()=>localStorage.getItem('shift-session')),originalSession);
+ assert.deepEqual(staleBodies,[staleBody,staleBody]);assert.equal(store.rooms.size,1);assert.equal(createBodies.length,2);
+ await page.setViewportSize({width:320,height:800});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+ await page.screenshot({path:'/tmp/shift-recovery-saved-action-mobile.png',fullPage:true});
+ roomFailure=false;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await page.waitForSelector('#suspect-search');
+ assert.match(await page.locator('.round-bar').textContent(),/Round 2 of 3/);
+ await page.locator('#recovery-panel summary').click();
+ assert.equal(await page.locator('#recovery-panel textarea').inputValue(),'Earlier private draft remains recoverable.');
+ assert.equal(await page.evaluate(()=>localStorage.getItem('shift-session')),originalSession);
+ assert.equal(store.rooms.get(created.code).players[0].interviews.length,0);
  assert.deepEqual(errors,[]);
- console.log('PASS: initial session/catalogue/room-read recovery, keyboard retry, invite preservation, duplicate-event guard, exact pending replay and unchanged saved identity.');
+ console.log('PASS: initial session/catalogue/room-read recovery, keyboard retry, invite preservation, duplicate-event guard, exact pending replay, stale-action restoration and unchanged saved identity.');
 }finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
