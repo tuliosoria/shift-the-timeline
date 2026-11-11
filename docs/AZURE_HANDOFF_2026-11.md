@@ -9,7 +9,7 @@ Current tolerance (added after the first failed deploy):
 ## What the settings are out of date about
 
 1. **Case pin.** `SHIFT_CASE_SHA256` pins the public-demo case bytes. The Bracken Quay case was rewritten (suspect briefs, deductions, `clockStart: '18:00'`), so its digest changed. Without the package-manifest tolerance it would be rejected (`Case integrity mismatch`).
-2. **AI policy.** The live app has AI enabled with the old policy envelope (2,500/350 tokens, old limits). The new code accepts only 6,000/400 tokens and the new limits; `readAzureConfig` treats the old policy as invalid and switches AI off.
+2. **AI policy.** The live app has AI enabled with the old policy envelope (2,500/350 tokens, old limits). The new code accepts only 6,000/1,024 tokens and the new limits; `readAzureConfig` treats the old policy as invalid and switches AI off.
 
 ## Steps (in this order)
 

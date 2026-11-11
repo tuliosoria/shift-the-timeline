@@ -26,14 +26,14 @@ test('refuses without env vars, and with bad rates', async () => {
 
 test('refuses over the room limit without calling fetch', async () => {
  let calls=0;const fetchImpl=async()=>{calls++;return resp('x',[]);};
- // reserve = 6000*in + 400*out; 48*reserve > 250000 => reserve > 5208
+ // reserve = 6000*in + 1024*out; 48*reserve > 250000 => reserve > 5208
  await assert.rejects(run({env:{...env,SHIFT_LOCAL_AI_INPUT_RATE:'1',SHIFT_LOCAL_AI_OUTPUT_RATE:'10'},fetchImpl}),/room limit/);
  assert.equal(calls,0);
 });
 
 test('stops at the spend cap using actual accumulated cost', async () => {
- let calls=0;const provider=async()=>{calls++;return {reply:'ok',unlocked:[],inputTokens:6000,outputTokens:400};};
- const reserve=6000+1600;
+ let calls=0;const provider=async()=>{calls++;return {reply:'ok',unlocked:[],inputTokens:6000,outputTokens:1024};};
+ const reserve=6000+4096;
  const r=await runQuestions({caseData,provider,plan:planQuestions(caseData),inputRate:1,outputRate:4,capMicroUsd:reserve*3+1});
  assert.equal(r.stopped,true);assert.equal(calls,3);assert.equal(r.results.length,3);assert.ok(r.spent<=reserve*3+1);
 });
@@ -75,7 +75,7 @@ test('three 401s abort the run after 3 calls with the error class, charging rese
  let calls=0;const fetchImpl=async()=>{calls++;return new Response('{"error":"sk-LEAK body"}',{status:401});};
  const {summary,file}=await run({fetchImpl});
  assert.equal(calls,3);assert.equal(summary.asked,3);assert.equal(summary.abortedAfterConsecutiveErrors,true);
- assert.deepEqual(summary.errorClasses,{http_401:3});assert.equal(summary.costMicroUsd,3*3800);
+ assert.deepEqual(summary.errorClasses,{http_401:3});assert.equal(summary.costMicroUsd,3*5048);
  const raw=await readFile(file,'utf8');assert.ok(!raw.includes('LEAK')&&!raw.includes(KEY));
 });
 
@@ -90,7 +90,7 @@ test('timeout and invalid output classes; success resets the streak', async () =
 
 test('provider errors count as errors and are charged the full reserve', async () => {
  const r=await runQuestions({caseData,provider:async()=>{throw new Error('boom');},plan:planQuestions(caseData).slice(0,2),inputRate:1,outputRate:4});
- assert.equal(r.results.every(x=>x.error),true);assert.equal(r.spent,2*7600);
+ assert.equal(r.results.every(x=>x.error),true);assert.equal(r.spent,2*10096);
  assert.equal(aggregate(caseData,r).errors,2);
 });
 
