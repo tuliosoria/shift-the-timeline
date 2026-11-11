@@ -3,6 +3,8 @@ import {fetchJson, command, requestIdFor, newRequestId, pollLoop} from './api.js
 import {createUiState, uiContext} from './ui-state.js';
 import * as views from './views.js';
 import {setScene} from './backdrop.js';
+import {mountChat} from './chat.js';
+import {showUnlocked} from './toast.js';
 
 const $ = s => document.querySelector(s);
 const SESSION = 'shift-session', PENDING = 'shift-pending';
@@ -17,7 +19,9 @@ const ui = createUiState(uiStorage);
 
 const invitationCode = hash => /^#join=([A-HJ-NP-Za-hj-np-z2-9]{8})$/.exec(hash || '')?.[1]?.toUpperCase() ?? '';
 let session = store.get(SESSION), pending = store.get(PENDING), state = null, busy = false, lastVersion = -1, confirmation = null, lastHeartbeat = 0;
-const local = {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', entry: 'create', cases: [], invite: ''};
+// `reading` keeps a finished chat on screen until the player moves on (see views.screenFor).
+const local = {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, entry: 'create', cases: [], invite: ''};
+let chat = null;
 if (!session && !pending && invitationCode(location.hash)) Object.assign(local, {entry: 'join', invite: invitationCode(location.hash)});
 
 const RENDER = {landing: views.renderLanding, lobby: views.renderLobby, briefing: views.renderBriefing, pick: views.renderPick, chat: views.renderChat,
@@ -33,10 +37,23 @@ function notice(message, error = false) {
 }
 function clearNotice() { const el = $('#notice'); el.className = ''; el.textContent = ''; }
 
+// One chat per interview: polls update it in place instead of rebuilding the composer.
+function chatFor(main) {
+  const key = JSON.stringify([state.code, state.me.id, views.chatKey(views.currentInterview(state, local))]);
+  if (chat?.key === key) return chat;
+  chat?.destroy();
+  const context = uiContext(state);
+  chat = mountChat(main, {draft: ui.draft(context), onDraft: text => ui.writeDraft(context, text),
+    onSend: question => act('ask', {question, round: views.currentInterview(state, local)?.round ?? state.round})});
+  chat.key = key;
+  return chat;
+}
+
 function render() {
   document.body.classList.toggle('busy', busy);
   if (state) Object.assign(local, ui.seen(state.code, state.me.id), {draft: ui.draft(uiContext(state))});
   const screen = views.screenFor(state, local), tabBar = views.renderTabBar(state, local);
+  if (screen === 'chat') local.reading = views.chatKey(views.currentInterview(state, local));
   const tab = tabBar ? local.tab : 'investigate';
   const view = tab === 'deductions' ? 'deductions' : tab === 'case' ? 'casefile' : screen;
   const main = $('#main'), active = document.activeElement, focusId = main.contains(active) ? active?.id : null;
@@ -47,13 +64,17 @@ function render() {
   $('#header').innerHTML = header;
   $('#header').hidden = !header;
   main.dataset.view = view;
-  main.innerHTML = view === 'deductions' ? views.renderDeductions(state) : view === 'casefile' ? views.renderCaseFile(state) : RENDER[screen](state, local);
   $('#tabbar').innerHTML = tabBar;
-  for (const [id, value] of Object.entries(entryValues)) { const el = document.getElementById(id); if (el && el.type !== 'hidden') el.value = value; }
-  main.scrollTop = keepScroll;
-  const transcript = $('#transcript');
-  if (transcript) transcript.scrollTop = transcript.scrollHeight;
-  if (focusId) { const el = document.getElementById(focusId); el?.focus({preventScroll: true}); try { if (caret?.[0] != null) el.setSelectionRange(...caret); } catch {} }
+  if (view === 'chat') {
+    const outgoing = pending?.action?.type === 'ask' ? pending.action.question : null;
+    chatFor(main).update(state, {...local, busy, outgoing});
+  } else {
+    if (chat) { chat.destroy(); chat = null; }
+    main.innerHTML = view === 'deductions' ? views.renderDeductions(state) : view === 'casefile' ? views.renderCaseFile(state) : RENDER[screen](state, local);
+    for (const [id, value] of Object.entries(entryValues)) { const el = document.getElementById(id); if (el && el.type !== 'hidden') el.value = value; }
+    main.scrollTop = keepScroll;
+    if (focusId) { const el = document.getElementById(focusId); el?.focus({preventScroll: true}); try { if (caret?.[0] != null) el.setSelectionRange(...caret); } catch {} }
+  }
   setScene(screen);
   setBusy();
 }
@@ -66,8 +87,11 @@ function applyState(next) {
   if (!next || (session && (next.code !== session.code || next.me?.id !== session.playerId))) return false;
   if (state && next.code === state.code && next.version < lastVersion) return false;
   const moved = !state || state.round !== next.round || state.phase !== next.phase;
+  // Toasts only for deductions unlocked while watching: never on first load or reload.
+  const known = state && state.code === next.code && state.me.id === next.me.id ? new Set(state.me.deductions.map(d => d.id)) : null;
   state = next; lastVersion = next.version;
-  if (moved) { local.selected = null; local.tab = 'investigate'; closeConfirmation(); }
+  if (moved) { local.selected = null; local.tab = 'investigate'; local.reading = null; closeConfirmation(); }
+  if (known) { const fresh = next.me.deductions.filter(d => !known.has(d.id)); if (fresh.length) showUnlocked(fresh); }
   render();
   return true;
 }
@@ -129,7 +153,7 @@ function resetSession() {
   if (state) ui.forget(state.code, state.me.id); else if (session) ui.forget(session.code, session.playerId);
   closeConfirmation();
   session = null; state = null; pending = null; lastVersion = -1;
-  Object.assign(local, {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', entry: 'create', invite: ''});
+  Object.assign(local, {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, entry: 'create', invite: ''});
   store.remove(SESSION); store.remove(PENDING);
   history.replaceState(null, '', location.pathname);
   render();
@@ -142,6 +166,7 @@ const actions = {
   'copy-invite': () => copy(inviteLink(), 'Invite link copied. Send it to the table.', `Invite link: ${inviteLink()}`),
   begin: () => { ui.markSeen(state.code, state.me.id, {briefingSeen: true, lastSeenRound: state.round}); render(); },
   continue: () => { ui.markSeen(state.code, state.me.id, {lastSeenRound: state.round}); render(); },
+  'leave-chat': () => { local.reading = null; render(); $('#main').focus({preventScroll: true}); },
   start: () => act('start'),
   question: () => local.selected && act('select', {suspectId: local.selected, round: state.round}),
   summon: () => {
@@ -168,7 +193,6 @@ document.addEventListener('click', event => {
   if (b.dataset.entry) { local.entry = b.dataset.entry; render(); return; }
   if (b.dataset.tab) { local.tab = b.dataset.tab; render(); $('#main').scrollTop = 0; return; }
   if (b.dataset.suspect) { local.selected = local.selected === b.dataset.suspect ? null : b.dataset.suspect; render(); return; }
-  if (b.dataset.chip) { const field = $('#question'); if (field && !field.disabled) { field.value = b.dataset.chip; ui.writeDraft(uiContext(state), field.value); field.focus(); } return; }
   const action = actions[b.dataset.action];
   if (action && (!busy || b.dataset.action === 'reset')) action();
 });
@@ -178,9 +202,7 @@ document.addEventListener('submit', event => {
   const form = event.target, data = Object.fromEntries(new FormData(form));
   if (form.id === 'create-form') run({entry: true, path: '/api/rooms', body: {name: data.name, caseId: data.caseId, requestId: newRequestId()}});
   if (form.id === 'join-form') run({entry: true, path: `/api/rooms/${encodeURIComponent(data.code.trim().toUpperCase())}/join`, body: {name: data.name, requestId: newRequestId()}});
-  if (form.id === 'question-form' && data.question?.trim()) act('ask', {question: data.question.trim(), round: views.currentInterview(state, local)?.round ?? state.round});
 });
-document.addEventListener('input', event => { if (event.target.id === 'question' && state) ui.writeDraft(uiContext(state), event.target.value); });
 $('#confirm-cancel').addEventListener('click', () => closeConfirmation());
 $('#confirm-accept').addEventListener('click', () => confirmAction());
 $('#confirm-dialog').addEventListener('cancel', event => { event.preventDefault(); closeConfirmation(); });

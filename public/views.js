@@ -1,12 +1,12 @@
 // Pure views: (state, local) => HTML string. No DOM access, every value escaped.
-// `local` is client-only: {briefingSeen, lastSeenRound, tab, selected, draft}, plus for the
+// `local` is client-only: {briefingSeen, lastSeenRound, tab, selected, draft, reading}, plus for the
 // landing screen {entry:'create'|'join', cases, invite} and {busy} while a command is in flight.
 import {topicLabels} from './question-topics.js';
 
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 export const AI_NOTICE = "Suspects are voiced by AI. Don't type personal information.";
 const PORTRAITS = new Set(['mara', 'ines', 'bento', 'celia', 'noa', 'rui', 'vera', 'davi', 'lia', 'tomas', 'helena', 'joel', 'olga', 'samira', 'elio']);
-const firstName = name => String(name ?? '').trim().split(/\s+/)[0] || 'them';
+export const firstName = name => String(name ?? '').trim().split(/\s+/)[0] || 'them';
 const safeColor = c => /^#[0-9a-f]{3,8}$/i.test(c ?? '') ? c : '#4a5a6a';
 const suspect = (state, id) => state.suspects.find(s => s.id === id);
 const playerName = (state, id) => state.players.find(p => p.id === id)?.name ?? 'An agent';
@@ -50,7 +50,8 @@ export function screenFor(state, local) {
   if (state.round > local.lastSeenRound && !myPending(state)) return 'transition';
   const interview = currentInterview(state, local);
   if (!interview) return 'pick';
-  if (!interview.closed || pendingLast(interview)) return 'chat';
+  // A player who watched the last reply arrive keeps reading it until they choose to move on.
+  if (!interview.closed || pendingLast(interview) || local.reading === chatKey(interview)) return 'chat';
   return 'waiting';
 }
 
@@ -155,20 +156,43 @@ ${suspectGrid(state, local, {taken, asked})}
 </section>`;
 }
 
-export function renderChat(state, local) {
-  const interview = currentInterview(state, local), s = suspect(state, interview.suspectId), q = maxQuestions(state);
-  const asked = interview.messages.length, pending = pendingLast(interview);
+// The chat is built from three parts so chat.js can refresh the header and transcript
+// on every poll without rebuilding the composer (focus, caret and draft survive).
+export const chatKey = interview => interview ? `${interview.round}:${interview.suspectId}` : null;
+const chatParts = (state, local) => {
+  const interview = currentInterview(state, local);
+  return {interview, s: suspect(state, interview?.suspectId), q: maxQuestions(state), pending: pendingLast(interview)};
+};
+export const typingLabel = name => `${firstName(name)} is replying`;
+
+export function renderChatHead(state, local) {
+  const {interview, s, q} = chatParts(state, local), asked = interview.messages.length;
+  return `${face(s, 'avatar')}<div class="who"><b>${esc(s?.name)}</b><small>${esc(s?.role)}</small></div><div class="count" aria-label="${asked} of ${q} questions asked"><div class="dots" aria-hidden="true">${Array.from({length: q}, (_, i) => `<i class="${i < asked ? 'u' : ''}"></i>`).join('')}</div>${asked} of ${q}</div>`;
+}
+
+export function renderTranscript(state, local) {
+  const {interview, s} = chatParts(state, local);
   const bubbles = interview.messages.map(m => `<li class="b me">${esc(m.question)}</li>${m.status === 'pending'
-    ? `<li class="typing" role="img" aria-label="${esc(firstName(s?.name))} is replying"><i></i><i></i><i></i></li>`
+    ? `<li class="typing" role="img" aria-label="${esc(typingLabel(s?.name))}"><i></i><i></i><i></i></li>`
     : `<li class="b them">${esc(m.reply)}</li>`}`).join('');
-  const footer = interview.closed && !pending
-    ? `<p class="done">That's all your questions for this turn.</p>`
-    : `<div class="chips" role="group" aria-label="Suggested questions">${Object.values(topicLabels).map(label => `<button type="button" class="chip" data-chip="${esc(label)}" ${pending || interview.closed ? 'disabled' : ''}>${esc(label)}</button>`).join('')}</div>
-<form id="question-form" class="composer"><label class="visually-hidden" for="question">Your question</label><textarea id="question" name="question" rows="1" maxlength="500" placeholder="Ask ${esc(firstName(s?.name))} anything…" enterkeyhint="send" ${interview.closed ? 'disabled' : ''}>${esc(local.draft)}</textarea><button class="send" data-submit aria-label="Send question" ${pending || interview.closed ? 'disabled data-locked="true"' : ''}>↑</button></form>`;
+  return `<li class="sys">Turn ${interview.round} · only you can see this conversation</li>${interview.opening ? `<li class="b them">${esc(interview.opening)}</li>` : ''}${bubbles}`;
+}
+
+export const chatEnded = (state, local) => { const {interview, pending} = chatParts(state, local); return !!interview?.closed && !pending; };
+export const CHAT_DONE = `<div class="done"><p>That's all your questions for this turn.</p><button type="button" class="btn ghost" data-action="leave-chat">Continue</button></div>`;
+
+export function renderChatFooter(state, local) {
+  if (chatEnded(state, local)) return CHAT_DONE;
+  const {interview, s, pending} = chatParts(state, local), hold = pending || interview.closed || local?.busy;
+  return `<div class="chips" role="group" aria-label="Suggested questions">${Object.values(topicLabels).map(label => `<button type="button" class="chip" data-chip="${esc(label)}" ${hold ? 'disabled' : ''}>${esc(label)}</button>`).join('')}</div>
+<form id="question-form" class="composer"><label class="visually-hidden" for="question">Your question</label><textarea id="question" name="question" rows="1" maxlength="500" placeholder="Ask ${esc(firstName(s?.name))} anything…" enterkeyhint="send" autocomplete="off">${esc(local?.draft)}</textarea><button type="button" class="send" aria-label="Send question" ${hold || !String(local?.draft ?? '').trim() ? 'disabled' : ''}>↑</button></form>`;
+}
+
+export function renderChat(state, local) {
   return `<section class="screen chat">
-<div class="chead">${face(s, 'avatar')}<div class="who"><b>${esc(s?.name)}</b><small>${esc(s?.role)}</small></div><div class="count" aria-label="${asked} of ${q} questions asked"><div class="dots" aria-hidden="true">${Array.from({length: q}, (_, i) => `<i class="${i < asked ? 'u' : ''}"></i>`).join('')}</div>${asked} of ${q}</div></div>
-<ol id="transcript" class="msgs"><li class="sys">Turn ${interview.round} · only you can see this conversation</li>${interview.opening ? `<li class="b them">${esc(interview.opening)}</li>` : ''}${bubbles}</ol>
-${footer}
+<div class="chead">${renderChatHead(state, local)}</div>
+<ol id="transcript" class="msgs">${renderTranscript(state, local)}</ol>
+<div class="cfoot">${renderChatFooter(state, local)}</div>
 </section>`;
 }
 

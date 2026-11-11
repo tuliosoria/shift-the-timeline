@@ -43,6 +43,12 @@ test('route: a closed interview whose last message is pending still shows chat',
   const s = state({}, {interviews:[interview({closed:true, messages:[message(), message({id:'m2'}), message({id:'m3', status:'pending', reply:null})]})]});
   assert.equal(views.screenFor(s, local()), 'chat');
 });
+test('route: a closed interview stays on chat while the player reads the last reply', () => {
+  const s = state({}, {interviews:[interview({closed:true, messages:[message(), message({id:'m2'}), message({id:'m3'})]})]});
+  assert.equal(views.screenFor(s, local({reading:'1:mara'})), 'chat');
+  assert.equal(views.screenFor(s, local({reading:'1:ada'})), 'waiting');
+  assert.match(views.renderChat(s, local({reading:'1:mara'})), /That's all your questions for this turn\./);
+});
 test('route: a closed current interview shows waiting', () => {
   const s = state({}, {interviews:[interview({closed:true, messages:[message(), message({id:'m2'}), message({id:'m3'})]})]});
   assert.equal(views.screenFor(s, local()), 'waiting');
