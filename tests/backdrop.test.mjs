@@ -22,6 +22,10 @@ function fakeDocument() {
   return {doc, video, writes};
 }
 const media = reduce => query => ({matches: reduce && query === '(prefers-reduced-motion: reduce)'});
+function liveMedia(initial) {
+  const listeners = [], mq = {matches: initial, addEventListener: (type, fn) => { if (type === 'change') listeners.push(fn); }};
+  return {matchMedia: query => query === '(prefers-reduced-motion: reduce)' ? mq : {matches: false}, set(value) { mq.matches = value; for (const fn of listeners) fn({matches: value}); }};
+}
 
 test('screens map to the three films', () => {
   assert.equal(typeof backdrop.createBackdrop, 'function');
@@ -55,5 +59,17 @@ test('hidden pauses and visible resumes', () => {
   doc.hidden = true; doc.fire('visibilitychange');
   assert.equal(video.paused, true);
   doc.hidden = false; doc.fire('visibilitychange');
+  assert.equal(video.paused, false);
+});
+test('turning reduced motion on drops to the poster at once, and turning it off resumes the film', () => {
+  const {doc, video} = fakeDocument(), live = liveMedia(false);
+  backdrop.createBackdrop({document: doc, matchMedia: live.matchMedia}).setScene('chat');
+  assert.equal(video.src, '/assets/films/corridor.mp4');
+  live.set(true);
+  assert.equal(video.src, '');
+  assert.equal(video.paused, true);
+  assert.equal(video.poster, '/assets/films/corridor.webp');
+  live.set(false);
+  assert.equal(video.src, '/assets/films/corridor.mp4');
   assert.equal(video.paused, false);
 });

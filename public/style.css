@@ -35,6 +35,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: default; }
 :focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.skip { position: fixed; z-index: 20; left: 12px; top: calc(var(--safe-top) + 8px); padding: 10px 14px; border-radius: 10px; background: var(--brass); color: #1a1208; font: 700 14px var(--sans); text-decoration: none; transform: translateY(-200%); }
+.skip:focus { transform: none; }
 .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 
 /* Background film and veil: behind everything, never interactive. */
@@ -172,7 +174,8 @@ input:focus, select:focus { outline: none; border-color: var(--brass); box-shado
 
 /* Briefing and transition */
 .briefing { padding-top: 24px; }
-.prediction { margin: 6px 0 18px; padding: 2px 0 2px 14px; border-left: 3px solid var(--brass); font: italic 18px/1.4 var(--serif); color: #fff; }
+.prediction { position: relative; margin: 6px 0 18px; padding: 14px 0 0; font: italic 18px/1.4 var(--serif); color: #fff; }
+.prediction::before { content: "\201C"; position: absolute; top: -12px; left: -2px; font: 400 48px/1 var(--serif); color: var(--brass); opacity: .85; }
 .casefile .prediction { font-size: 16px; color: var(--ivory); }
 .rules { margin: 0; padding: 0; list-style: none; counter-reset: rule; display: grid; gap: 12px; }
 .rules li { position: relative; padding-left: 40px; font: 15px/1.45 var(--sans); color: var(--muted); counter-increment: rule; }
@@ -206,7 +209,8 @@ input:focus, select:focus { outline: none; border-color: var(--brass); box-shado
 
 /* Deductions and case file */
 .dlist { margin: 0 0 24px; padding: 0; list-style: none; display: grid; gap: 8px; }
-.dlist .unlocked { padding: 12px 14px; border: 1px solid var(--line); border-left: 3px solid var(--brass); border-radius: 12px; background: rgba(0, 0, 0, .4); }
+.dlist .unlocked { position: relative; padding: 12px 14px 12px 40px; border: 1px solid rgba(232, 194, 122, .5); border-radius: 12px; background: rgba(0, 0, 0, .4); }
+.dlist .unlocked::before { content: "\2605"; position: absolute; left: 14px; top: 12px; font: 15px/1.45 var(--sans); color: var(--brass); }
 .dlist .unlocked p { margin: 0 0 4px; font: 15px/1.45 var(--serif); color: #fff; }
 .dlist .unlocked small { font-size: 11px; color: var(--brass); }
 .dlist .locked { display: grid; place-items: center; height: 46px; border: 1px dashed var(--line-soft); border-radius: 12px; color: var(--dim); }

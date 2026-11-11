@@ -29,3 +29,17 @@ test('mobile video requests support bounded, open and suffix byte ranges and HEA
  assert.equal(head.status,200);assert.equal(Number(head.headers.get('content-length')),bytes.length);assert.equal((await head.arrayBuffer()).byteLength,0);
  assert.equal((await fetch(url.replace('train.mp4','private.mp4'))).status,404);
 });
+test('static media is cacheable for a day while the shell, scripts, manifest and API stay no-store',async t=>{
+ const {createServer}=await import('../server/http.mjs');
+ const server=createServer({origin:'http://127.0.0.1',api:async()=>new Response('{}',{status:200,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}})});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const base=`http://127.0.0.1:${server.address().port}`;
+ for(const path of ['/assets/films/corridor.mp4','/assets/films/pocket-watch.webp','/assets/portraits/mara.webp','/assets/icons/icon-192.png','/assets/fonts/Rye-Regular.ttf']){
+  const r=await fetch(base+path);await r.arrayBuffer();assert.equal(r.status,200,path);assert.equal(r.headers.get('cache-control'),'public, max-age=86400',path);
+ }
+ const ranged=await fetch(base+'/assets/films/train.mp4',{headers:{Range:'bytes=0-1'}});await ranged.arrayBuffer();assert.equal(ranged.status,206);assert.equal(ranged.headers.get('cache-control'),'public, max-age=86400');
+ for(const path of ['/','/app.js','/views.js','/style.css','/manifest.webmanifest','/api/cases']){
+  const r=await fetch(base+path);await r.arrayBuffer();assert.equal(r.headers.get('cache-control'),'no-store',path);
+ }
+});

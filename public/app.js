@@ -177,7 +177,7 @@ document.addEventListener('submit', event => {
   if (busy || pending) return;
   const form = event.target, data = Object.fromEntries(new FormData(form));
   if (form.id === 'create-form') run({entry: true, path: '/api/rooms', body: {name: data.name, caseId: data.caseId, requestId: newRequestId()}});
-  if (form.id === 'join-form') run({entry: true, path: `/api/rooms/${data.code.trim().toUpperCase()}/join`, body: {name: data.name, requestId: newRequestId()}});
+  if (form.id === 'join-form') run({entry: true, path: `/api/rooms/${encodeURIComponent(data.code.trim().toUpperCase())}/join`, body: {name: data.name, requestId: newRequestId()}});
   if (form.id === 'question-form' && data.question?.trim()) act('ask', {question: data.question.trim(), round: views.currentInterview(state, local)?.round ?? state.round});
 });
 document.addEventListener('input', event => { if (event.target.id === 'question' && state) ui.writeDraft(uiContext(state), event.target.value); });
