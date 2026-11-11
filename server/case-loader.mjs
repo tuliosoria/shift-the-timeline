@@ -24,9 +24,30 @@ export function validateCase({caseData,catalog}={}) {
     if(ids.has(suspect.id))invalid(`${path}.id`,'expected a unique suspect ID');
     ids.add(suspect.id);
     for(const key of ['name','role','initials','color','profile','opening'])string(suspect[key],`${path}.${key}`);
+    if(typeof suspect.brief!=='string'||!suspect.brief.trim()||Buffer.byteLength(suspect.brief)>2500)invalid(`${path}.brief`,'expected a nonblank string of at most 2500 bytes');
     object(suspect.responses,`${path}.responses`);
     for(const key of ['alibi','clue','motive','relationship'])string(suspect.responses[key],`${path}.responses.${key}`);
   }
+  array(caseData.deductions,'caseData.deductions');
+  if(caseData.deductions.length<6||caseData.deductions.length>20)invalid('caseData.deductions','expected 6–20 deductions');
+  const deductionIds=new Set();let keyCount=0;
+  for(let i=0;i<caseData.deductions.length;i++){
+    const d=caseData.deductions[i],path=`caseData.deductions[${i}]`;
+    object(d,path);id(d.id,`${path}.id`);
+    if(deductionIds.has(d.id))invalid(`${path}.id`,'expected a unique deduction ID');
+    deductionIds.add(d.id);
+    if(typeof d.text!=='string'||!d.text.trim()||d.text.length>160)invalid(`${path}.text`,'expected a nonblank string of at most 160 characters');
+    if(typeof d.key!=='boolean')invalid(`${path}.key`,'expected a boolean');
+    if(d.key)keyCount++;
+    array(d.sources,`${path}.sources`);
+    if(d.sources.length<1||d.sources.length>6)invalid(`${path}.sources`,'expected 1–6 sources');
+    for(let j=0;j<d.sources.length;j++){
+      const s=d.sources[j],sp=`${path}.sources[${j}]`;object(s,sp);
+      if(!ids.has(s.suspectId))invalid(`${sp}.suspectId`,'expected an existing suspect ID');
+      if(!['alibi','motive','clue','relationship'].includes(s.topic))invalid(`${sp}.topic`,'expected alibi, motive, clue or relationship');
+    }
+  }
+  if(keyCount<3)invalid('caseData.deductions','expected at least 3 key deductions');
   id(caseData.culpritId,'caseData.culpritId');
   if(!ids.has(caseData.culpritId))invalid('caseData.culpritId','expected an existing suspect ID');
   object(caseData.solution,'caseData.solution');

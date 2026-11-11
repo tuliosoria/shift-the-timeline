@@ -40,11 +40,25 @@ Export `TRAIN_CASE` (or `caseData`) and `CASES` (or `catalog`). The case needs
 `id`, `title`, `victim`, `place`, `method`, `prediction`, `culpritId`, exactly 15
 unique suspects, and a `solution`. A version string is optional. Suspect IDs and
 case IDs use lowercase ASCII letters, digits and hyphens (1–40 characters).
-Each suspect needs `id`, `name`, `role`, `initials`, `color`, `profile`, `opening`
-and nonblank `responses` for `alibi`, `motive`, `clue` and `relationship`.
+Each suspect needs `id`, `name`, `role`, `initials`, `color`, `profile`, `opening`,
+a `brief` and nonblank `responses` for `alibi`, `motive`, `clue` and `relationship`.
 The solution needs `motive`, `plan`, an `evidence` array of strings and a
 `timeline` array of objects containing `time` and `text`. Empty arrays are
 structurally accepted, not a claim of adequate exposition.
+
+`brief` is a nonblank string of at most 2,500 bytes for the AI only: what the
+suspect knows, hides and lies about. It is never sent to clients.
+
+The case also needs `deductions`, an array of 6–20 objects
+`{id, text, sources, key}`. `id` follows the usual ID pattern, `text` is at most
+160 characters, and `sources` holds 1–6 entries `{suspectId, topic}` with an
+existing suspect ID and a topic of `alibi`, `motive`, `clue` or `relationship`.
+A deduction unlocks when a player asks a listed suspect about a listed topic
+(canonical answers) or when the AI awards it from that suspect's sources. At
+least 3 deductions must be `key: true`. Locked deduction text is never sent to
+other players; each player sees only their own. `npm run check:case` reports the
+deduction count, key count and the fewest distinct suspects whose sources cover
+every key deduction (`Infinity` means more than 9 are needed).
 
 Catalog entries require `id`, `title` and boolean `available`. Only optional
 `location` and `description` presentation strings are additionally supported;

@@ -79,7 +79,7 @@ test('snapshot never exposes canonical answer while pending',()=>{
   const m=state.me.interviews[0].messages[0];
   assert.equal(m.status,'pending');assert.equal(m.reply,null);assert.ok(!('answer' in m));
   assert.deepEqual(m.unlocked,[]);
-  assert.deepEqual(state.me.deductions,[]);assert.equal(state.deductionTotal,0);
+  assert.deepEqual(state.me.deductions,[]);assert.equal(state.deductionTotal,TRAIN_CASE.deductions.length);
 });
 test('clock follows the story',()=>{
   assert.deepEqual([...STORY_CLOCK],['20:00','02:00','08:00','14:00']);

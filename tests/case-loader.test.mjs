@@ -59,3 +59,8 @@ test('validation diagnostics never expose private content, including serializati
  assert.throws(()=>impl.validateCase(cyclic),error=>error instanceof impl.CaseValidationError&&error.message==='caseData: expected JSON-serializable content');
  const huge=baseline();huge.caseData.extra='x'.repeat(150_001);assert.throws(()=>impl.validateCase(huge),/caseData: content exceeds/);
 });
+
+test('rejects a missing brief',()=>{for(const value of [undefined,'',' ',null,'é'.repeat(1251)])rejectChange('caseData.suspects[0].brief',value);});
+test('rejects a deduction with an unknown suspect',()=>{rejectChange('caseData.deductions[0].sources[0].suspectId','missing');rejectChange('caseData.deductions[0].sources[0].topic','weather');});
+test('rejects fewer than 3 key deductions',()=>{const input=baseline();input.caseData.deductions[2].key=false;assert.throws(()=>impl.validateCase(input),error=>error instanceof impl.CaseValidationError&&error.message.startsWith('caseData.deductions:'));});
+test('rejects malformed deduction lists',()=>{rejectChange('caseData.deductions',TRAIN_CASE.deductions.slice(1));rejectChange('caseData.deductions[0].text','x'.repeat(161));rejectChange('caseData.deductions[0].id','Bad Id');rejectChange('caseData.deductions[0].sources',[]);});
