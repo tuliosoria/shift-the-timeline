@@ -86,6 +86,23 @@ try{
  assert.equal(await page.locator('#recovery-panel textarea').inputValue(),'Earlier private draft remains recoverable.');
  assert.equal(await page.evaluate(()=>localStorage.getItem('shift-session')),originalSession);
  assert.equal(store.rooms.get(created.code).players[0].interviews.length,0);
+ // Missing local room hint can be recovered with the same cookie and known code.
+ let rejoinPosts=0;page.on('request',request=>{if(request.url().endsWith('/join'))rejoinPosts++;});
+ await page.evaluate(()=>localStorage.removeItem('shift-session'));await page.reload();await page.waitForSelector('#create-name');
+ await page.click('[data-entry=join]');await page.fill('#join-code',created.code);
+ assert.equal(await page.inputValue('#join-name'),'');
+ await page.screenshot({path:'/tmp/shift-recovery-reconnect-form-mobile.png',fullPage:true});
+ await page.click('#join-form button');await page.waitForSelector('#suspect-search');
+ assert.equal(rejoinPosts,0);assert.equal(store.rooms.get(created.code).players.length,1);
+ assert.equal(await page.evaluate(()=>localStorage.getItem('shift-session')),originalSession);
+ assert.match(await page.locator('#notice').textContent(),/Reconnected as Retry Agent/);
+ await page.locator('#recovery-panel summary').click();assert.equal(await page.locator('#recovery-panel textarea').inputValue(),'Earlier private draft remains recoverable.');
+ // A different browser cannot use the code to read that agent's private identity.
+ const outsiderContext=await browser.newContext(),outsider=await outsiderContext.newPage();outsider.on('pageerror',error=>errors.push(error.message));
+ await outsider.goto(origin);await outsider.waitForSelector('#create-name');await outsider.click('[data-entry=join]');await outsider.fill('#join-code',created.code);
+ await outsider.click('#join-form button');await outsider.waitForFunction(()=>document.querySelector('#notice')?.textContent.includes('Enter a codename'));
+ assert.equal(await outsider.evaluate(()=>localStorage.getItem('shift-session')),null);assert.equal(await outsider.locator('#suspect-search').count(),0);assert.equal(store.rooms.get(created.code).players.length,1);
+ await outsiderContext.close();
  assert.deepEqual(errors,[]);
  console.log('PASS: initial session/catalogue/room-read recovery, keyboard retry, invite preservation, duplicate-event guard, exact pending replay, stale-action restoration and unchanged saved identity.');
 }finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

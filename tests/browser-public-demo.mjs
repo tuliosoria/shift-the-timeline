@@ -40,7 +40,7 @@ try {
    assert.equal(joins.length,joinsBefore);await page.fill('#join-name',`Route agent ${i}`);await page.fill('#join-code','ZZZZZZZZ');await page.click('#join-form button');await page.locator('#notice.error').waitFor();
    assert.equal(await page.inputValue('#join-name'),`Route agent ${i}`);assert.equal(await page.inputValue('#join-code'),'ZZZZZZZZ');await page.fill('#join-code',code);
    await overflow(page);await page.screenshot({path:'/tmp/shift-recovery-invite-join-mobile.png',fullPage:true});
-   assert.equal(joins.length,joinsBefore+1,'Only the explicit failed Join was sent');
+   assert.equal(joins.length,joinsBefore,'Missing-room lookup does not attempt a join');
   }else{await page.click('[data-entry="join"]');await page.fill('#join-name',`Route agent ${i}`);await page.fill('#join-code',code);}
   await page.click('#join-form button');await page.locator('.selectable-code').waitFor();assert.equal(new URL(page.url()).hash,'#analyse');
  }
