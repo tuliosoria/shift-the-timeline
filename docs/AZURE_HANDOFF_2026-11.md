@@ -32,3 +32,25 @@ Use the explicit subscription `ddb0b48c-aa74-4420-bf1b-49a3f7eaa970`, group `rg-
 - Rooms created before the deploy are rejected (`Case version unavailable.`) and the client sends those players back to the landing screen. Players create a new room.
 - Future case content changes need the same pin update. Consider making the deploy job update `SHIFT_CASE_SHA256` from the artifact's `case-manifest.json`, so that `main` pushes cannot strand the app.
 - Design and plan: `docs/superpowers/specs/2026-11-10-mobile-chat-redesign-design.md` and `docs/superpowers/plans/2026-11-10-mobile-chat-redesign.md`.
+
+## Temporary existing-identity diagnostic
+
+`scripts/azure-ai-diagnostic.py` is a read-only diagnostic in the existing
+post-validation, main-only deployment job. It reuses that job's current Azure
+identity and requests app settings only for the fixed SHIFT subscription, resource
+group and app. It adds no OIDC permission, credential, grant, setting write or AI
+request. A branch/PR validation run tests the helper offline; it does not run the
+authenticated diagnostic.
+
+Output is a fixed-schema summary: known boolean flags, allowlisted numeric policy
+fields, whether the model is the known Luna model, and credential presence/type.
+Unknown strings, credential values, Key Vault references, raw CLI responses and
+exception messages are never printed. A denied, malformed or unavailable read
+produces only `azure_ai_diagnostic` / `unavailable` and is not retried. Do not grant
+additional permissions to make it pass.
+
+A successful read does not prove settings-write permission or access to the
+resolved Key Vault secret. It cannot restore AI or perform its paid evaluation.
+Merging this diagnostic still runs the existing automatic deployment workflow;
+review and explicitly authorize that particular deployment before merging. Remove
+the temporary workflow step after the investigation; preserve useful offline tests.
