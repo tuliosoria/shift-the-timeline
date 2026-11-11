@@ -51,6 +51,23 @@ try {
   await server.game.join(a, 'synthetic-agent-two', 'Two', randomUUID());
   const original = await snapshot(page, a);
 
+  // Initial invitation is applied once, not again after a slow catalogue overwrites typing.
+  const fresh = await browser.newContext({viewport:{width:390,height:740}});
+  const entryPage = await fresh.newPage();
+  let catalogueReached, releaseCatalogue;
+  const catalogueStarted = new Promise(resolve => { catalogueReached = resolve; });
+  const catalogueGate = new Promise(resolve => { releaseCatalogue = resolve; });
+  await entryPage.route('**/api/cases', async route => { catalogueReached(); await catalogueGate; return route.continue(); });
+  await entryPage.goto(`${server.origin}/#join=${b}`); await catalogueStarted;
+  assert.equal(await entryPage.inputValue('#join-code'), b);
+  await entryPage.fill('#join-code', c); await entryPage.fill('#join-name', 'Typed before loading');
+  releaseCatalogue();
+  await entryPage.waitForFunction(() => document.querySelector('.ai-notice')?.textContent.includes('voiced by AI'));
+  assert.equal(await entryPage.inputValue('#join-code'), c);
+  assert.equal(await entryPage.inputValue('#join-name'), 'Typed before loading');
+  await fresh.close();
+
+
   // Leaving is an explicit local choice. Cancel and Escape neither mutate nor discard the seat.
   for (const dismiss of ['cancel', 'escape']) {
     await page.click('[data-action=switch-room]');

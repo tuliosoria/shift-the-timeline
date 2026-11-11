@@ -27,7 +27,10 @@ let session = store.get(SESSION), pending = store.get(PENDING), state = null, bu
 // itself has moved on (see views.screenFor): the transition waits for it.
 const local = {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, entry: 'create', cases: [], invite: ''};
 let chat = null, transition = {key: null, timer: null};
-if (!session && !pending && invitationCode(location.hash)) Object.assign(local, {entry: 'join', invite: invitationCode(location.hash)});
+if (!session && !pending && requestedInvite) {
+  Object.assign(local, {entry: 'join', invite: requestedInvite});
+  requestedInvite = ''; // Already shown: a slow catalogue must not overwrite subsequent typing.
+}
 
 const RENDER = {landing: views.renderLanding, lobby: views.renderLobby, briefing: views.renderBriefing, pick: views.renderPick, chat: views.renderChat,
   waiting: views.renderWaiting, transition: views.renderTransition, accuse: views.renderAccuse, reveal: views.renderReveal};
