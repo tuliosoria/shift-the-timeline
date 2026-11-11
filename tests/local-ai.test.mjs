@@ -60,3 +60,13 @@ test('failed provider attempts consume trial allowance and stopping prevents new
  const h=await setup({SHIFT_LOCAL_AI_MAX_CALLS:'1'},async()=>{throw Error('synthetic outage');});await h.ask();await h.worker.tick();assert.equal(h.worker.stats().calls,1);
  await h.worker.stop();await h.ask('b');assert.equal((await h.worker.tick()).stopped,true);assert.equal(h.worker.stats().calls,1);assert.throws(()=>h.worker.start());
 });
+test('a held provider call never blocks the next local tick, which leaves further replies due',async()=>{
+ let calls=0,release;const barrier=new Promise(r=>{release=r;});
+ const h=await setup({},async()=>{calls++;await barrier;return response();});
+ await h.ask('a');await h.ask('b');
+ const first=h.worker.tick();for(let i=0;i<200&&calls<1;i++)await new Promise(r=>setImmediate(r));assert.equal(calls,1);
+ assert.equal((await h.worker.tick()).stopped,true);assert.equal(calls,1);
+ release();await first;await h.worker.tick();assert.equal(calls,2);
+ for(const player of ['a','b'])assert.equal((await h.game.view(h.code,player)).me.interviews[0].messages[0].status,'complete');
+ await h.worker.stop();
+});

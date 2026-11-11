@@ -12,6 +12,7 @@ import {DomainError} from '../game.mjs';
 import {AiJobs} from '../ai/jobs.mjs';
 import {runJob} from '../ai/worker.mjs';
 import {createProvider} from '../ai/provider.mjs';
+import {createDispatchPool,createPooledTick} from '../ai/dispatch-pool.mjs';
 
 export async function readPinnedCase(config) {
  const size=(await stat(config.caseFile)).size;
@@ -35,13 +36,11 @@ export async function createAzureRuntime({env=process.env,store,loadCaseImpl=rea
   // The Azure transport validates platform-overwritten CLIENT-IP; generic transports use the socket.
   await limiter(input);
  }});
- let running=null,timer=null,maintenance=null,maintenanceTimer=null,stopped=false;
- const tick=()=>{
-  if(stopped||!jobs)return Promise.resolve({status:'disabled'});
-  if(running)return running;
-  running=jobs.reconcile({limit:25,shouldContinue:()=>!stopped,send:({jobId})=>runJob({enabled:!stopped,jobId,repository:jobs,provider,rates:config.policy,now})}).finally(()=>{running=null;});
-  return running;
- };
+ let timer=null,maintenance=null,maintenanceTimer=null,stopped=false;
+ // Replies run in parallel up to the policy's concurrency; a tick never waits on a provider call.
+ const pool=jobs?createDispatchPool({limit:config.policy.maxConcurrent,run:({jobId})=>runJob({enabled:!stopped,jobId,repository:jobs,provider,rates:config.policy,now})}):null;
+ const pooledTick=jobs?createPooledTick({pool,shouldContinue:()=>!stopped,reconcile:options=>jobs.reconcile({limit:25,...options})}):null;
+ const tick=()=>stopped||!jobs?Promise.resolve({status:'disabled'}):pooledTick();
  const maintain=()=>{
   if(stopped)return Promise.resolve(0);
   if(maintenance)return maintenance;
@@ -53,7 +52,7 @@ export async function createAzureRuntime({env=process.env,store,loadCaseImpl=rea
   if(!maintenanceTimer){maintenanceTimer=setInterval(()=>{void maintain().catch(()=>{});},60000);maintenanceTimer.unref?.();}
   if(!jobs||timer)return;timer=setInterval(()=>{void tick().catch(()=>{});},1000);timer.unref?.();
  };
- const stop=async()=>{stopped=true;if(timer)clearInterval(timer);if(maintenanceTimer)clearInterval(maintenanceTimer);timer=null;maintenanceTimer=null;await Promise.all([running,maintenance]);};
+ const stop=async()=>{stopped=true;if(timer)clearInterval(timer);if(maintenanceTimer)clearInterval(maintenanceTimer);timer=null;maintenanceTimer=null;await Promise.all([pooledTick?.idle(),maintenance]);};
  const handler=async(request,context)=>{
   if(new URL(request.url).pathname==='/api/release')return releaseResponse(request);
   if(new URL(request.url).pathname==='/healthz'){

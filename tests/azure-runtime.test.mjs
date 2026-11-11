@@ -60,3 +60,34 @@ test('AI answers each question through the worker and falls back to the canonica
   assert.equal(calls,2);
  }finally{await runtime.stop();}
 });
+test('AI replies due on the same tick run in parallel, capped at the policy concurrency, without blocking later ticks',async()=>{
+ let hold=true,calls=0,active=0,peak=0;const releases=[];const store=ready();
+ const reply=()=>new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({reply:'In character.',unlocked:[]})}]}],usage:{input_tokens:10,output_tokens:5}}));
+ const runtime=await setup({SHIFT_ALLOW_NEW_ROOMS:'true',SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic',SHIFT_AI_POLICY:JSON.stringify({...policy,maxConcurrent:2})},store,async()=>{
+  calls++;active++;peak=Math.max(peak,active);
+  try{if(hold)await new Promise(resolve=>releases.push(resolve));return reply();}finally{active--;}
+ });
+ let serial=0;const id=()=>`azure-pool-request-${++serial}`;
+ const post=async(path,body,cookie)=>{const response=await runtime.api(request(path,body,cookie?{cookie}:{}));assert.ok([200,201].includes(response.status),`${path}: ${response.status}`);return {body:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};};
+ const waitFor=async(predicate)=>{for(let i=0;i<500&&!predicate();i++)await new Promise(resolve=>setImmediate(resolve));assert.ok(predicate(),'condition not reached');};
+ try{
+  const cookies=[];for(let i=0;i<3;i++)cookies.push((await post('/api/session',{})).cookie);
+  const code=(await post('/api/rooms',{name:'A',caseId:'demo',requestId:id()},cookies[0])).body.code;
+  for(let i=1;i<3;i++)await post(`/api/rooms/${code}/join`,{name:`P${i}`,requestId:id()},cookies[i]);
+  await post(`/api/rooms/${code}/actions`,{type:'start',id:id()},cookies[0]);
+  for(const cookie of cookies){
+   await post(`/api/rooms/${code}/actions`,{type:'select',round:1,suspectId:'suspect-1',id:id()},cookie);
+   assert.equal((await post(`/api/rooms/${code}/actions`,{type:'ask',round:1,question:'What did you notice?',id:id()},cookie)).body.me.interviews[0].messages.at(-1).status,'pending');
+  }
+  const first=runtime.tick();
+  await waitFor(()=>calls===2);assert.equal(active,2);
+  // Slots are full: the next tick finishes at once and leaves the third reply due instead of waiting.
+  assert.equal((await runtime.tick()).stopped,true);assert.equal(calls,2);
+  hold=false;releases.splice(0).forEach(resolve=>resolve());await first;
+  await runtime.tick();assert.equal(calls,3);assert.equal(peak,2);
+  for(const cookie of cookies){
+   const state=await (await runtime.api(new Request(`${env.SHIFT_ORIGIN}/api/rooms/${code}`,{headers:{cookie}}))).json();
+   assert.deepEqual([state.me.interviews[0].messages[0].status,state.me.interviews[0].messages[0].reply],['complete','In character.']);
+  }
+ }finally{hold=false;releases.splice(0).forEach(resolve=>resolve());await runtime.stop();}
+});

@@ -1,6 +1,7 @@
 import {AiJobs} from './jobs.mjs';
 import {runJob} from './worker.mjs';
 import {createProvider} from './provider.mjs';
+import {createDispatchPool,createPooledTick} from './dispatch-pool.mjs';
 import {PROPOSED_LIMITS,reserveCost,validateSpendPolicy} from './budget.mjs';
 
 // Per-process trial limits, not durable account-wide spending controls. Restart resets them.
@@ -26,7 +27,7 @@ export function readLocalAiConfig(env={}) {
 
 export function createLocalAi({env,store,getSecret,fetchImpl=fetch,now=Date.now}) {
  const config=readLocalAiConfig(env); // Validate before constructing/reading any secret provider.
- let calls=0,reserved=0,stopped=false,running=null,timer=null;
+ let calls=0,reserved=0,stopped=false,timer=null;
  const guardedFetch=async(...args)=>{
   if(stopped||calls>=config.maxCalls||reserved+config.reservation>config.maxReserve)throw new Error('Local AI trial limit reached.');
   calls++;reserved+=config.reservation; // No refunds, including provider errors and timeouts.
@@ -42,13 +43,11 @@ export function createLocalAi({env,store,getSecret,fetchImpl=fetch,now=Date.now}
   if(stopped)return [];
   return repository.prepareQuestion(args);
  }};
- const tick=()=>{
-  if(stopped)return Promise.resolve({stopped:true});
-  if(running)return running;
-  running=repository.reconcile({limit:12,shouldContinue:()=>!stopped,send:({jobId})=>runJob({enabled:!stopped,jobId,repository,provider,rates:config.policy,now})}).finally(()=>{running=null;});
-  return running;
- };
+ // Same hand-off as the Azure runtime; the local policy allows one provider call at a time.
+ const pool=createDispatchPool({limit:config.policy.maxConcurrent,run:({jobId})=>runJob({enabled:!stopped,jobId,repository,provider,rates:config.policy,now})});
+ const pooledTick=createPooledTick({pool,shouldContinue:()=>!stopped,reconcile:options=>repository.reconcile({limit:12,...options})});
+ const tick=()=>stopped?Promise.resolve({stopped:true}):pooledTick();
  const start=()=>{if(stopped)throw new Error('Local AI worker stopped.');if(timer)return;timer=setInterval(()=>{void tick().catch(()=>{});},1000);timer.unref?.();};
- const stop=async()=>{stopped=true;if(timer)clearInterval(timer);timer=null;await running;};
+ const stop=async()=>{stopped=true;if(timer)clearInterval(timer);timer=null;await pooledTick.idle();};
  return {config,admission,tick,start,stop,stats:()=>({calls,reservedMicroUsd:reserved,stopped})};
 }
