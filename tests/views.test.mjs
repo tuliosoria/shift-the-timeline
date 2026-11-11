@@ -75,7 +75,7 @@ test('transition shows hours later and the new time, or time is up before the su
   assert.match(html, /02:00/);
   assert.match(html, /data-action="continue"/);
   const up = views.renderTransition(state({phase:'accusation', round:4, clock:{turn:4, time:'14:00', hoursLeft:0, crimeAt:'20:00'}}), local({lastSeenRound:4}));
-  assert.match(up, /Time's up/);
+  assert.match(up, /Time&#39;s up/, 'the title is escaped');
   assert.match(up, /20:00/);
   assert.match(up, /Summon your suspect/);
   assert.equal(views.stageOf(state({round:3})), 3);

@@ -26,11 +26,14 @@ test('the four exact trimmed shortcuts retain their explicit UI topics',()=>{
  for(const [topic,label] of Object.entries(topicLabels)){
   assert.equal(questionTopic(label),topic);assert.equal(questionTopic(` \n ${label} \t`),topic);
  }
- // This intentional distinction existed before extraction: the shortcut explicitly sends motive.
- assert.equal(inferTopic(topicLabels.motive),'clue');assert.equal(questionTopic(topicLabels.motive),'motive');
- assert.equal(questionTopic(topicLabels.motive.toLowerCase()),'clue');
+ assert.equal(questionTopic(topicLabels.motive.toLowerCase()),'motive');
  assert.equal(questionTopic('What was at stake? Also, where were you?'),'alibi');
  assert.ok(Object.isFrozen(topicLabels));
+});
+test('every chat chip reaches its canonical topic on the server, which only sees the text',()=>{
+ for(const [topic,label] of Object.entries(topicLabels))assert.equal(inferTopic(label),topic,label);
+ for(const question of ['What is at stake for you?','Were the stakes high?'])assert.equal(inferTopic(question),'motive',question);
+ for(const question of ['A mistake?','Stakeholders'])assert.equal(inferTopic(question),'clue',question);
 });
 test('non-shortcut UI preview follows the server classifier exactly',()=>{
  for(const questions of Object.values(routes))for(const question of questions)assert.equal(questionTopic(question),inferTopic(question),question);

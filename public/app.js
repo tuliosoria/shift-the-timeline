@@ -182,7 +182,8 @@ const actions = {
   'copy-code': () => copy(state.code, 'Room code copied.', `Room code: ${state.code}`),
   'copy-invite': () => copy(inviteLink(), 'Invite link copied. Send it to the table.', `Invite link: ${inviteLink()}`),
   begin: () => { ui.markSeen(state.code, state.me.id, {briefingSeen: true, lastSeenRound: state.round}); render(); },
-  continue: () => { ui.markSeen(state.code, state.me.id, {lastSeenRound: views.stageOf(state)}); render(); },
+  // Also run by the transition timer: focus lands on the new screen, as after leaving a chat.
+  continue: () => { ui.markSeen(state.code, state.me.id, {lastSeenRound: views.stageOf(state)}); render(); $('#main').focus({preventScroll: true}); },
   'leave-chat': () => { local.reading = null; render(); $('#main').focus({preventScroll: true}); },
   start: () => act('start'),
   question: () => local.selected && act('select', {suspectId: local.selected, round: state.round}),

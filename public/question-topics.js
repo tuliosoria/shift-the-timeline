@@ -10,7 +10,7 @@ export const topicLabels=Object.freeze({
 export function inferTopic(question){
   const q=question.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
   if(/\b(?:onde|estava\w*|horarios?|alibi|22h?|ontem|where|when|time|yesterday)\b/.test(q))return 'alibi';
-  if(/\b(?:motivo\w*|dinheiro|segredo\w*|divida\w*|ganha\w*|perde\w*|why|motive|money|secret|debt|gain|lose|profit)\b/.test(q))return 'motive';
+  if(/\b(?:motivo\w*|dinheiro|segredo\w*|divida\w*|ganha\w*|perde\w*|why|motive|money|secret|debt|gain|lose|profit|stakes?)\b/.test(q))return 'motive';
   if(/\b(?:vitima\w*|conhec\w*|relacao|relacoes|relacion\w*|victim|know|knew|relationship|related)\b/.test(q))return 'relationship';
   return 'clue';
 }

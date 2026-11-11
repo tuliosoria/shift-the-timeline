@@ -142,7 +142,7 @@ export function renderTransition(state, local) {
     : [`Turn ${state.round} of ${rounds(state)}`, `${hours} hours later`, state.clock?.time, `${state.clock?.hoursLeft} hours until the crime.`];
   return `<section class="screen transition" aria-labelledby="transition-title">
 <p class="eyebrow">${esc(eyebrow)}</p>
-<h1 id="transition-title" class="title">${title}</h1>
+<h1 id="transition-title" class="title">${esc(title)}</h1>
 <p class="time">${esc(time)}</p>
 <p class="sub">${esc(sub)}</p>
 <div class="hourglass" aria-hidden="true" style="--ms:${TRANSITION_MS}ms"><i></i></div>

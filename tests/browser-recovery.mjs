@@ -1,6 +1,7 @@
 // Real-browser recovery: a reload keeps the session and the draft, a lost response is retried
 // with the same request id, a pending last reply holds the turn transition, and a confirmation
-// never acts on a turn that has moved on. Synthetic case and fake AI only; no network.
+// never acts on a turn that has moved on. This phone prefers reduced motion: transitions wait for
+// Continue. Synthetic case and fake AI only; no network.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {launchBrowser} from './helpers/browser.mjs';
@@ -28,7 +29,7 @@ const ask = async (page, question, n) => {
 };
 
 try {
-  const context = await browser.newContext({viewport: {width: 390, height: 844}});
+  const context = await browser.newContext({viewport: {width: 390, height: 844}, reducedMotion: 'reduce'});
   const page = await context.newPage(), errors = [], requests = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/actions')) { const body = r.postDataJSON(); if (body?.type !== 'heartbeat') requests.push(body); } });
@@ -91,7 +92,13 @@ try {
   await page.click('.done button');
   await page.locator('.screen.transition', {hasText: '6 hours later'}).waitFor();
   assert.match(await page.locator('.transition .time').textContent(), /02:00/);
+  // Reduced motion: the transition is still and stays until the player taps Continue.
+  await page.waitForTimeout(3000);
+  assert.equal(await page.locator('.screen.transition').count(), 1, 'no auto-advance under reduced motion');
+  assert.equal(await page.locator('.hourglass').isVisible(), false);
+  await page.click('[data-action=continue]');
   await page.locator('.screen.pick').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'main', 'focus moves to the new screen');
 
   // Turn 2: I finish first. Cancel sends nothing; a confirmation left open when the turn moves on closes itself.
   await page.click('[data-suspect=suspect-4]');
@@ -112,7 +119,9 @@ try {
   await page.locator('#confirm-dialog').waitFor({state: 'hidden'});
   await page.locator('.screen.transition', {hasText: '6 hours later'}).waitFor();
   assert.equal(sent('advance').length, 0, 'no advance was sent');
+  await page.waitForTimeout(1400);
   await page.screenshot({path: `${shot}/shift-recovery-transition.png`});
+  await page.click('[data-action=continue]');
   await page.locator('.screen.pick').waitFor();
   assert.match(await page.locator('#header .clock').textContent(), /Turn 3 of 4 · 08:00/);
   assert.deepEqual(errors, []);

@@ -147,7 +147,11 @@ try {
       assert.ok(earlier.messages[0].reply, 'the earlier answer is kept');
       assert.equal(earlier.closed, true);
     }
-    if (turn < 4) for (const page of pages) { await turnLabel(page, turn + 1); await page.locator('.screen.pick').waitFor(); }
+    if (turn < 4) for (const page of pages) {
+      await turnLabel(page, turn + 1);
+      await page.locator('.screen.pick').waitFor();
+      assert.equal(await page.evaluate(() => document.activeElement?.id), 'main', 'after the transition moves on by itself, focus is on the new screen');
+    }
   }
 
   // Time's up, then every agent summons on their own.
