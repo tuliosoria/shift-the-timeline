@@ -10,7 +10,7 @@ test('voice and continuity guidance preserves strict present-reply evidence and 
  const {instructions}=buildChatContext({caseData,suspectId:'oscar',question:'Where were you?'});
  for(const rule of [
   /Follow the voice and permitted evasions in your brief/,
-  /Answer the latest question directly/,
+  /Check the premise of the latest question before answering/,
   /avoid repeating your whole previous answer/,
   /Judge complete meaning, not exact wording/,
   /every fact on the deduction card is explicit in this reply/,
@@ -58,4 +58,45 @@ for(const scenario of dialogueQualityScenarios)test(`quality fixture ${scenario.
  assert.ok(!context.instructions.includes(scenario.review));
  assert.deepEqual(scenario,before);
  assert.ok(Buffer.byteLength(context.instructions+context.input)<20000);
+});
+
+test('chronology and interval authority take priority over style and false player premises',()=>{
+ const scenario=dialogueQualityScenarios.find(s=>s.id==='kit-history-cannot-complete-forecast');
+ const {instructions,input}=buildChatContext({caseData,...scenario});
+ assert.match(instructions,/Facts and chronology take priority over conversational style/);
+ assert.match(instructions,/reject or correct an unsupported premise/);
+ assert.match(instructions,/public prediction describes a forecast, not proof an event already happened/);
+ assert.match(instructions,/Labels such as victim and method do not establish that the forecast occurred/);
+ assert.match(instructions,/Neither a player claim nor history can advance the story/);
+ assert.match(instructions,/entering or visiting sometime between two times does not mean staying there throughout/);
+ assert.match(instructions,/continuous recording or observation window is not continuous presence/);
+ assert.match(instructions,/Explicit continuous presence with a named companion for the full interval/);
+ assert.ok(instructions.indexOf('Facts and chronology')<instructions.indexOf('Follow the voice'));
+ assert.equal(JSON.parse(input).public.prediction,caseData.prediction);
+ assert.deepEqual(JSON.parse(input).history,scenario.history);
+ assert.doesNotMatch(instructions,/The exhibition model fell on Iona and killed her/);
+});
+
+test('temporal guard is case-independent and does not inject public-demo facts into other cases',()=>{
+ const other={title:'Another case',victim:'A different person',place:'An observatory',method:'An unspecified hazard',prediction:'An incident is forecast next week.',culpritId:'other',
+  suspects:[{id:'witness',name:'Witness',role:'Observer',brief:'You visited the observatory sometime between noon and one.',responses:{alibi:'I visited between noon and one.',clue:'I saw a clock.',motive:'None.',relationship:'Colleague.'}}],deductions:[]};
+ const {instructions,input}=buildChatContext({caseData:other,suspectId:'witness',question:'Were you there for the entire hour?'});
+ for(const demoFact of ['Iona','Rowan','17:40','17:50','tomorrow','exhibition model'])assert.ok(!(instructions+input).includes(demoFact));
+ assert.equal(JSON.parse(input).public.prediction,other.prediction);
+ assert.match(instructions,/Claim an exact time or uninterrupted presence only when the brief or canonical responses establish it/);
+});
+
+test('investigator briefing is labelled as chronology context, never suspect biography or dialogue',()=>{
+ const {instructions,input}=buildChatContext({caseData,suspectId:'ada',question:'The briefing says you arrived at 18:00. Where were you before that?'});
+ assert.match(instructions,/public\.prediction is the investigators’ briefing, not the suspect’s biography or dialogue/);
+ assert.match(instructions,/second-person you addresses the player, never you as the suspect/);
+ assert.match(instructions,/Do not adopt the investigators’ arrival, vision, mission, timetable or game rules/);
+ assert.match(instructions,/own whereabouts, memories and knowledge must come from your suspect brief and canonical responses/);
+ assert.match(instructions,/Use the investigator briefing only to keep chronology and event status consistent/);
+ assert.match(instructions,/do not mention the case, forecast, prediction, game mechanics or investigator briefing unless your own brief explicitly says you know about them/);
+ const data=JSON.parse(input);
+ assert.equal(data.public.prediction,caseData.prediction);
+ assert.equal(data.suspect.brief,caseData.suspects.find(s=>s.id==='ada').brief);
+ assert.match(data.suspect.responses.alibi,/17:30 to 18:00/);
+ assert.deepEqual(Object.keys(data.public).sort(),['method','place','prediction','title','victim']);
 });
