@@ -199,7 +199,7 @@ export function renderChatFooter(state, local) {
   if (chatEnded(state, local)) return CHAT_DONE;
   const {interview, s, pending} = chatParts(state, local), hold = pending || interview.closed || local?.busy;
   return `<div class="chips" role="group" aria-label="Suggested questions">${Object.values(topicLabels).map(label => `<button type="button" class="chip" data-chip="${esc(label)}" ${hold ? 'disabled' : ''}>${esc(label)}</button>`).join('')}</div>
-<form id="question-form" class="composer"><label class="visually-hidden" for="question">Your question</label><textarea id="question" name="question" rows="1" maxlength="500" placeholder="Ask ${esc(firstName(s?.name))} anything…" enterkeyhint="send" autocomplete="off" ${interview.closed ? 'readonly' : ''}>${esc(local?.draft)}</textarea><button type="button" class="send" aria-label="Send question" ${hold || !String(local?.draft ?? '').trim() ? 'disabled' : ''}>↑</button></form>`;
+<form id="question-form" class="composer"><label class="visually-hidden" for="question">Your question</label><textarea id="question" name="question" rows="1" maxlength="300" placeholder="Ask ${esc(firstName(s?.name))} anything…" enterkeyhint="send" autocomplete="off" ${interview.closed ? 'readonly' : ''}>${esc(local?.draft)}</textarea><button type="button" class="send" aria-label="Send question" ${hold || !String(local?.draft ?? '').trim() ? 'disabled' : ''}>↑</button></form>`;
 }
 
 export function renderChat(state, local) {

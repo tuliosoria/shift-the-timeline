@@ -105,6 +105,10 @@ test('chat counter shows "1 of 3"', () => {
   assert.match(html, /1 of 3/);
   assert.match(html, /In the dining car\./);
 });
+test('the question box stops at the server limit of 300 characters', () => {
+  const html = views.renderChat(state({}, {interviews:[interview()]}), local());
+  assert.match(html, /<textarea id="question"[^>]*maxlength="300"/);
+});
 test('escapes suspect names', () => {
   const hostile = state({suspects:[{...suspects[0], id:'../../private/secret', name:'<img src=x onerror=alert(1)> Eve', initials:'<b>', color:'red;background:url(x)'}]});
   for (const html of [views.renderPick(hostile, local({selected:'../../private/secret'})), views.renderAccuse({...hostile, phase:'accusation'}, local({selected:'../../private/secret'}))]) {

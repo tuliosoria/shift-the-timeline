@@ -36,11 +36,41 @@ test('command adds one request id and reuses it when the same action is retried'
   assert.deepEqual(Object.keys(calls[0].body).sort(), ['id', 'question', 'round', 'type']);
   assert.equal(action.id, undefined, 'the caller object is not mutated');
 });
-test('poll delay is 2500 ms, 1000 ms while my last message is pending, and 15000 ms when hidden', () => {
+test('poll delay is 2500 ms, 1500 ms while my last message is pending, 2500 ms after 10 s of pending, and 15000 ms when hidden', () => {
   const pending = {round: 1, me: {interviews: [{round: 1, messages: [{status: 'complete'}, {status: 'pending'}]}]}};
   const settled = {round: 1, me: {interviews: [{round: 1, messages: [{status: 'complete'}]}]}};
   assert.equal(api.pollDelay(settled, false), 2500);
-  assert.equal(api.pollDelay(pending, false), 1000);
+  assert.equal(api.pollDelay(pending, false), 1500);
+  assert.equal(api.pollDelay(pending, false, 9999), 1500);
+  assert.equal(api.pollDelay(pending, false, 10000), 2500);
   assert.equal(api.pollDelay(pending, true), 15000);
   assert.equal(api.pollDelay(null, false), 2500);
+});
+test('the poll loop backs off once a reply has been pending for 10 s', async t => {
+  t.mock.timers.enable({apis: ['setTimeout', 'Date'], now: 0});
+  t.mock.method(Math, 'random', () => 0);
+  const pending = {code: 'ABCD2345', version: 1, round: 1, me: {interviews: [{round: 1, messages: [{status: 'pending'}]}]}};
+  const calls = stubFetch(t, Array.from({length: 20}, () => ({status: 204})));
+  const loop = api.pollLoop({getState: () => pending, onState: () => {}, isHidden: () => false});
+  const polls = [];
+  for (let ms = 0; ms < 16000; ms += 100) {
+    t.mock.timers.tick(100);
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    while (polls.length < calls.length) polls.push(Date.now());
+  }
+  loop.stop();
+  const gaps = polls.slice(1).map((at, i) => at - polls[i]);
+  assert.equal(polls[0], 1500);
+  assert.ok(gaps.filter((_, i) => polls[i] < 10000).every(gap => gap === 1500), `fast gaps ${gaps}`);
+  assert.ok(gaps.filter((_, i) => polls[i] >= 10000).every(gap => gap === 2500), `slow gaps ${gaps}`);
+  assert.ok(polls.some(at => at > 10000));
+});
+test('a missing room or a retired case version means the room is gone', () => {
+  const error = (status, message = 'x') => Object.assign(new Error(message), {status});
+  assert.equal(api.roomGone(error(404)), 'expired');
+  assert.equal(api.roomGone(error(503, 'Case version unavailable.')), 'expired');
+  assert.equal(api.roomGone(error(401)), 'lost');
+  assert.equal(api.roomGone(error(503, 'New rooms are temporarily paused.')), null);
+  assert.equal(api.roomGone(error(500)), null);
+  assert.equal(api.roomGone(new TypeError('network down')), null);
 });

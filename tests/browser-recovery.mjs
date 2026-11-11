@@ -1,6 +1,6 @@
 // Real-browser recovery: a reload keeps the session and the draft, a lost response is retried
 // with the same request id, a pending last reply holds the turn transition, and a confirmation
-// never acts on a turn that has moved on. This phone prefers reduced motion: transitions wait for
+// never acts on a turn that has moved on, and a room from a retired case version is left. This phone prefers reduced motion: transitions wait for
 // Continue. Synthetic case and fake AI only; no network.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -124,8 +124,18 @@ try {
   await page.click('[data-action=continue]');
   await page.locator('.screen.pick').waitFor();
   assert.match(await page.locator('#header .clock').textContent(), /Turn 3 of 4 · 08:00/);
+
+  // A redeploy that retires this case version answers every poll with 503 'Case version unavailable.'.
+  // The room will never come back, so the phone leaves it instead of reconnecting forever.
+  await page.route(/\/state\?since=/, route => route.fulfill({status: 503, contentType: 'application/json', body: JSON.stringify({error: 'Case version unavailable.'})}));
+  await page.locator('#notice.error', {hasText: 'This room has expired. Open or join another case.'}).waitFor();
+  await page.locator('#create-form').waitFor();
+  assert.equal(await page.evaluate(() => localStorage.getItem('shift-session')), null, 'the stale room is forgotten');
+  await page.waitForTimeout(3000);
+  assert.equal(await page.locator('#notice', {hasText: 'Connection interrupted'}).count(), 0);
+  await page.unroute(/\/state\?since=/);
   assert.deepEqual(errors, []);
-  console.log('Browser recovery passed: reload keeps session and draft, lost response retried with the same id, pending reply holds the transition, stale confirmation closes.');
+  console.log('Browser recovery passed: reload keeps session and draft, lost response retried with the same id, pending reply holds the transition, stale confirmation closes, retired case version returns to the landing.');
 } finally {
   await browser.close();
   await server.close();

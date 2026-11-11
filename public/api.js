@@ -40,14 +40,31 @@ export function myLastMessagePending(state) {
   const interviews = state?.me?.interviews ?? [];
   return interviews.some(i => i.messages?.at(-1)?.status === 'pending');
 }
-export function pollDelay(state, hidden) {
+// A pending reply is polled faster, but only for its first 10 s: a slow provider call
+// should not keep every waiting phone at the fast rate.
+export function pollDelay(state, hidden, pendingForMs = 0) {
   if (hidden) return 15000;
-  return myLastMessagePending(state) ? 1000 : 2500;
+  if (!myLastMessagePending(state)) return 2500;
+  return pendingForMs >= 10000 ? 2500 : 1500;
+}
+
+// 404: the room expired. 503 'Case version unavailable.': the room belongs to a case version
+// this deployment no longer serves, so it will never come back either. 401: the seat is lost.
+export function roomGone(error) {
+  if (error?.status === 404 || (error?.status === 503 && error.message === 'Case version unavailable.')) return 'expired';
+  if (error?.status === 401) return 'lost';
+  return null;
 }
 
 // getState() returns the current snapshot, or null to skip this tick (no room, or a command in flight).
 export function pollLoop({getState, onState, onError = () => {}, isHidden = () => document.hidden}) {
-  let timer = null, stopped = false, running = false;
+  let timer = null, stopped = false, running = false, pendingSince = null;
+  const delay = () => {
+    const state = getState();
+    if (!myLastMessagePending(state)) pendingSince = null;
+    else pendingSince ??= Date.now();
+    return pollDelay(state, isHidden(), pendingSince === null ? 0 : Date.now() - pendingSince);
+  };
   async function tick() {
     clearTimeout(timer);
     if (stopped || running) return;
@@ -61,9 +78,9 @@ export function pollLoop({getState, onState, onError = () => {}, isHidden = () =
     } catch (error) { onError(error); }
     finally {
       running = false;
-      if (!stopped) timer = setTimeout(tick, pollDelay(getState(), isHidden()) + Math.floor(Math.random() * 300));
+      if (!stopped) timer = setTimeout(tick, delay() + Math.floor(Math.random() * 300));
     }
   }
-  timer = setTimeout(tick, pollDelay(getState(), isHidden()));
+  timer = setTimeout(tick, delay());
   return {now: tick, stop() { stopped = true; clearTimeout(timer); }};
 }

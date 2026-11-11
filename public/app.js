@@ -1,5 +1,5 @@
 // Bootstrap, state, routing and event wiring. Views are pure (views.js); the network is api.js.
-import {fetchJson, command, requestIdFor, newRequestId, pollLoop} from './api.js';
+import {fetchJson, command, requestIdFor, newRequestId, pollLoop, roomGone} from './api.js';
 import {createUiState, uiContext} from './ui-state.js';
 import * as views from './views.js';
 import {setScene} from './backdrop.js';
@@ -8,6 +8,7 @@ import {showUnlocked, freshDeductions} from './toast.js';
 
 const $ = s => document.querySelector(s);
 const SESSION = 'shift-session', PENDING = 'shift-pending';
+const ROOM_EXPIRED = 'This room has expired. Open or join another case.';
 const store = {
   get(key) { try { return JSON.parse((key === SESSION ? localStorage : sessionStorage).getItem(key)); } catch { return null; } },
   set(key, value) { try { (key === SESSION ? localStorage : sessionStorage).setItem(key, JSON.stringify(value)); } catch { notice('Storage is unavailable. Keep this tab open to stay in the game.', true); } },
@@ -133,7 +134,11 @@ async function run(work) {
     return true;
   } catch (error) {
     busy = false;
-    if (error.status && error.status < 500 && error.status !== 429) { pending = null; store.remove(PENDING); notice(error.message, true); }
+    // A room from a retired case version never comes back: leave it instead of retrying forever.
+    if (error.status === 503 && roomGone(error)) {
+      if (work.entry) { pending = null; store.remove(PENDING); notice(ROOM_EXPIRED, true); }
+      else { resetSession(); notice(ROOM_EXPIRED, true); }
+    } else if (error.status && error.status < 500 && error.status !== 429) { pending = null; store.remove(PENDING); notice(error.message, true); }
     else notice(error.status === 429 ? error.message : 'Connection lost. Your action may have arrived. Retry safely: it will not be sent twice.', true);
     render();
     return false;
@@ -227,9 +232,10 @@ window.addEventListener('hashchange', () => {
 });
 
 function pollFailed(error) {
-  if (error.status === 404 || error.status === 401) {
+  const gone = roomGone(error);
+  if (gone) {
     resetSession();
-    notice(error.status === 404 ? 'This room has expired. Open or join another case.' : 'Your place in the room could not be restored. Join a new case.', true);
+    notice(gone === 'expired' ? ROOM_EXPIRED : 'Your place in the room could not be restored. Join a new case.', true);
   } else notice('Connection interrupted. Reconnecting…', true);
 }
 const poller = pollLoop({
