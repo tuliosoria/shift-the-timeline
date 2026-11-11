@@ -58,47 +58,40 @@ for (const count of [3, 4]) test(`${count} isolated HTTP clients finish a privat
   if (count === 4) assert.equal((await outsider(`/api/rooms/${code}/join`, {name: 'Fifth', id: randomUUID()})).status, 400);
   await action(0, 'start');
   assert.equal((await outsider(`/api/rooms/${code}/join`, {name: 'Late', id: randomUUID()})).status, 400);
-  let replayCorrelation;
-  for (let round = 1; round <= 3; round++) {
+  for (let round = 1; round <= 4; round++) {
     for (let i = 0; i < count; i++) {
       await action(i, 'select', {round, suspectId: `suspect-${i + 1}`});
-      const question = `Private question from agent ${i} round ${round}`;
-      const body = {round, question, topic: 'clue'};
-      let state;
-      if (round === 1 && i === 0) {
-        const requestId = randomUUID();
-        const responses = await Promise.all([action(i, 'ask', body, requestId), action(i, 'ask', body, requestId)]);
-        for (const result of responses) assert.equal(result.me.interviews[0].messages.length, 1);
-        state = responses[0];
-      } else state = await action(i, 'ask', body);
-      privateProjection(state, question);
-      const other = (await players[(i + 1) % count](`/api/rooms/${code}`)).body;
-      privateProjection(other);
-      assert.ok(!JSON.stringify(other).includes(question));
-      if (round === 1 && i === 0) {
-        const message = state.me.interviews[0].messages[0];
-        await action(i, 'share', {messageId: message.id});
-        const shared = (await players[1](`/api/rooms/${code}`)).body;
-        assert.equal(shared.board.length, 1);
-        assert.equal(shared.board[0].text, message.answer);
-        assert.ok(!JSON.stringify(shared).includes(question));
-        replayCorrelation={id:randomUUID(),body:{round:1,expectedPhase:'investigation',sources:[{kind:'clue',id:shared.board[0].id},{kind:'case',id:'place'}],relation:'related',text:'Synthetic relationship, not established evidence.'}};
-        const first=await action(0,'correlate',replayCorrelation.body,replayCorrelation.id);
-        const retry=await action(0,'correlate',replayCorrelation.body,replayCorrelation.id);
-        assert.equal(first.board.length,2);assert.equal(retry.board.length,2);assert.deepEqual(first.board[1],retry.board[1]);
-        assert.ok(!JSON.stringify(retry.board).includes(question));
+      for (let n = 1; n <= 3; n++) {
+        const question = `Private question ${n} from agent ${i} round ${round}`;
+        const body = {round, question};
+        let state;
+        if (round === 1 && i === 0 && n === 1) {
+          const requestId = randomUUID();
+          const responses = await Promise.all([action(i, 'ask', body, requestId), action(i, 'ask', body, requestId)]);
+          for (const result of responses) assert.equal(result.me.interviews[0].messages.length, 1);
+          state = responses[0];
+        } else state = await action(i, 'ask', body);
+        privateProjection(state, question);
+        const other = (await players[(i + 1) % count](`/api/rooms/${code}`)).body;
+        privateProjection(other);
+        assert.ok(!JSON.stringify(other).includes(question));
+        assert.ok(!('board' in other));
+        const message = state.me.interviews.at(-1).messages.at(-1);
+        assert.ok(!('answer' in message));
+        assert.equal(message.status, 'canonical');
+        assert.equal(typeof message.reply, 'string');
       }
-      if(round===1&&i===1){await action(i,'correlate',{round,expectedPhase:'investigation',sources:[{kind:'suspect',id:'suspect-1'},{kind:'suspect',id:'suspect-2'}],relation:'contradicts',text:'A second synthetic hypothesis.'});await action(i,'note',{text:'A separate synthetic team note.'});}
-      const beforeEnd=(await players[i](`/api/rooms/${code}`)).body;
-      assert.equal(beforeEnd.round,round);assert.equal(beforeEnd.phase,'investigation');
-      const afterEnd=await action(i, 'end', {round});
-      if(i===count-1){assert.equal(afterEnd.phase,round===3?'accusation':'investigation');assert.equal(afterEnd.round,Math.min(3,round+1));}
-      else{assert.equal(afterEnd.round,round);assert.equal(afterEnd.phase,'investigation');}
+      const after = (await players[i](`/api/rooms/${code}`)).body;
+      if (i === count - 1) {
+        assert.equal(after.phase, round === 4 ? 'accusation' : 'investigation');
+        assert.equal(after.round, Math.min(4, round + 1));
+      } else {
+        assert.equal(after.round, round);
+        assert.equal(after.phase, 'investigation');
+      }
     }
   }
-  const lateRetry=await action(0,'correlate',replayCorrelation.body,replayCorrelation.id);
-  assert.equal(lateRetry.phase,'accusation');assert.equal(lateRetry.round,3);assert.equal(lateRetry.board.length,4);
-  assert.equal(lateRetry.board.filter(x=>x.type==='correlation').length,2);assert.ok(lateRetry.board.filter(x=>x.type==='correlation').every(x=>x.round===1));
+  assert.equal((await players[0]('/api/rooms/' + code + '/actions', {id: randomUUID(), type: 'end', round: 4})).status, 400);
   for (let i = 0; i < count; i++) {
     const state = await action(i, 'vote', {suspectId: count === 4 && i === count - 1 ? 'suspect-1' : 'suspect-0'});
     if (i < count - 1) {
@@ -113,7 +106,7 @@ for (const count of [3, 4]) test(`${count} isolated HTTP clients finish a privat
     assert.equal(final.phase, 'reveal');
     assert.equal(final.result.outcome, count === 3 ? 'complete' : 'partial');
     assert.equal(final.result.innocentArrests, count === 3 ? 0 : 1);
-    assert.equal(final.me.interviews.length, 3);
+    assert.equal(final.me.interviews.length, 4);
     assert.deepEqual(final.result.solution, TRAIN_CASE.solution);
     assert.equal((await call(`/api/rooms/${code}?since=${final.version}`)).status, 204);
   }

@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GameService } from '../server/game.mjs';
+import { GameService, STORY_CLOCK, DomainError } from '../server/game.mjs';
 import { TRAIN_CASE, CASES } from './fixtures/case.mjs';
 let seq = 0;
 const id = () => `request-${++seq}-xxxxxxxxxxxxxxxx`;
-function setup(count = 3) {
-  const g = new GameService({caseData:TRAIN_CASE,catalog:CASES});
+function setup(count = 3, options = {}) {
+  const g = new GameService({caseData:TRAIN_CASE,catalog:CASES,...options});
   const a = g.create('Agente A', TRAIN_CASE.id, id());
   const players = [a, ...Array.from({length:count-1},(_,i)=>g.join(a.code,`Agente ${i+2}`,id()))];
   const act = (p,type,data={}) => g.act(a.code,p.token,{id:id(),type,...data});
@@ -13,9 +13,9 @@ function setup(count = 3) {
 }
 function finishRounds(s) {
   s.act(s.a,'start');
-  for(let round=1;round<=3;round++) for(const p of s.players) {
+  for(let round=1;round<=4;round++) for(const p of s.players) {
     s.act(p,'select',{suspectId:TRAIN_CASE.suspects[0].id,round});
-    s.act(p,'end',{round});
+    for(let n=0;n<3;n++) s.act(p,'ask',{question:`Question ${n}?`,round});
   }
 }
 test('room admission is 3–4 people, lobby only and host starts',()=>{
@@ -31,43 +31,88 @@ test('room admission is 3–4 people, lobby only and host starts',()=>{
 test('public state does not expose culprit, responses, tokens, or other interviews',()=>{
   const s=setup();s.act(s.a,'start');
   s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[0].id,round:1});
-  s.act(s.a,'ask',{topic:'clue',question:'Minha pergunta privada',round:1});
+  s.act(s.a,'ask',{question:'Minha pergunta privada',round:1});
   const own=s.g.view(s.a.code,s.a.token), other=s.g.view(s.a.code,s.players[1].token);
   assert.equal(own.me.interviews[0].messages.length,1);
   const json=JSON.stringify(other);
   for(const secret of ['culpritId','responses','Minha pergunta privada',s.a.token,TRAIN_CASE.solution.plan]) assert.ok(!json.includes(secret),secret);
   assert.throws(()=>s.g.view(s.a.code,'guess'),/session/);
 });
-test('each round grants one interview, four questions, and idempotent retry',()=>{
+test('each round grants one interview, three questions, and idempotent retry',()=>{
   const s=setup();s.act(s.a,'start');
   s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[0].id,round:1});
   assert.throws(()=>s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[1].id,round:1}),/already chosen/);
-  const request={id:id(),type:'ask',topic:'alibi',question:'Onde estava?',round:1};
+  const request={id:id(),type:'ask',question:'Onde estava?',round:1};
   s.g.act(s.a.code,s.a.token,request);s.g.act(s.a.code,s.a.token,request);
   assert.equal(s.g.view(s.a.code,s.a.token).me.interviews[0].messages.length,1);
-  assert.throws(()=>s.g.act(s.a.code,s.a.token,{...request,topic:'clue'}),/reused/);
-  for(const topic of ['clue','motive','relationship'])s.act(s.a,'ask',{topic,question:'O que viu?',round:1});
-  assert.throws(()=>s.act(s.a,'ask',{topic:'clue',question:'Outra?',round:1}),/4/);
-  s.act(s.a,'end',{round:1});
-  assert.throws(()=>s.act(s.a,'ask',{topic:'clue',question:'Outra?',round:1}),/closed/);
+  assert.throws(()=>s.g.act(s.a.code,s.a.token,{...request,question:'Outra?'}),/reused/);
 });
-test('sharing is explicit, only own messages and plain text',()=>{
+test('four turns of three questions reach accusation',()=>{
+  const s=setup();s.act(s.a,'start');
+  for(let round=1;round<=4;round++){
+    assert.equal(s.g.view(s.a.code,s.a.token).round,round);
+    for(const p of s.players){
+      s.act(p,'select',{suspectId:TRAIN_CASE.suspects[0].id,round});
+      for(let n=0;n<3;n++) s.act(p,'ask',{question:`Question ${n}?`,round});
+    }
+    if(round<4) assert.equal(s.g.view(s.a.code,s.a.token).round,round+1);
+  }
+  assert.equal(s.g.view(s.a.code,s.a.token).phase,'accusation');
+});
+test('third answer closes the interview and a fourth ask is rejected',()=>{
   const s=setup();s.act(s.a,'start');
   s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[0].id,round:1});
-  const state=s.act(s.a,'ask',{topic:'clue',question:'O que viu?',round:1});
-  const messageId=state.me.interviews[0].messages[0].id;
-  assert.equal(s.g.view(s.a.code,s.players[1].token).board.length,0);
-  assert.throws(()=>s.act(s.players[1],'share',{messageId}),/not found/);
-  s.act(s.a,'share',{messageId});s.act(s.a,'share',{messageId});
-  assert.equal(s.g.view(s.a.code,s.players[1].token).board.length,1);
-  assert.throws(()=>s.act(s.a,'note',{text:'x'.repeat(501)}),/500/);
+  for(let n=0;n<3;n++) s.act(s.a,'ask',{question:`Q${n}?`,round:1});
+  assert.equal(s.g.view(s.a.code,s.a.token).me.interviews[0].closed,true);
+  assert.throws(()=>s.act(s.a,'ask',{question:'Again?',round:1}),e=>e instanceof DomainError&&e.message==='Interview already closed.');
 });
-test('three synchronous rounds yield only 12 available interviews for 15 suspects',()=>{
+test('asking while the previous answer is pending is rejected',()=>{
+  const s=setup(3,{deferAnswers:true});s.act(s.a,'start');
+  s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[0].id,round:1});
+  s.act(s.a,'ask',{question:'First?',round:1});
+  assert.throws(()=>s.act(s.a,'ask',{question:'Second?',round:1}),e=>e.status===409&&e.message==='Wait for the answer before asking again.');
+});
+test('snapshot never exposes canonical answer while pending',()=>{
+  const s=setup(3,{deferAnswers:true});s.act(s.a,'start');
+  s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[0].id,round:1});
+  const state=s.act(s.a,'ask',{question:'First?',round:1});
+  const m=state.me.interviews[0].messages[0];
+  assert.equal(m.status,'pending');assert.equal(m.reply,null);assert.ok(!('answer' in m));
+  assert.deepEqual(m.unlocked,[]);
+  assert.deepEqual(state.me.deductions,[]);assert.equal(state.deductionTotal,0);
+});
+test('clock follows the story',()=>{
+  assert.deepEqual([...STORY_CLOCK],['20:00','02:00','08:00','14:00']);
+  const s=setup();s.act(s.a,'start');
+  [[ '20:00',24],['02:00',18],['08:00',12],['14:00',6]].forEach(([time,hoursLeft],i)=>{
+    const clock=s.g.view(s.a.code,s.a.token).clock;
+    assert.deepEqual(clock,{turn:i+1,time,hoursLeft,crimeAt:'20:00'});
+    s.act(s.a,'advance',{round:i+1,confirmed:true});
+  });
+  assert.equal(s.g.view(s.a.code,s.a.token).clock.hoursLeft,0);
+});
+test('same topic may be asked twice',()=>{
+  const s=setup();s.act(s.a,'start');
+  s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[0].id,round:1});
+  s.act(s.a,'ask',{question:'Where were you?',round:1});
+  s.act(s.a,'ask',{question:'Where were you?',round:1});
+  assert.equal(s.g.view(s.a.code,s.a.token).me.interviews[0].messages.length,2);
+});
+test('removed actions are unknown',()=>{
+  const s=setup();s.act(s.a,'start');
+  for(const type of ['end','share','note','correlate']) assert.throws(()=>s.act(s.a,type,{round:1}),/Unknown action\./);
+  assert.ok(!('board' in s.g.view(s.a.code,s.a.token)));
+});
+test('ask rejects unexpected fields',()=>{
+  const s=setup();s.act(s.a,'start');
+  s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[0].id,round:1});
+  for(const extra of [{topic:'clue'},{aiConsent:true}]) assert.throws(()=>s.act(s.a,'ask',{question:'Q?',round:1,...extra}),/Unexpected question field\./);
+});
+test('four synchronous turns end in accusation with no further selection',()=>{
   const s=setup(4);finishRounds(s);
   const state=s.g.view(s.a.code,s.a.token);
-  assert.equal(state.phase,'accusation');assert.equal(state.remainingHours,0);
-  assert.ok(state.suspects.length>state.players.length*state.config.rounds);
-  assert.throws(()=>s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[0].id,round:4}),/phase/);
+  assert.equal(state.phase,'accusation');assert.equal(state.clock.hoursLeft,0);
+  assert.throws(()=>s.act(s.a,'select',{suspectId:TRAIN_CASE.suspects[0].id,round:5}),/phase/);
 });
 for(const [correct,outcome] of [[0,'defeat'],[1,'partial'],[3,'complete']]) test(`server resolves ${outcome} and never exposes early ballots`,()=>{
   const s=setup();finishRounds(s);

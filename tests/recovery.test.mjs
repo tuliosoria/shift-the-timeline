@@ -12,7 +12,7 @@ function setup(){
  const a=g.create('Host',TRAIN_CASE.id,id());const players=[a,g.join(a.code,'Second',id()),g.join(a.code,'Third',id())];
  const act=(i,type,data={})=>g.act(a.code,players[i].token,{id:id(),type,...data});
  const view=(i=0)=>g.view(a.code,players[i].token);
- const accusation=()=>{act(0,'start');for(let round=1;round<=3;round++)act(0,'advance',{round,confirmed:true});};
+ const accusation=()=>{act(0,'start');for(let round=1;round<=4;round++)act(0,'advance',{round,confirmed:true});};
  return {g,a,players,act,view,accusation,now,set:n=>{time=n;},tick:n=>{time+=n;}};
 }
 async function durable(){
@@ -20,7 +20,7 @@ async function durable(){
  const sessions=['host-session','second-session','third-session'];const a=await game.create(sessions[0],'Host',TRAIN_CASE.id,id());
  for(let i=1;i<3;i++)await game.join(a.code,sessions[i],`Player ${i}`,id());
  const act=(i,type,data={})=>game.act(a.code,sessions[i],{id:id(),type,...data});
- const accusation=async()=>{await act(0,'start');for(let round=1;round<=3;round++)await act(0,'advance',{round,confirmed:true});};
+ const accusation=async()=>{await act(0,'start');for(let round=1;round<=4;round++)await act(0,'advance',{round,confirmed:true});};
  return {game,store,sessions,a,act,accusation,now,set:n=>{time=n;},tick:n=>{time+=n;}};
 }
 test('host takeover requires confirmation and 120 seconds; authenticated heartbeat renews lease',()=>{
