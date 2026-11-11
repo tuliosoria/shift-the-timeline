@@ -1,28 +1,32 @@
-# Optional local OpenAI narration
+# Optional local OpenAI dialogue
 
 This is a local development trial, not a deployment. Normal `npm start`, the Lambda API, AWS workers and CI remain AI-disabled. Never put a key in GitHub, source, browser code or CI artifacts. A GitHub Actions secret is not a running game's secret store. The existing future AWS worker supports a separately approved Secrets Manager secret containing `apiKey`; this trial neither provisions nor activates it.
 
 ## Explicit setup
 
-Use an existing key in a private, user-owned, non-symlink file outside the repository. The file contains only `OPENAI_API_KEY=...` and has mode0600. `SHIFT_LOCAL_AI_KEY_FILE` points to that file; the server reads it lazily without changing its environment or exposing it to players. Do not paste credentials into chat or commands.
+Use an existing key in a private, user-owned, non-symlink file outside the repository. The file contains only `OPENAI_API_KEY=...` and has mode 0600. `SHIFT_LOCAL_AI_KEY_FILE` points to that file; the server reads it lazily without changing its environment or exposing it to players. Do not paste credentials into chat or commands.
 
 Set these **nonsecret** configuration variables before `npm run dev:ai`:
 
-- `SHIFT_LOCAL_AI_ENABLED=true` and `SHIFT_LOCAL_AI_CONSENT=true`: operator approval for the trial.
+- `SHIFT_LOCAL_AI_ENABLED=true` and `SHIFT_LOCAL_AI_CONSENT=true`: operator approval for the trial (this is the operator's consent, not a player prompt).
 - `SHIFT_ORIGIN=http://127.0.0.1:3000`: only HTTP loopback origins are accepted. No LAN/public hosting.
 - `SHIFT_CASE_FILE=tests/fixtures/case.mjs`: synthetic data first. Only use trusted authored modules; importing JavaScript runs it.
 - `SHIFT_LOCAL_AI_KEY_FILE`: absolute private credential-file path.
 - `SHIFT_LOCAL_AI_MODEL`: exact available model, for example `gpt-6-luna` after access verification.
 - `SHIFT_LOCAL_AI_INPUT_RATE` and `SHIFT_LOCAL_AI_OUTPUT_RATE`: independently verified current USD per million tokens. No guessed/default pricing.
-- `SHIFT_LOCAL_AI_MAX_CALLS`: an explicit integer1–12.
-- `SHIFT_LOCAL_AI_MAX_RESERVE_MICROUSD`: explicit worst-case per-process allowance, at most250000microUSD ($0.25). It must cover one2500-input/350-output-token reservation at the selected prices.
+- `SHIFT_LOCAL_AI_MAX_CALLS`: an explicit integer 1–12.
+- `SHIFT_LOCAL_AI_MAX_RESERVE_MICROUSD`: explicit worst-case per-process allowance, at most 250000 microUSD ($0.25).
+
+The trial fixes the room limit at 250000 microUSD, the same as the hosted policy (which also sets day 10000000 and month 50000000 microUSD, at most 8 concurrent calls, and 6000 input and 400 output tokens per call). Locally the day and month limits equal your reserve allowance and calls run one at a time. On start the trial checks that a full room of 48 questions (4 turns, 3 questions, 4 players) fits the room limit at the selected prices, and refuses to run otherwise. The reserve allowance must also cover one 6000-input/400-output-token reservation at those prices.
 
 These are per-process trial bounds, **not** account-wide billing controls. Restarting the process resets them; running multiple processes multiplies them. The attempted-request count and full reservation are never refunded, even for timeouts/errors. Understated or stale model prices invalidate the dollar estimate; the hard request/token caps still apply. No retries of uncertain generation calls.
 
-## Player choice and evidence
+## What players see and what is sent
 
-Each question offers an unchecked opt-in. Only that question, its fictional suspect profile and canonical answer may go to OpenAI, with `store:false`. No other interviews, session credentials or full solution are sent. `store:false` is not a claim of zero provider retention. Unchecked questions remain local and receive the same canonical evidence. Do not enter personal information.
+There is no per-question consent. The landing page and lobby show a one-line notice that AI voices the suspects, and players should not enter personal information. For each question the server sends only the current suspect's fictional profile and brief, that interview's earlier questions and replies, the new question and the suspect's own canonical answer and deductions, with `store:false`. No other interviews, session credentials or full solution are sent. `store:false` is not a claim of zero provider retention.
 
-AI text is optional voice, never authoritative evidence. Canonical answers remain unchanged and sharing still publishes only canonical evidence. Instructions constrain narration but cannot guarantee a model will never invent a fact; players must ignore voice as evidence. Failure, timeout, budget exhaustion or stopping the worker preserves canonical gameplay. Consent is required again for each new question; safe retries retain the original question's consent.
+The model returns `{reply, unlocked}`: the in-character reply and the ids of deductions the question earned. The server accepts only deductions belonging to the interviewed suspect.
 
-The private editorial case has not been available for validation. Synthetic tests do not establish narrative readiness. Local trial does not make the production game AI-enabled or solve the missing private-case handoff.
+AI text is voice, not an authority over outcomes: the outcome is computed from accusations and the case. Instructions constrain the model but cannot guarantee it never invents a detail, so players should treat replies as testimony from a suspect who may lie. On any failure, timeout, budget refusal or stopped worker the question is answered with the canonical answer and canonical deductions, so play continues.
+
+The private editorial case has not been available for validation. Synthetic tests do not establish narrative readiness. The local trial does not make the production game AI-enabled or solve the missing private-case handoff.

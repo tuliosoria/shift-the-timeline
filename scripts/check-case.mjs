@@ -16,8 +16,9 @@ export function checkCase({caseData,catalog}){
  const innocent=caseData.suspects.find(s=>s.id!==caseData.culpritId).id;
  const outcomes=[];
  for(const correct of [0,1,3]){const {host,players,act}=make();for(let round=1;round<=4;round++)act(host,'advance',{round,confirmed:true});let state;players.forEach((p,i)=>{state=act(p,'vote',{suspectId:i<correct?caseData.culpritId:innocent});});const expected=correct===0?'defeat':correct===3?'complete':'partial';if(state.result?.outcome!==expected||state.result.correct!==correct||state.result.abstentions!==0)throw Error('Outcome mismatch');outcomes.push(expected);}
+ const cover=minimumSuspectCover(caseData);
  const repeatedAnswers=allAnswers.length-new Set(allAnswers).size;
- return {ok:true,suspectsChecked:caseData.suspects.length,canonicalAnswersChecked:answers,outcomesChecked:outcomes,deductionCount:caseData.deductions.length,keyDeductionCount:caseData.deductions.filter(d=>d.key).length,minimumSuspectsForKeyDeductions:minimumSuspectCover(caseData),repeatedAnswerCount:repeatedAnswers,warnings:repeatedAnswers?['Some canonical answers are textually identical. Review clue diversity privately.']:[],scope:'Structural and mechanical checks only; not a proof of puzzle solvability, balance, or narrative quality.'};
+ return {ok:true,suspectsChecked:caseData.suspects.length,canonicalAnswersChecked:answers,outcomesChecked:outcomes,deductionCount:caseData.deductions.length,keyDeductionCount:caseData.deductions.filter(d=>d.key).length,minimumSuspectsForKeyDeductions:Number.isFinite(cover)?cover:'>9',repeatedAnswerCount:repeatedAnswers,warnings:repeatedAnswers?['Some canonical answers are textually identical. Review clue diversity privately.']:[],scope:'Structural and mechanical checks only; not a proof of puzzle solvability, balance, or narrative quality.'};
 }
 export async function runPreflight(env=process.env){return checkCase(await loadCase(env));}
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url){

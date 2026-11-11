@@ -23,3 +23,8 @@ test('CLI suppresses a thrown private module message and stack',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'shift-case-check-'));t.after(()=>rm(dir,{recursive:true,force:true}));const path=join(dir,'case.mjs');await writeFile(path,"throw new Error('PRIVATE_NARRATIVE_MARKER');\n");
  const result=spawnSync(process.execPath,['scripts/check-case.mjs'],{env:{...process.env,SHIFT_CASE_FILE:path},encoding:'utf8'});assert.equal(result.status,1);assert.doesNotMatch(result.stdout+result.stderr,/PRIVATE_NARRATIVE_MARKER|case\.mjs|at file:/);
 });
+test('case preflight prints a JSON-safe suspect cover, \">9\" when more than nine suspects are needed',()=>{
+ const data=structuredClone(TRAIN_CASE);const one=checkCase(validateCase({caseData:data,catalog:CASES}));assert.equal(typeof one.minimumSuspectsForKeyDeductions,'number');
+ const wide=structuredClone(TRAIN_CASE);wide.deductions=wide.suspects.slice(0,10).map((s,i)=>({id:`wide-${i}`,text:`Wide ${i}`,key:true,sources:[{suspectId:s.id,topic:'clue'}]}));
+ const r=checkCase(validateCase({caseData:wide,catalog:CASES}));assert.equal(r.minimumSuspectsForKeyDeductions,'>9');assert.equal(JSON.parse(JSON.stringify(r)).minimumSuspectsForKeyDeductions,'>9');
+});

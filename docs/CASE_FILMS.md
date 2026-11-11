@@ -1,27 +1,23 @@
-# Optional case films
+# Background films
 
-The train, pocket watch and corridor films are fictional atmosphere, not evidence. The opening page features the train; the lobby features the corridor; the investigation includes a compact scene card. All three remain available in the same viewer.
+The train, pocket watch and corridor films are fictional atmosphere, not evidence. They play as muted background loops behind the screens; there is no film dialog or player.
 
-## Playback and access
+## Playback
 
-- Posters are ordinary responsive images. No MP4 URL is attached until a player clicks a scene.
-- Playback starts muted, inline, with native pause, seek, volume and full-screen controls. There is no loop or automatic scene advancement.
-- The viewer has a labelled native dialog, visible Close control, Escape dismissal, scene descriptions and focus restoration. Motion is always opt-in, including under reduced-motion preferences.
-- Closing the viewer unloads its media. Hiding the tab pauses playback without automatically resuming it later.
-- The dialog lives outside the game’s re-rendered content so room updates do not restart a film or erase drafts.
-- A failed download displays a non-blocking message; the investigation remains usable.
+- Each film is a decorative `<video>` that is muted, inline and looped, and has no audio track. It has no controls and carries no information the text does not.
+- Under reduced motion, or if a film fails to load, only the static WebP poster is shown. The setting is read live, so changing it takes effect without a reload.
+- `public/backdrop.js` picks the film for the current screen and swaps it when the screen changes. The film never covers controls or affects focus, and a failed download is silent: the game stays fully usable.
+- Films are decorative, so screen readers skip them.
 
 ## Asset budget and serving
 
-Three 10-second fast-start MP4s use 960×540 H.264/yuv420p with AAC audio. Combined video size is approximately 2.3 MiB. The three WebP posters total approximately 72 KiB. Originals stay outside the repository.
+Three 10-second fast-start MP4s use 960×540 H.264/yuv420p with the audio track removed. Combined video size is about 2.0 MiB (2.1 MB). The three WebP posters total about 72 KiB. Originals stay outside the repository.
 
-The existing exact public-asset allowlist includes the new player module, posters and films. Both packaging targets copy that same allowlist. The Node static handler provides video/mp4, Content-Length, HEAD and single-byte-range responses for mobile playback and seeking. Unknown media paths remain unavailable.
+The exact public-asset allowlist includes the films and posters, and both packaging targets copy that same allowlist. The Node static handler provides video/mp4, Content-Length, HEAD and single-byte-range responses, and sends `Cache-Control: public, max-age=86400` for static media (one day). Unknown media paths remain unavailable.
 
 ## Regression checks
 
-- `node --test tests/client-films.test.mjs tests/films-http.test.mjs tests/assets.test.mjs`: scene entry points, asset budgets, allowlist, byte ranges, HEAD and invalid requests.
-- `node tests/browser-case-films.mjs`: real media playback at 320, 390 and 1440 pixels under reduced motion; manual loading, muted playback, switching all three films, repeated dismissal, draft preservation, polling while the dialog is open, restored focus, and failed media.
-- The film test uses installed Google Chrome (included on the CI runner), because the bundled open-source headless Chromium omits the H.264/AAC decoders. For local runs, install Chrome or set `BROWSER_EXECUTABLE_PATH` to a browser with those codecs. A decoder assertion fails explicitly rather than skipping playback.
-- The film browser regression runs as part of `npm run test:browser` in CI alongside the existing three-player playthrough and recovery checks.
+- `node --test tests/backdrop.test.mjs tests/assets.test.mjs tests/http.test.mjs`: screen-to-film selection, reduced-motion poster fallback, asset budgets, the allowlist, byte ranges, HEAD and cache headers.
+- `npm run test:browser`: the three-phone public-demo playthrough, chat and recovery checks run with the backgrounds in place.
 
-No gameplay rules, case evidence, AI consent, Azure infrastructure, service settings or deployment credentials were changed.
+No gameplay rules, case evidence, Azure infrastructure, service settings or deployment credentials are affected by the films.

@@ -60,7 +60,7 @@ A deduction unlocks when a player asks a listed suspect about a listed topic
 least 3 deductions must be `key: true`. Locked deduction text is never sent to
 other players; each player sees only their own. `npm run check:case` reports the
 deduction count, key count and the fewest distinct suspects whose sources cover
-every key deduction (`Infinity` means more than 9 are needed).
+every key deduction (the string `">9"` means more than 9 are needed).
 
 Catalog entries require `id`, `title` and boolean `available`. Only optional
 `location` and `description` presentation strings are additionally supported;
@@ -76,11 +76,12 @@ aggregate timing, topics that confused players, whether teams could articulate
 the evidence chain, and how missed witnesses affected the conclusion. Keep
 spoiler-containing notes private. Check at least one investigation route that
 misses each major clue source; redundant evidence must remain discoverable
-within the nine or twelve available interview choices. Have people unfamiliar
+within the 12 questions (four turns of three) each player has. Have people unfamiliar
 with the solution distinguish the culprit from plausible alternatives.
 
 A repeated topic is rejected without spending another question; its existing
-answer remains available for review. Later rounds can revisit a suspect; consider whether
+answer remains available for review. Later turns can revisit a suspect; consider whether
 those choices are editorially useful. Canonical keyword matching is not AI
-understanding. Generative narration remains disconnected and must never decide
-the truth or the outcome.
+understanding. When AI voices the answers it may only echo the case and unlock
+deductions of the suspect being interviewed; it never decides the truth or the
+outcome, and canonical answers are the fallback.

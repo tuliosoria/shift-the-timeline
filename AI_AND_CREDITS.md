@@ -4,9 +4,7 @@ SHIFT's concept, documentation, artwork and development received assistance from
 
 ## During play
 
-This build uses canonical answers without live GPT calls. The optional narration orchestration is tested with simulations and remains disabled. Canonical evidence and outcomes stay authoritative on the server. No AI credential is included.
-
-Activating generative narration later requires separate approval of the model, costs, data policy and secure credentials.
+When AI is configured, a model voices every suspect answer in character, with memory of the earlier questions in the same interview, and may award deductions of the suspect being interviewed. Each question sends only that suspect's fictional profile and brief and the current interview to the provider (`store:false`, which is not a claim of zero retention). Players see a one-line notice on the landing page and lobby; there is no per-question consent. Spend is bounded per room, day and month, and canonical answers replace any reply that fails or is refused by the budget. The outcome is computed from the case and accusations, not by the model. Hosted AI is not deployed and no AI credential is included; activating it requires separate approval of the model, costs, data policy and secure credentials. See [local AI](docs/LOCAL_AI.md).
 
 ## Original artwork
 
@@ -14,11 +12,11 @@ The 15 fictional suspect portraits and three illustrated stage icons were create
 
 Browser assets are WebP derivatives with transparency, sized to 512px for portraits and 192px for stage icons. Original generated PNGs are retained separately and are not included in the deployment bundle. The 18 browser illustrations total approximately 634 KiB. Mockup previews are concept images, not screenshots proving browser behaviour.
 
-## Cinematic scene films
+## Background films
 
 The three 10-second atmosphere films (steam train, pocket watch and carriage corridor) were generated with Google Gemini under the project’s creative direction. They are fictional mood pieces, not canonical evidence, suspect testimony or clues.
 
-Web copies use 960×540 H.264 video and AAC audio in fast-start MP4 files. Together they are approximately 2.3 MiB, with about 72 KiB of static WebP posters. Full-resolution originals are retained separately. The player is optional, loads a film only after a click, starts muted, does not loop and pauses when the tab is hidden. Text descriptions explain the visual scenes without requiring playback.
+Web copies use 960×540 H.264 video with no audio track in fast-start MP4 files. Together they are about 2.0 MiB, with about 72 KiB of static WebP posters. Full-resolution originals are retained separately. They play as muted, looped backgrounds, and only the poster shows under reduced motion.
 
 ## Typography
 
