@@ -69,6 +69,7 @@ function applyState(next,{render:shouldRender=true}={}){
  else if(!previous){stage=ui.read(context).stage;ui.setStage(context,stage);history.replaceState(null,'',`#${stage}`);}
  if(shouldRender)render();return true;
 }
+function skipToInvestigation(event){if(!event.target.closest?.('a.skip[href="#main"]'))return false;event.preventDefault();const main=$('#main');main?.focus({preventScroll:true});main?.scrollIntoView?.({block:'start'});return true;}
 function navigate(next,{history:mode='push',focus=true}={}){
  if(!STAGES.includes(next))return;navigationVersion++;if(confirmation)closeConfirmation(false);saveDrafts();if(next==='interrogate'&&stage!==next)historyRound=null;stage=next;ui.setStage(uiContext(state),stage);
  if(mode==='push')history.pushState(null,'',`#${stage}`);else if(mode==='replace')history.replaceState(null,'',`#${stage}`);
@@ -198,6 +199,7 @@ $('#confirm-accept').addEventListener('click',()=>confirmAction());
 $('#confirm-dialog').addEventListener('keydown',trapDialogFocus);
 $('#confirm-dialog').addEventListener('cancel',event=>{event.preventDefault();closeConfirmation();});
 document.addEventListener('click',async event=>{
+ if(skipToInvestigation(event))return;
  const b=event.target.closest('button');if(!b)return;
  if(b.dataset.stage){navigate(b.dataset.stage);return;}if(b.dataset.entry){entryMode=b.dataset.entry;render();return;}
  const action=b.dataset.action;if(!action)return;
