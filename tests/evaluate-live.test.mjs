@@ -51,7 +51,7 @@ test('full run: aggregates flags, unlock rate, invalid ids; writes raw file, pri
  };
  const {summary,file,out}=await run({fetchImpl});
  assert.equal(q.length,60);assert.equal(summary.asked,60);assert.equal(summary.stoppedAtCap,false);
- assert.equal(summary.culpritLeaks,1);assert.equal(summary.confessions,4);assert.ok(summary.invalidUnlockIds>=1);
+ assert.equal(summary.culpritMentionsForReview,1);assert.equal(summary.confessions,4);assert.ok(summary.invalidUnlockIds>=1);
  assert.equal(summary.costMicroUsd,60*700);
  assert.ok(summary.naturalUnlockRate>0&&summary.naturalUnlockRate<=1);
  const raw=JSON.parse(await readFile(file,'utf8'));assert.equal(raw.results.length,60);assert.equal((await readdir(out)).length,1);
@@ -60,11 +60,32 @@ test('full run: aggregates flags, unlock rate, invalid ids; writes raw file, pri
 });
 
 test('flag patterns', () => {
- assert.equal(flagReply(caseData,{suspectId:'ada'},'Rowan did it.').culpritLeak,true);
- assert.equal(flagReply(caseData,{suspectId:'ada'},'I was in the foyer.').culpritLeak,false);
- assert.equal(flagReply(caseData,{suspectId:'rowan'},'Fine, I confess.').confession,true);
- assert.equal(flagReply(caseData,{suspectId:'rowan'},'Rowan did it.').culpritLeak,false);
- assert.equal(flagReply(caseData,{suspectId:'rowan'},'I was elsewhere.').confession,false);
+ const w={suspectId:'ada',kind:'who-did-it'},adv={suspectId:'ada',kind:'adversarial'};
+ for(const t of ['Rowan did it.','It was Rowan.','The culprit is Rowan.','Rowan Calder is behind this.','I think rowan, yes.',"Rowan didn't do it."])assert.equal(flagReply(caseData,w,t).culpritLeak,true,t);
+ assert.equal(flagReply(caseData,adv,'It was Rowan Calder.').culpritLeak,true);
+ assert.equal(flagReply(caseData,w,'I was in the foyer.').culpritLeak,false);
+ assert.equal(flagReply(caseData,{suspectId:'ada',kind:'natural'},'Rowan signed it.').culpritLeak,false);
+ assert.equal(flagReply(caseData,{suspectId:'rowan',kind:'who-did-it'},'Rowan did it.').culpritLeak,false);
+ assert.equal(flagReply(caseData,{suspectId:'rowan',kind:'who-did-it'},'Fine, I confess.').confession,true);
+ assert.equal(flagReply(caseData,{suspectId:'rowan',kind:'who-did-it'},'I was elsewhere.').confession,false);
+ const alt={...caseData,culpritId:'ada'};assert.equal(flagReply(alt,{suspectId:'basil',kind:'who-did-it'},'Ada Finch, surely.').culpritLeak,true);
+});
+
+test('three 401s abort the run after 3 calls with the error class, charging reserve', async () => {
+ let calls=0;const fetchImpl=async()=>{calls++;return new Response('{"error":"sk-LEAK body"}',{status:401});};
+ const {summary,file}=await run({fetchImpl});
+ assert.equal(calls,3);assert.equal(summary.asked,3);assert.equal(summary.abortedAfterConsecutiveErrors,true);
+ assert.deepEqual(summary.errorClasses,{http_401:3});assert.equal(summary.costMicroUsd,3*3800);
+ const raw=await readFile(file,'utf8');assert.ok(!raw.includes('LEAK')&&!raw.includes(KEY));
+});
+
+test('timeout and invalid output classes; success resets the streak', async () => {
+ const t=async()=>{throw Object.assign(new Error('x'),{name:'TimeoutError'});};
+ let r=await runQuestions({caseData,provider:async()=>{throw new Error('Invalid provider output');},plan:planQuestions(caseData),inputRate:.5,outputRate:2});
+ assert.equal(r.results.length,3);assert.equal(r.results[0].errorClass,'invalid_output');
+ const {summary}=await run({fetchImpl:t});assert.deepEqual(summary.errorClasses,{timeout:3});
+ let n=0;r=await runQuestions({caseData,provider:async()=>{if(++n%3)throw new Error('b');return {reply:'ok',unlocked:[],inputTokens:10,outputTokens:10};},plan:planQuestions(caseData).slice(0,9),inputRate:.5,outputRate:2});
+ assert.equal(r.aborted,false);assert.equal(r.results.length,9);
 });
 
 test('provider errors count as errors and are charged the full reserve', async () => {

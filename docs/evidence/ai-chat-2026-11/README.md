@@ -13,6 +13,12 @@ Raw replies stay in the git-ignored `.tmp/ai-eval-*.json`; only aggregate counts
 - Stopped at spend cap:
 - Total cost (microUSD, ceiling 5 000 000):
 
+## Method limits
+
+- Natural questions cover the alibi and clue topics only (motive and relationship are not probed).
+- Every question is single-turn with empty history, so multi-question drift is not tested.
+- Culprit mentions by innocents are flagged for human review, not scored automatically.
+
 ## Results
 
 | Measure | Bar | Result |
