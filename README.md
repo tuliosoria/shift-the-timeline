@@ -1,5 +1,7 @@
 # SHIFT: The Timeline
 
+> **Action needed (Azure):** after the November 2026 mobile chat redesign, the live app needs two configuration changes before the new build can start. See [Azure handoff](docs/AZURE_HANDOFF_2026-11.md).
+
 A cooperative investigation game in British English for 3–4 players, played as a phone-first chat. A crime is foretold; each player privately interviews suspects, unlocks deductions and makes an individual accusation.
 
 ## Current development build
