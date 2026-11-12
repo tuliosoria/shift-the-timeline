@@ -1,16 +1,16 @@
 // Public, deterministic routing only. No case facts, answers or solution data belong here.
 export const topicLabels=Object.freeze({
-  alibi:'Where were you at the time?',
-  clue:'What did you notice?',
-  motive:'What was at stake?',
-  relationship:'How did you know the victim?',
+  alibi:'Where were you during the preparations?',
+  clue:'Have you noticed anything unusual?',
+  motive:'Have you had any disagreements recently?',
+  relationship:'Do you know the person at risk?',
 });
 
 // Preserve the server's precedence: alibi, then motive, then relationship, else clue.
 export function inferTopic(question){
   const q=question.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
   if(/\b(?:onde|estava\w*|horarios?|alibi|22h?|ontem|where|when|time|yesterday)\b/.test(q))return 'alibi';
-  if(/\b(?:motivo\w*|dinheiro|segredo\w*|divida\w*|ganha\w*|perde\w*|why|motive|money|secret|debt|gain|lose|profit|stakes?)\b/.test(q))return 'motive';
+  if(/\b(?:motivo\w*|dinheiro|segredo\w*|divida\w*|ganha\w*|perde\w*|disagreements?|why|motive|money|secret|debt|gain|lose|profit|stakes?)\b/.test(q))return 'motive';
   if(/\b(?:vitima\w*|conhec\w*|relacao|relacoes|relacion\w*|victim|know|knew|relationship|related)\b/.test(q))return 'relationship';
   return 'clue';
 }

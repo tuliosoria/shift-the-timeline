@@ -6,7 +6,7 @@ const entries=[
  ['/app.js', 'app.js', 'text/javascript; charset=utf-8'],
  ['/ui-state.js', 'ui-state.js', 'text/javascript; charset=utf-8'],
  ['/question-topics.js', 'question-topics.js', 'text/javascript; charset=utf-8'],
- ...['api','views','backdrop','chat','toast'].map(id=>[`/${id}.js`,`${id}.js`,'text/javascript; charset=utf-8']),
+ ...['api','views','backdrop','chat','toast','case-presentation'].map(id=>[`/${id}.js`,`${id}.js`,'text/javascript; charset=utf-8']),
  ['/manifest.webmanifest','manifest.webmanifest','application/manifest+json'],
  ...[192,512].map(size=>[`/assets/icons/icon-${size}.png`,`assets/icons/icon-${size}.png`,'image/png']),
  ...['train','pocket-watch','corridor'].flatMap(id=>[[`/assets/films/${id}.mp4`,`assets/films/${id}.mp4`,'video/mp4'],[`/assets/films/${id}.webp`,`assets/films/${id}.webp`,'image/webp']]),

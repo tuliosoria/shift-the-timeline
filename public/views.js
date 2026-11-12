@@ -1,6 +1,7 @@
 // Pure views: (state, local) => HTML string. No DOM access, every value escaped.
 // `local` is client-only: {briefingSeen, lastSeenRound, tab, selected, draft, reading}, plus for the
 // landing screen {entry:'create'|'join', cases, invite} and {busy} while a command is in flight.
+import {casePrediction} from './case-presentation.js';
 import {topicLabels} from './question-topics.js';
 
 export const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
@@ -135,13 +136,14 @@ export function renderBriefing(state, local) {
   const r = rounds(state), q = maxQuestions(state), hours = state.config?.hoursPerRound ?? 6;
   return `<section class="screen briefing">
 <p class="eyebrow">A crime foretold</p>
-<blockquote class="prediction">${esc(state.case.prediction)}</blockquote>
-<p class="lead">You investigate crimes that have not happened yet. Find the killer and summon them before ${esc(state.clock?.crimeAt)} tomorrow.</p>
+<blockquote class="prediction">${esc(casePrediction(state.case))}</blockquote>
+<p class="lead">You are the Future Crime Police. The person in the vision is still alive. Work together to find who plans to kill them, then summon that suspect before ${esc(state.clock?.crimeAt)} tomorrow.</p>
 <ol class="rules">
-<li><b>${r * hours} hours</b> · ${r} turns of ${hours} hours.</li>
-<li>Each turn, question one suspect: <b>${q} questions</b> each.</li>
-<li><b>Deductions unlock</b> as you talk. Share them out loud.</li>
-<li>At the end, <b>summon the killer</b>. Your choice is final.</li>
+<li><b>Beat the clock.</b> ${r * hours} story hours, split into ${r} turns. This is not a real-time countdown.</li>
+<li><b>Split up.</b> Each turn, each player interviews one person. Use all ${q} questions to finish your interview. Choose different suspects to cover more ground.</li>
+<li><b>Compare notes.</b> Useful answers unlock deductions in your private notebook. Tell your team what you learn; your notes stay with you between turns.</li>
+<li><b>Move on together.</b> When everyone finishes their interview, the next turn starts automatically.</li>
+<li><b>Change the future.</b> Discuss your evidence, then each summon the suspect you believe is responsible. Everyone must choose correctly for a full team victory.</li>
 </ol>
 <div class="cta"><button type="button" class="btn" data-action="begin">Begin</button></div>
 </section>`;
@@ -220,7 +222,9 @@ export const CHAT_DONE = `<div class="done"><p>That's all your questions for thi
 export function renderChatFooter(state, local) {
   if (chatEnded(state, local)) return CHAT_DONE;
   const {interview, s, pending} = chatParts(state, local), hold = pending || interview.closed || local?.busy;
-  return `<p class="suggestion-hint">Suggestions fill an empty draft. Review, then send.</p><div class="chips" role="group" aria-label="Suggested question drafts">${Object.values(topicLabels).map(label => `<button type="button" class="chip" data-chip="${esc(label)}" ${hold || String(local?.draft ?? '').length ? 'disabled' : ''}>${esc(label)}</button>`).join('')}</div>
+  const victim = String(state.case?.victim ?? '').split(',')[0].trim();
+  const labels = victim ? {...topicLabels, relationship: `Do you know ${victim}?`, motive: `Have you had any disagreements with ${victim} recently?`} : topicLabels;
+  return `<p class="suggestion-hint">Suggestions fill an empty draft. Review, then send.</p><div class="chips" role="group" aria-label="Suggested question drafts">${Object.values(labels).map(label => `<button type="button" class="chip" data-chip="${esc(label)}" ${hold || String(local?.draft ?? '').length ? 'disabled' : ''}>${esc(label)}</button>`).join('')}</div>
 <form id="question-form" class="composer"><label class="visually-hidden" for="question">Your question</label><textarea id="question" name="question" rows="1" maxlength="300" placeholder="Ask ${esc(firstName(s?.name))} anything…" enterkeyhint="send" autocomplete="off" ${interview.closed ? 'readonly' : ''}>${esc(local?.draft)}</textarea><button type="button" class="send" aria-label="Send question" ${hold || !String(local?.draft ?? '').trim() ? 'disabled' : ''}>↑</button></form>`;
 }
 
@@ -366,7 +370,7 @@ export function renderCaseFile(state) {
   const c = state.case;
   return `<section class="screen casefile">
 <h1 class="title">Case file</h1>
-<blockquote class="prediction">${esc(c.prediction)}</blockquote>
+<blockquote class="prediction">${esc(casePrediction(c))}</blockquote>
 <dl class="facts"><dt>Victim</dt><dd>${esc(c.victim)}</dd><dt>Place</dt><dd>${esc(c.place)}</dd><dt>Method</dt><dd>${esc(c.method)}</dd><dt>The crime</dt><dd>${esc(state.clock?.crimeAt)}, tomorrow</dd></dl>
 <h2 class="label">Room</h2>
 <button type="button" class="btn ghost" data-action="switch-room" data-submit>Switch room</button>

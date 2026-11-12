@@ -11,7 +11,7 @@ const assets=await import('../server/public-assets.mjs').catch(e=>{if(e.code==='
 const urls=()=>assets.PUBLIC_ASSETS.map(a=>a.url);
 test('exact public asset manifest covers the client modules, PWA files, artwork and font without exposing arbitrary files',()=>{
  assert.ok(Array.isArray(assets.PUBLIC_ASSETS),'Explicit asset manifest exists');
- assert.equal(assets.PUBLIC_ASSETS.length,36);assert.equal(new Set(urls()).size,36);
+ assert.equal(assets.PUBLIC_ASSETS.length,37);assert.equal(new Set(urls()).size,37);
  for(const path of ['/','/app.js','/api.js','/views.js','/backdrop.js','/chat.js','/toast.js','/ui-state.js','/question-topics.js','/style.css','/manifest.webmanifest','/assets/icons/icon-192.png','/assets/icons/icon-512.png','/assets/portraits/bento.webp','/assets/fonts/Rye-Regular.ttf','/assets/fonts/OFL-Rye.txt'])assert.ok(urls().includes(path),path);
  for(const path of ['/case-films.js','/assets/steps/deduce.webp','/assets/steps/analyse.webp','/assets/steps/interrogate.webp','/private/train-case.mjs','/assets/portraits/unknown.webp','/assets/../private/file','/assets/fonts/secret.key','/server/game.mjs'])assert.equal(assets.publicAsset(path),undefined,path);
  assert.equal(assets.publicAsset('/manifest.webmanifest').type,'application/manifest+json');

@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import {interviewOpening} from '../public/case-presentation.js';
 import {inferTopic} from '../public/question-topics.js';
 import {resolveCanonical,deductionView} from './deductions.mjs';
 export const CONFIG = Object.freeze({minPlayers:3,maxPlayers:4,rounds:4,maxQuestions:3,hoursPerRound:6,roomLifetimeHours:6});
@@ -49,7 +50,7 @@ export class GameService {
         if(!this.canFinalizeAccusations(room,player))fail('Submit your accusation first and wait until every missing voter has been inactive for 120 seconds in this phase.',409);
         room.phase='reveal';break;
       case 'start':host();phase('lobby');if(room.players.length<CONFIG.minPlayers)fail('At least 3 players are required.');room.phase='investigation';room.round=1;break;
-      case 'select':round();suspect(action.suspectId);if(player.interviews.some(i=>i.round===room.round))fail('You have already chosen a person for this round.');player.interviews.push({round:room.round,suspectId:action.suspectId,opening:suspect(action.suspectId).opening,messages:[],closed:false});break;
+      case 'select':round();suspect(action.suspectId);if(player.interviews.some(i=>i.round===room.round))fail('You have already chosen a person for this round.');player.interviews.push({round:room.round,suspectId:action.suspectId,opening:interviewOpening(this.caseData,suspect(action.suspectId)),messages:[],closed:false});break;
       case 'ask':{
         if(Object.keys(action).some(key=>!ASK_FIELDS.has(key)))fail('Unexpected question field.');
         const i=interview();

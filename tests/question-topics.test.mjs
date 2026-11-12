@@ -22,7 +22,7 @@ test('collisions preserve alibi > motive > relationship > clue precedence',()=>{
  assert.equal(inferTopic('What evidence about the victim?'),'relationship');
 });
 test('the four exact trimmed shortcuts retain their explicit UI topics',()=>{
- assert.deepEqual({...topicLabels},{alibi:'Where were you at the time?',clue:'What did you notice?',motive:'What was at stake?',relationship:'How did you know the victim?'});
+ assert.deepEqual({...topicLabels},{alibi:'Where were you during the preparations?',clue:'Have you noticed anything unusual?',motive:'Have you had any disagreements recently?',relationship:'Do you know the person at risk?'});
  for(const [topic,label] of Object.entries(topicLabels)){
   assert.equal(questionTopic(label),topic);assert.equal(questionTopic(` \n ${label} \t`),topic);
  }

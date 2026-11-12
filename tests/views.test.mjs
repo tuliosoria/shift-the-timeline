@@ -179,7 +179,7 @@ test('briefing shows the prediction, the rules and Begin', () => {
   const html = views.renderBriefing(state(), local({briefingSeen:false}));
   assert.match(html, /Iona will die at 20:00 tomorrow\./);
   assert.match(html, /Begin/);
-  assert.match(html, /24 hours/);
+  assert.match(html, /24 story hours/);
 });
 const finished = (over = {}) => state({players:[{id:'p1', name:'Ana', host:true, ready:true}, {id:'p2', name:'Léo', host:false, ready:false}, {id:'p3', name:'Maya Stone', host:false, ready:false}, {id:'p4', name:'Rui', host:false, ready:true}], ...over}, {interviews:[interview({closed:true, messages:[message()]})]});
 test('waiting lists unfinished players by name', () => {

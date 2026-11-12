@@ -93,7 +93,7 @@ test('investigator briefing is labelled as chronology context, never suspect bio
  assert.match(instructions,/Do not adopt the investigators’ arrival, vision, mission, timetable or game rules/);
  assert.match(instructions,/own whereabouts, memories and knowledge must come from your suspect brief and canonical responses/);
  assert.match(instructions,/Use the investigator briefing only to keep chronology and event status consistent/);
- assert.match(instructions,/do not mention the case, forecast, prediction, game mechanics or investigator briefing unless your own brief explicitly says you know about them/);
+ assert.match(instructions,/Apart from the shared Future Crime Police situation above, do not claim knowledge of the vision or its details unless your own brief supplies them/);
  const data=JSON.parse(input);
  assert.equal(data.public.prediction,caseData.prediction);
  assert.equal(data.suspect.brief,caseData.suspects.find(s=>s.id==='ada').brief);
