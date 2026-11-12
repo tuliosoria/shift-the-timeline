@@ -1,15 +1,19 @@
 # Audio controls and assets
 
-Enable sound in the persistent top strip. Sound settings has separate music and
+Sound is ON by default. The bronze vinyl in the persistent top strip spins only
+while playing; reduced-motion users see a static disc. Sound settings has separate music and
 effect volume sliders; zero mutes that channel. Mute sound stops everything at
 once. The two tracks alternate and repeat, independent of screens or turns.
-Settings levels stay on this browser, but every new page load starts silently.
+The ON/OFF preference and volume levels are saved on this browser, including
+after refresh. Normal autoplay is attempted; if blocked, the preference stays ON
+and Sound settings explains that a real interaction with the game starts audio.
 Background tabs pause audio; returning resumes only when sound is still enabled.
 
 Music uses one HTMLAudioElement routed through a Web Audio gain node so volume
 works on mobile Safari as well as desktop. Effects use a second gain and at most
-four short sources. Both channels begin only from an explicit click. A rejected
-playback promise disables sound and leaves the game usable. Missing effects are
+four short sources. Browser autoplay restrictions are respected; a real pointer or keyboard gesture
+retries a blocked start. Mute is available even while waiting. A rejected
+playback promise never changes the saved preference or blocks the game. Missing effects are
 silent; two failed music files stop rather than causing a fetch loop. All game
 information remains visual. Existing background videos have no audio track.
 

@@ -20,9 +20,9 @@ try {
     AudioBufferSourceNode.prototype.start = function (...args) { window.audioEvents.push(['effect']); return start.apply(this, args); };
   });
   await page.goto(server.origin);
-  assert.equal(await page.locator('#sound-toggle').textContent(), 'Enable sound');
-  assert.equal(assets.length, 0, 'no audio bytes before opt-in');
-  await page.click('#sound-toggle');
+  assert.equal(await page.locator('#sound-toggle').getAttribute('aria-pressed'), 'true');
+  // Normal browsers may wait for a gesture, without changing the ON preference.
+  await page.click('h1');
   await page.waitForFunction(() => window.testMusic && !window.testMusic.paused && window.testMusic.readyState >= 2);
   await page.waitForFunction(() => window.testMusic.duration > 100);
   assert.equal(await page.locator('#sound-toggle').getAttribute('aria-pressed'), 'true');
@@ -30,7 +30,13 @@ try {
   await page.evaluate(() => { window.testMusic.currentTime = window.testMusic.duration - .05; });
   await page.waitForFunction(() => window.testMusic.src.endsWith('/investigation.mp3') && !window.testMusic.paused && window.testMusic.readyState >= 2);
   await page.evaluate(() => { window.testMusic.currentTime = window.testMusic.duration - .05; });
-  await page.waitForFunction(() => window.testMusic.src.endsWith('/investigation-noir.mp3') && !window.testMusic.paused);
+  await page.waitForFunction(() => window.testMusic.src.endsWith('/investigation-noir.mp3') && !window.testMusic.paused && window.testMusic.readyState >= 3 && document.querySelector('#sound-toggle').classList.contains('is-playing'));
+  assert.equal(await page.locator('#sound-toggle').evaluate(e => e.classList.contains('is-playing')), true);
+  assert.equal(await page.locator('.sound-disc').evaluate(e => getComputedStyle(e).animationName), 'none');
+  await page.reload();
+  assert.equal(await page.locator('#sound-toggle').getAttribute('aria-pressed'), 'true');
+  await page.click('h1');
+  await page.waitForFunction(() => window.testMusic && !window.testMusic.paused);
   // Keyboard-friendly settings, narrow layout, remembered levels.
   await page.click('#sound-settings'); await page.locator('#music-volume').fill('0'); await page.locator('#effects-volume').fill('45');
   assert.equal(await page.locator('#music-level').textContent(), '0%');
@@ -56,9 +62,42 @@ try {
   const before = await page.evaluate(() => audioEvents.length);
   await page.click('[data-tab=deductions]'); assert.equal(await page.evaluate(() => audioEvents.length), before);
   await page.reload(); await page.waitForSelector('#sound-toggle');
-  assert.equal(await page.locator('#sound-toggle').textContent(), 'Enable sound');
+  assert.equal(await page.locator('#sound-toggle .sound-label').textContent(), 'Enable sound');
   await page.click('#sound-settings'); assert.equal(await page.inputValue('#music-volume'), '0'); assert.equal(await page.inputValue('#effects-volume'), '45');
   await page.screenshot({path: '/tmp/shift-audio-settings-320.png'});
   assert.deepEqual(errors, []);
-  console.log('Browser audio passed: opt-in, both tracks, controls, persistence, send/receive once and mute.');
+  // Deterministic browser-policy rejection: preference must survive, not turn OFF.
+  const blockedContext = await browser.newContext({viewport: {width: 390, height: 800}});
+  const blocked = await blockedContext.newPage();
+  blocked.on('pageerror', e => errors.push(e.message));
+  await blocked.addInitScript(() => {
+    window.gestureSeen = false; window.blockedAttempts = 0;
+    document.addEventListener('pointerdown', e => { if (e.isTrusted) window.gestureSeen = true; }, true);
+    const original = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function (...args) {
+      if (!(this instanceof HTMLAudioElement)) return original.apply(this, args);
+      window.blockedMusic = this;
+      if (!window.gestureSeen) { window.blockedAttempts++; return Promise.reject(new DOMException('Gesture required', 'NotAllowedError')); }
+      return original.apply(this, args);
+    };
+  });
+  await blocked.goto(server.origin);
+  await blocked.waitForFunction(() => window.blockedAttempts > 0 && document.querySelector('#sound-toggle').classList.contains('is-waiting'));
+  assert.equal(await blocked.locator('#sound-toggle').getAttribute('aria-pressed'), 'true');
+  assert.equal(await blocked.locator('.sound-disc').evaluate(e => getComputedStyle(e).animationPlayState), 'paused');
+  await blocked.click('h1');
+  await blocked.waitForFunction(() => !window.blockedMusic.paused && document.querySelector('#sound-toggle').classList.contains('is-playing'));
+  assert.equal(await blocked.locator('.sound-disc').evaluate(e => getComputedStyle(e).animationPlayState), 'running');
+  await blocked.reload();
+  await blocked.waitForFunction(() => window.blockedAttempts > 0 && document.querySelector('#sound-toggle').classList.contains('is-waiting'));
+  assert.equal(await blocked.locator('#sound-toggle').getAttribute('aria-pressed'), 'true');
+  // Explicit mute is reachable even while the browser is waiting.
+  await blocked.click('#sound-toggle');
+  assert.equal(await blocked.locator('#sound-toggle').getAttribute('aria-pressed'), 'false');
+  await blocked.reload(); await blocked.waitForSelector('#sound-toggle');
+  assert.equal(await blocked.locator('#sound-toggle').getAttribute('aria-pressed'), 'false');
+  assert.equal(await blocked.evaluate(() => window.blockedAttempts), 0);
+  await blockedContext.close();
+  assert.deepEqual(errors, []);
+  console.log('Browser audio passed: default on, reload preference, both tracks, controls, persistence, send/receive once and mute.');
 } finally { await browser?.close(); await server.close(); }

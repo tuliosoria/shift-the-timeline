@@ -342,3 +342,12 @@ dialog b { color: var(--ivory); }
   #app:has(#main[data-view="chat"]) #header { display: none; }
 }
 .kb-open #app:has(#main[data-view="chat"]) #header { display: none; }
+
+/* A small brass-labelled record: rotation reflects playback, not preference. */
+#audio-controls #sound-toggle { display: inline-flex; align-items: center; gap: 8px; }
+.sound-disc { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; border-radius: 50%; border: 1px solid #766044; background: repeating-radial-gradient(circle, #111921 0 2px, #283039 3px, #111921 4px); box-shadow: 0 2px 5px #0008, inset 0 0 0 2px #090d12; animation: record-spin 4s linear infinite; animation-play-state: paused; }
+.sound-disc span { width: 11px; height: 11px; border-radius: 50%; background: conic-gradient(#e4c88b, #93703f, #e4c88b); border: 3px solid #bc985c; box-shadow: 0 0 0 1px #090d12; }
+.is-playing .sound-disc { animation-play-state: running; }
+#sound-toggle.is-waiting .sound-disc { border-color: var(--brass); }
+@keyframes record-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sound-disc { animation: none; } }
