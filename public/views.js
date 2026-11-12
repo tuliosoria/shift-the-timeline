@@ -299,7 +299,7 @@ export function renderReveal(state, local) {
 ${r.solution?.motive ? `<h2 class="label">Why</h2><p class="solution">${esc(r.solution.motive)}</p>` : ''}
 ${r.solution?.plan ? `<h2 class="label">How</h2><p class="solution">${esc(r.solution.plan)}</p>` : ''}
 <div class="debrief"><h2 class="label">Your investigation</h2><p>${plural(state.me.interviews.length, 'interview')} · ${plural(state.me.interviews.reduce((n, i) => n + i.messages.length, 0), 'question')} · ${state.me.deductions.length} of ${state.deductionTotal} deductions</p><p class="sub">Compare the truth with what you heard. Your conversations and deductions remain private.</p><button type="button" class="btn ghost" data-tab="deductions">Review your evidence</button></div>
-<div class="cta"><button type="button" class="btn ghost" data-action="reset">New investigation</button></div>
+<div class="cta"><button type="button" class="btn ghost" data-action="new-investigation" data-submit>New investigation</button><p class="hint">Your private drafts are kept. You can return to this room while it remains available.</p></div>
 </section>`;
 }
 
