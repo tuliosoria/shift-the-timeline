@@ -13,7 +13,7 @@
     "check": "node scripts/check.mjs",
     "package": "node scripts/package.mjs",
     "dev:demo": "SHIFT_CASE_FILE=tests/fixtures/case.mjs node server/index.mjs",
-    "test:browser": "node tests/browser-chat.mjs && node tests/browser-recovery.mjs && node tests/browser-public-demo.mjs && node tests/browser-guidance.mjs && node tests/browser-notebook.mjs && node tests/browser-room-switch.mjs && node tests/browser-ai-reading.mjs",
+    "test:browser": "node tests/browser-chat.mjs && node tests/browser-recovery.mjs && node tests/browser-public-demo.mjs && node tests/browser-guidance.mjs && node tests/browser-notebook.mjs && node tests/browser-room-switch.mjs && node tests/browser-ai-reading.mjs && node tests/browser-conversation-memory.mjs",
     "check:case": "node scripts/check-case.mjs",
     "dev:ai": "node server/local-ai-index.mjs",
     "dev:public-demo": "SHIFT_CASE_FILE=examples/public-demo.mjs node server/index.mjs",

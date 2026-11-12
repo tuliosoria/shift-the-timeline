@@ -1,0 +1,31 @@
+# Conversation progression campaign
+
+This campaign builds on main `857e06b3d410a9a7f592c8e324710865098c4d4c` (PR #49). It preserves the phone-first private interviews, existing factual safeguards, medium reasoning, provider transport limits, canonical fallback, and all question/turn rules. Production financial policy is unchanged.
+
+## Behaviour
+
+An admitted AI question snapshots only this player's settled exchanges with the selected suspect in this room. Prior visits now contribute context. The job retains up to eleven whole exchanges, favouring recent exchanges and an early anchor, while measuring the complete stored Item and leaving 1 KiB below its 16,000-byte limit for later job lifecycle fields. It omits whole exchanges that cannot fit; it never invents summaries. Pending answers are excluded. An old answer settling after a new question's admission cannot rewrite that question's immutable context. A later question can remember the newly settled answer.
+
+Already-earned, suspect-scoped deduction IDs remove those cards from the remaining award candidates shown to the model. The complete authored brief and canonical responses remain available. The resolver's full allowed scope and duplicate filtering are unchanged. Every new award still requires all of its facts in the current reply; prior conversation cannot complete a partial clue. This avoids repeatedly encouraging a performance of a card the player already owns.
+
+The prompt asks for a direct answer first, economical follow-up progression and behaviour grounded in the authored persona's priorities and permitted evasions. It distinguishes an acknowledgement, a request to repeat, an unknown fact and a genuine ambiguity. It keeps internal checking language out of spoken dialogue. These are probabilistic instructions, not a guarantee of factual or conversational quality.
+
+## Reproducible paid evaluation
+
+`scripts/evaluate-conversations.mjs` runs each variant through that revision's actual `DurableGame`, `AiJobs`, history admission, worker and deduction settlement. Three local synthetic players establish a legal room; one asks the fixed scripted questions over legal visits. Each arm's own replies become its own history. A fresh room is used for each conversation. No private case, teammate conversation, reviewer rubric or expected answer enters model input.
+
+The public-demo development and held-out plans each contain eight six-question conversations: two three-question visits, with later revisits. The held-out wording remains sealed until the candidate is frozen. Reviewers compare anonymous paired transcripts for directness, unnecessary repetition, contextual follow-ups, authored voice, unknown facts, accusations and injection handling. Factual/provenance/chronology/spoiler/card failures are scored separately. Synthetic transport or browser tests do not constitute naturalness evidence.
+
+Every real request needs a persistent campaign ledger reservation before provider invocation. The ledger is shared across runs and process restarts. Pending or uncertain attempts retain their full reservation; successful verified token receipts settle the exact rounded cost. No automatic paid retries. The runner stops after three consecutive fallbacks. Ledger corruption, missing state, a changed cap/rate, duplicate request ID, overspend or a stale lock fails closed. Never delete or reinitialise the ledger to continue spending.
+
+The approved execution allowance is **$4.50 total**, with **$0.50 outside that ledger reserved for coordinated final verification**. Model `gpt-6-luna`, Standard rates $0.10/input and $0.50/output per million tokens, were checked against [OpenAI's model documentation](https://developers.openai.com/api/docs/models/gpt-6-luna). The unchanged 6,000/1,024-token envelope reserves 1,112 microUSD per request. Counts and calculated usage costs are not provider billing receipts. Every live browser question must also be charged conservatively to the campaign allowance.
+
+Initialise one ledger explicitly using `createLedger` from `scripts/evaluation-ledger.mjs`, an absolute normalised path, cap `4500000`, and rates `{inputRate:0.1, outputRate:0.5}`. Subsequent runs use `openLedger`. Keep the ledger and raw transcripts outside tracked source or under ignored `.tmp/`.
+
+The CLI requires `SHIFT_EVAL_LEDGER`, `SHIFT_EVAL_PLAN`, `SHIFT_EVAL_ROOT`, `SHIFT_EVAL_RUN_ID`, `SHIFT_EVAL_VARIANT`, `SHIFT_EVAL_REVISION`, `SHIFT_EVAL_OUTPUT` and the existing `SHIFT_LOCAL_AI_KEY_FILE`. The credential reader is unchanged: no pasted secrets, credential creation or credential setting changes. `SHIFT_EVAL_ROOT` is the immutable variant checkout; verify its exact commit and clean source before running. The report records hashes of prompt, jobs, history helper, provider, budget and public case. The caller-provided revision label alone is not proof of provenance. Raw output contains public fictional transcripts only and is not printed to stdout.
+
+## Verification record
+
+Implementation and regression checks are in progress. No fresh paid evaluation result or deployment is claimed here until the final verified receipts are recorded.
+
+Remaining limits will include the unavailable private editorial case, no unspoiled human playtest, and statistical uncertainty from a small synthetic assistant-reviewed sample. Prompt instructions cannot guarantee truth, clue completeness or naturalness for arbitrary questions.

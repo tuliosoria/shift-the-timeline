@@ -40,8 +40,10 @@ One provider request contains:
 
 - The interviewed suspect's own private brief and four canonical responses.
 - Public case facts: title, victim, place, method and prediction.
-- Only deductions sourced to that suspect, with their IDs and text.
-- The current player question and up to two earlier resolved exchanges from that same interview.
+- Only deductions sourced to that suspect, with unearned IDs and text listed as award candidates. The player's already-earned IDs are filtered to this suspect's sources; no other player's progress or unrelated card is included. All four canonical responses remain available, even when all cards have been earned.
+- The current player question and up to eleven earlier complete or canonical exchanges with that suspect from the same player and room, across turns. Turn numbers give conversational order, not new story facts.
+
+History is selected when the question is admitted. Pending answers and the new question itself are excluded; a late answer can inform a later question only if it has settled before that later admission. The newest exchanges have priority, with an earliest anchor retained when it fits. The context is an immutable snapshot: later replies do not rewrite an admitted job. Whole exchanges may be omitted to fit the envelope; nothing is truncated mid-exchange or summarised into invented facts.
 
 A culprit's own private brief can contain the hidden truth and instructions about what they admit or conceal. It is sent only when interviewing that suspect. The global solution object, other suspects' private briefs, other players' chats, accusations and session credentials are not added to this context. This is deliberate scoped sharing, not a claim that the provider never receives any spoiler.
 
@@ -51,7 +53,7 @@ The interface explains AI mode and authored fallback before play; there is no pe
 
 ## Output limits and semantic guarantees
 
-The request uses a strict `{reply, unlocked}` JSON schema. Context is capped at 20,000 UTF-8 bytes, transport output at 16,384 bytes, and visible reply text at 1,200 bytes. At most three deduction IDs may be returned. Incomplete, invalid or out-of-envelope responses fall back rather than being presented as successful AI replies.
+The request uses a strict `{reply, unlocked}` JSON schema. Context is capped at 20,000 UTF-8 bytes. Admission additionally measures the complete serialised AI storage Item against its unchanged 16,000-byte cap, leaving 1,024 bytes of lifecycle headroom. History is bounded to fit; if the required brief, facts and current question still cannot fit without history, the question resolves canonically without a provider call. Transport output remains capped at 16,384 bytes and visible reply text at 1,200 bytes. At most three deduction IDs may be returned. Incomplete, invalid or out-of-envelope responses fall back rather than being presented as successful AI replies.
 
 The server filters unlocks to the interviewed suspect's sourced deductions and prevents duplicate awards. It does **not** prove that free-form prose entails every fact on a card. The prompt requires every card fact to be explicit in the current reply, allowing faithful paraphrases but not filling omissions from history or player claims. Schema checks and source filtering are not semantic verification: hallucination, premature unlocks, missed unlocks and prompt injection remain evaluation risks.
 

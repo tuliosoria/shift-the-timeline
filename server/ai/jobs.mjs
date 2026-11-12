@@ -3,6 +3,7 @@ import {reserveCost,PROPOSED_LIMITS,validateSpendPolicy} from './budget.mjs';
 import {ConflictError} from '../storage/memory.mjs';
 import {aiPut} from '../storage/ai-codec.mjs';
 import {buildChatContext} from './chat-context.mjs';
+import {collectConversationHistory,fitConversationHistory} from './conversation-history.mjs';
 import {resolveCanonical,resolveWithAi} from '../deductions.mjs';
 const DAY=86400000,FINAL=new Set(['complete','fallback']);
 const write=(key,before,patch)=>({key,expectedVersion:before?.version??null,value:{...before,...patch,version:(before?.version??0)+1}});
@@ -30,17 +31,28 @@ export class AiJobs {
  // Returns the writes that admit an AI reply, or [] when the question must be resolved canonically.
  async prepareQuestion({room,player,interview,message,receiptKey,caseData}){
   if(!this.policy)throw new Error('Maintenance repository cannot admit questions');
-  const scope=scopeFor(caseData,interview.suspectId),history=interview.messages.filter(m=>m!==message&&m.status!=='pending').slice(-2);
-  let context;try{context={...buildChatContext({caseData,suspectId:interview.suspectId,history,question:message.question}),allowedIds:scope.deductions.map(d=>d.id)};}catch{return [];}
+  const scope=scopeFor(caseData,interview.suspectId),allowedIds=scope.deductions.map(d=>d.id);
   const now=this.now(),date=new Date(now),day=date.toISOString().slice(0,10),month=day.slice(0,7);
   const scopes=[{key:`AIBUDGET#ROOM#${room.code}`,max:this.policy.roomMicroUsd,expiresAt:room.createdAt+8*DAY},{key:`AIBUDGET#DAY#${day}`,max:this.policy.dayMicroUsd,expiresAt:Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()+8)},{key:`AIBUDGET#MONTH#${month}`,max:this.policy.monthMicroUsd,expiresAt:Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,8)}];
+  const id=createHash('sha256').update(`ai:${receiptKey}`).digest('hex'),deadline=now+30000,expiresAt=room.createdAt+DAY;
+  const job={kind:'job',id,code:room.code,playerId:player.id,round:interview.round,messageId:message.id,suspectId:interview.suspectId,caseVersion:room.caseVersion,scope,model:this.policy.model,rates:{inputRate:this.policy.inputRate,outputRate:this.policy.outputRate},status:'pending',createdAt:now,deadline,expiresAt,dueAt:deadline,reservedMicroUsd:this.reserve,budgetKeys:scopes.map(s=>s.key)};
+  let jobWrite;
+  try{
+   const history=collectConversationHistory({room,player,interview,message});
+   const earnedIds=(player.deductions??[]).map(d=>d.id).filter(id=>allowedIds.includes(id));
+   jobWrite=fitConversationHistory(history,history=>{
+    const context={...buildChatContext({caseData,suspectId:interview.suspectId,history,question:message.question,currentRound:interview.round,earnedIds}),allowedIds};
+    const candidate=write(jobKey(id),null,{...job,context});
+    // Measure the actual Item, including indexes, duplicated keys and escaped
+    // nested JSON. Leave 1 KiB for lease/fence/start/settlement/recovery fields
+    // and version growth; the storage adapter's 16,000-byte cap stays unchanged.
+    const {Item}=aiPut('validation',candidate).Put;
+    if(Buffer.byteLength(JSON.stringify(Item))>16000-1024)throw new Error('AI job envelope too large');
+    return candidate;
+   });
+  }catch{return [];}
   let balances,guards;try{[balances,guards]=await Promise.all([Promise.all(scopes.map(s=>this.store.getAi(s.key))),Promise.all(scopes.map(s=>this.store.getAi(guardKey(s.key))))]);for(let i=0;i<scopes.length;i++){if(!!balances[i]!==!!guards[i])throw new Error('AI budget initialization mismatch');if(balances[i]){validBudget(balances[i]);validGuard(guards[i],scopes[i].key);}}}catch{return [];}
   if(balances.some((b,i)=>!Number.isSafeInteger((b?.usedMicroUsd??0)+this.reserve)||(this.policy.uncapped!==true&&(b?.usedMicroUsd??0)+this.reserve>scopes[i].max)))return [];
-  const id=createHash('sha256').update(`ai:${receiptKey}`).digest('hex'),deadline=now+30000,expiresAt=room.createdAt+DAY;
-  const job={kind:'job',id,code:room.code,playerId:player.id,round:interview.round,messageId:message.id,suspectId:interview.suspectId,caseVersion:room.caseVersion,context,scope,model:this.policy.model,rates:{inputRate:this.policy.inputRate,outputRate:this.policy.outputRate},status:'pending',createdAt:now,deadline,expiresAt,dueAt:deadline,reservedMicroUsd:this.reserve,budgetKeys:scopes.map(s=>s.key)};
-  const jobWrite=write(jobKey(id),null,job);
-  // Durable stores cap one AI record; a context too large to store is resolved canonically instead of failing the question.
-  try{aiPut('validation',jobWrite);}catch{return [];}
   return [...scopes.filter((s,i)=>!guards[i]).map(s=>write(guardKey(s.key),null,{kind:'budget_guard',budgetKey:s.key,expiresAt:s.expiresAt+DAY})),...scopes.map((s,i)=>write(s.key,balances[i],{kind:'budget',usedMicroUsd:(balances[i]?.usedMicroUsd??0)+this.reserve,expiresAt:s.expiresAt})),jobWrite,write(`AIOUTBOX#${id}`,null,{kind:'outbox',jobId:id,status:'pending',deadline,expiresAt,dueAt:now})];
  }
  async dispatch(id,send){
