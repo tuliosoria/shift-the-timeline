@@ -81,7 +81,7 @@ test('consent field no longer exists',async()=>{
  assert.equal(h.store.ai.size,0);
 });
 
-test('chat context that is too large for the job record resolves canonically at ask time',async()=>{
+test('chat context above the provider envelope resolves canonically at ask time',async()=>{
  for(const size of [15500,21000]){
   const caseData={...TRAIN_CASE,suspects:TRAIN_CASE.suspects.map(s=>s.id==='suspect-1'?{...s,brief:'x'.repeat(size)}:s)};
   const h=await harness({},{caseData});const message=(await h.ask('session-A',id(),ALIBI)).me.interviews[0].messages[0];

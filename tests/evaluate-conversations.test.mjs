@@ -6,27 +6,29 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
-import {loadRuntime, runConversationEvaluation, validateConversationPlan} from '../scripts/evaluate-conversations.mjs';
+import {EVALUATION_RESERVE_MICROUSD, loadRuntime, runConversationEvaluation, validateConversationPlan} from '../scripts/evaluate-conversations.mjs';
 import {createLedger, openLedger} from '../scripts/evaluation-ledger.mjs';
 
 const runtime = await loadRuntime(fileURLToPath(new URL('..', import.meta.url)));
 const rates = {inputRate: 0.10, outputRate: 0.50};
-const reservation = runtime.reserveCost({...runtime.PROPOSED_LIMITS, ...rates});
+const reservation = Math.max(EVALUATION_RESERVE_MICROUSD, runtime.reserveCost({...runtime.PROPOSED_LIMITS, ...rates}));
 const plan = (visits = [[1, ['Where were you today?']], [2, ['What did you mean by the foyer?']]]) => ({conversations: [{
   id: 'ada-visit', suspectId: 'ada', visits: visits.map(([round, questions]) => ({round, questions: questions.map((question, index) => ({id: `r${round}q${index + 1}`, question}))})),
 }]});
 const answer = context => ({reply: JSON.parse(context.input).suspect.responses.alibi, unlocked: [], inputTokens: 100, outputTokens: 20});
 const provider = action => Object.assign(action ?? (async context => answer(context)), {model: 'synthetic-evaluation-model'});
-async function fixture(t, capMicroUsd = 10_000) {
+async function fixture(t, capMicroUsd = 25_000, ledgerRates = rates) {
   const directory = await mkdtemp(path.join(tmpdir(), 'shift-conversation-evaluation-'));
   t.after(() => rm(directory, {recursive: true, force: true}));
   const filename = path.join(directory, 'campaign.json');
-  return {filename, options: {capMicroUsd, rates}, ledger: await createLedger(filename, {capMicroUsd, rates})};
+  return {filename, options: {capMicroUsd, rates: ledgerRates}, ledger: await createLedger(filename, {capMicroUsd, rates: ledgerRates})};
 }
 const run = (ledger, extra = {}) => runConversationEvaluation({runtime, plan: plan(), provider: provider(), ledger,
   runId: 'campaign-one', variant: 'candidate', sourceRevision: 'synthetic-revision', rates, ...extra});
 
 test('multi-visit evaluation reserves before each call and uses real private conversation context', async t => {
+  assert.equal(EVALUATION_RESERVE_MICROUSD, 5_000);
+  assert.ok(reservation > runtime.reserveCost({...runtime.PROPOSED_LIMITS, ...rates}), 'evaluation headroom does not alter the production request reserve');
   const {ledger} = await fixture(t), contexts = [], snapshots = [];
   const result = await run(ledger, {provider: provider(async (context, options) => {
     const snapshot = await ledger.snapshot(), pending = snapshot.entries.at(-1);
@@ -145,4 +147,22 @@ test('ordinary command invocation requires explicit evaluation configuration', a
   assert.equal(result.code, 1);
   assert.equal(result.stdout, '');
   assert.match(result.stderr, /Conversation evaluation failed; inspect the ledger before any retry/);
+});
+
+
+test('campaign headroom never reduces a larger policy reservation', async t => {
+  const higherRates = {inputRate: 0.68, outputRate: 1};
+  const expected = runtime.reserveCost({...runtime.PROPOSED_LIMITS, ...higherRates});
+  assert.ok(expected > EVALUATION_RESERVE_MICROUSD);
+  const {ledger} = await fixture(t, 25_000, higherRates);
+  let calls = 0;
+  const result = await run(ledger, {rates: higherRates, plan: plan([[1, ['Where were you today?']]]),
+    provider: provider(async context => {
+      calls++;
+      assert.equal((await ledger.snapshot()).entries[0].reservedMicroUsd, expected);
+      return answer(context);
+    })});
+  assert.equal(calls, 1);
+  assert.equal(result.results[0].status, 'complete');
+  assert.equal((await ledger.snapshot()).actualMicroUsd, 88);
 });

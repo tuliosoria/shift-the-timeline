@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {reserveCost,PROPOSED_LIMITS,validateSpendPolicy} from './budget.mjs';
 import {ConflictError} from '../storage/memory.mjs';
-import {aiPut} from '../storage/ai-codec.mjs';
+import {aiPut,MAX_AI_ITEM_BYTES} from '../storage/ai-codec.mjs';
 import {buildChatContext} from './chat-context.mjs';
 import {collectConversationHistory,fitConversationHistory} from './conversation-history.mjs';
 import {resolveCanonical,resolveWithAi} from '../deductions.mjs';
@@ -45,9 +45,10 @@ export class AiJobs {
     const candidate=write(jobKey(id),null,{...job,context});
     // Measure the actual Item, including indexes, duplicated keys and escaped
     // nested JSON. Leave 1 KiB for lease/fence/start/settlement/recovery fields
-    // and version growth; the storage adapter's 16,000-byte cap stays unchanged.
+    // and version growth. The provider's separate context limit is enforced by
+    // buildChatContext; JSON escaping must not impose a smaller storage budget.
     const {Item}=aiPut('validation',candidate).Put;
-    if(Buffer.byteLength(JSON.stringify(Item))>16000-1024)throw new Error('AI job envelope too large');
+    if(Buffer.byteLength(JSON.stringify(Item))>MAX_AI_ITEM_BYTES-1024)throw new Error('AI job envelope too large');
     return candidate;
    });
   }catch{return [];}

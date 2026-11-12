@@ -7,6 +7,11 @@ import {readFile, writeFile, mkdir} from 'node:fs/promises';
 import {openLedger} from './evaluation-ledger.mjs';
 import {createLocalSecretReader} from '../server/ai/local-secret.mjs';
 
+// Campaign-only reserve: a 20,000-byte context ceiling does not prove a 6,000-token ceiling.
+// This extra headroom covers uncertain evaluation calls without changing production policy.
+// Verified successes settle to actual usage; unknown failures retain the entire reservation.
+export const EVALUATION_RESERVE_MICROUSD = 5_000;
+
 export async function loadRuntime(root) {
   const load = file => import(pathToFileURL(path.join(root, file)).href);
   const [{DurableGame}, {MemoryStore}, {AiJobs}, {runJob}, {createProvider}, budget, demo] = await Promise.all([
@@ -45,7 +50,7 @@ export function validateConversationPlan(plan, caseData) {
 export async function runConversationEvaluation({runtime, plan, provider, ledger, runId, variant, sourceRevision, rates, onResult = async () => {}}) {
   validateConversationPlan(plan, runtime.caseData);
   const policy = {...runtime.PROPOSED_LIMITS, ...rates, model: provider.model};
-  const reservation = runtime.reserveCost(policy), results = [];
+  const reservation = Math.max(EVALUATION_RESERVE_MICROUSD, runtime.reserveCost(policy)), results = [];
   let failures = 0;
   for (const conversation of plan.conversations) {
     const store = new runtime.MemoryStore();

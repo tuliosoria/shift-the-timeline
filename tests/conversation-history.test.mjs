@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {collectConversationHistory,fitConversationHistory,MAX_HISTORY_EXCHANGES} from '../server/ai/conversation-history.mjs';
-import {aiPut} from '../server/storage/ai-codec.mjs';
+import {aiPut,MAX_AI_ITEM_BYTES} from '../server/storage/ai-codec.mjs';
+import {buildChatContext} from '../server/ai/chat-context.mjs';
 import {runJob} from '../server/ai/worker.mjs';
 import {harness,id,fakeProvider,policy} from './helpers/ai.mjs';
 import {AiJobs} from '../server/ai/jobs.mjs';
@@ -27,7 +28,7 @@ function validateStoredItems(h) {
     for (const write of writes ?? []) {
       const {Item} = aiPut('synthetic-test',write).Put;
       const size = Buffer.byteLength(JSON.stringify(Item));
-      assert.ok(size<=16000);
+      assert.ok(size<=MAX_AI_ITEM_BYTES);
       if (write.value.kind==='job') measured.push({status:write.value.status,size});
     }
   };
@@ -111,6 +112,7 @@ test('a late earlier-turn reply cannot rewrite a queued revisit or its idempoten
 
 for (const mode of ['latin','multibyte','escaped']) test(`full-length ${mode} conversations stay within stored Item limits through every job phase`,async()=>{
   const h = await harness(), measured = validateStoredItems(h), originals = [];
+  let lastAdmission;
   for (let round=1;round<=4;round++) {
     if(round>1)await advance(h,round-1);
     for (let n=0;n<3;n++) {
@@ -120,25 +122,32 @@ for (const mode of ['latin','multibyte','escaped']) test(`full-length ${mode} co
       assert.equal(question.length,300);assert.equal(Buffer.byteLength(reply),1200);
       const state = await h.ask('session-A',id(),question,round), job = pending(h);
       assert.equal(state.me.interviews.find(i=>i.round===round).messages.at(-1).status,'pending','history trimming admits AI instead of dropping the whole question');
+      lastAdmission=structuredClone(job);
       const input = JSON.parse(job.context.input);
+      assert.ok(Buffer.byteLength(job.context.instructions+job.context.input)<=20000,'provider context cap stays separate');
       assert.equal(input.question,question);assert.equal(input.suspect.brief,TRAIN_CASE.suspects[1].brief);
       assert.deepEqual(input.suspect.responses,TRAIN_CASE.suspects[1].responses);
       assert.ok(input.history.length<=MAX_HISTORY_EXCHANGES);
       for (const exchange of input.history)assert.ok(originals.some(x=>x.round===exchange.round&&x.question===exchange.question&&x.reply===exchange.reply),'exchanges are copied whole');
       if(originals.length&&input.history.length)assert.deepEqual(input.history.at(-1),originals.at(-1),'the most recent answer remains available');
-      if(originals.length&&!input.history.length){
-        const {Item}=aiPut('synthetic-test',{key:`AIJOB#${job.id}`,expectedVersion:null,value:job}).Put;
-        Item.data={...Item.data,context:{...job.context,input:JSON.stringify({...input,history:[originals.at(-1)]})}};
-        assert.ok(Buffer.byteLength(JSON.stringify(Item))>16000-1024,'a missing exchange could not fit whole in the admission envelope');
-      }
       assert.equal((await run(h,job,reply)).status,'complete');
       originals.push({round,question,reply});
     }
   }
   assert.equal(h.jobList().length,12);
-  assert.ok(JSON.parse(h.jobList().at(-1).context.input).history.length<11,'fixture actually exercises byte trimming');
+  const retained=JSON.parse(lastAdmission.context.input).history;
+  assert.ok(retained.length<11,'fixture exercises the remaining provider byte limit');
+  const previous=originals.slice(0,-1),current=originals.at(-1);
+  const oldFit=fitConversationHistory(previous,history=>{
+    const context={...buildChatContext({caseData:TRAIN_CASE,suspectId:'suspect-1',history,question:current.question,currentRound:4}),allowedIds:lastAdmission.context.allowedIds};
+    const write={key:`AIJOB#${lastAdmission.id}`,expectedVersion:null,value:{...lastAdmission,context}};
+    if(Buffer.byteLength(JSON.stringify(aiPut('synthetic-test',write).Put.Item))>16000-1024)throw Error('retired storage cap');
+    return history;
+  });
+  assert.ok(retained.length>oldFit.length,'larger storage envelope retains more late-visit context than the retired 16,000-byte cap');
+  assert.ok(measured.some(x=>x.size>16000),'fixture crosses the retired storage limit');
   for (const phase of ['pending','leased','provider_started','complete'])assert.ok(measured.some(x=>x.status===phase),phase);
-  assert.ok(measured.filter(x=>x.status==='pending').every(x=>x.size<=16000-1024));
+  assert.ok(measured.filter(x=>x.status==='pending').every(x=>x.size<=MAX_AI_ITEM_BYTES-1024));
   const latest = h.jobList().at(-1);
   const grown = {...latest,version:Number.MAX_SAFE_INTEGER,leaseUntil:Number.MAX_SAFE_INTEGER,providerStartedAt:Number.MAX_SAFE_INTEGER,
     lastRecoveryFailureAt:Number.MAX_SAFE_INTEGER,finishedAt:Number.MAX_SAFE_INTEGER,settledMicroUsd:Number.MAX_SAFE_INTEGER,reason:'budget_unavailable',costUncertain:true};
@@ -162,6 +171,37 @@ test('every public-demo suspect admits an ordinary question with and without an 
     assert.equal(input.history.length,prior?1:0,`${suspect.id} retains ordinary authored history`);
     assert.equal(input.question,message.question);
     assert.equal(input.suspect.brief,suspect.brief);
-    assert.ok(Buffer.byteLength(JSON.stringify(aiPut('synthetic-test',job).Put.Item))<=16000-1024);
+    assert.ok(Buffer.byteLength(JSON.stringify(aiPut('synthetic-test',job).Put.Item))<=MAX_AI_ITEM_BYTES-1024);
   }
+});
+
+test('ordinary four-turn visits retain all eleven settled exchanges',async()=>{
+  const h=await harness(),history=[];
+  for(let round=1;round<=4;round++){
+    if(round>1)await advance(h,round-1);
+    for(let question=0;question<3;question++){
+      const text=`Question ${round}.${question}?`,reply=`Answer ${round}.${question}.`;
+      await h.ask('session-A',id(),text,round);const job=pending(h);
+      assert.deepEqual(JSON.parse(job.context.input).history,history);
+      await run(h,job,reply);history.push({question:text,reply,round});
+    }
+  }
+  assert.equal(JSON.parse(h.jobList().at(-1).context.input).history.length,11);
+});
+
+test('pre-upgrade pending job context without turn metadata still claims and settles',async()=>{
+  const h=await harness();await h.ask('session-A',id(),'An older pending question');const job=pending(h);
+  const input=JSON.parse(job.context.input);delete input.conversation;
+  input.history=[{question:'An old exchange?',reply:'Its settled answer.'}];
+  const context={...job.context,input:JSON.stringify(input)};
+  h.store.ai.get(`AIJOB#${job.id}`).context=context;
+  assert.ok(Buffer.byteLength(JSON.stringify(aiPut('synthetic-test',{key:`AIJOB#${job.id}`,expectedVersion:null,value:{...job,context}}).Put.Item))<16000);
+  let captured;
+  const provider=Object.assign(async value=>{captured=structuredClone(value);return {reply:'The older job still resolves.',unlocked:[],inputTokens:10,outputTokens:5};},{model:job.model});
+  assert.equal((await runJob({enabled:true,repository:h.jobs,jobId:job.id,provider,now:h.now})).status,'complete');
+  assert.deepEqual(captured,context);
+  assert.deepEqual((await h.store.getAi(`AIJOB#${job.id}`)).context,context);
+  const owner=await h.game.view(h.code,'session-A'),peer=await h.game.view(h.code,'session-B');
+  assert.equal(owner.me.interviews[0].messages[0].reply,'The older job still resolves.');
+  assert.ok(!JSON.stringify(peer).includes('The older job still resolves.'));
 });
