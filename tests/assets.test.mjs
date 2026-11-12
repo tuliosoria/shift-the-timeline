@@ -11,7 +11,7 @@ const assets=await import('../server/public-assets.mjs').catch(e=>{if(e.code==='
 const urls=()=>assets.PUBLIC_ASSETS.map(a=>a.url);
 test('exact public asset manifest covers the client modules, PWA files, artwork and font without exposing arbitrary files',()=>{
  assert.ok(Array.isArray(assets.PUBLIC_ASSETS),'Explicit asset manifest exists');
- assert.equal(assets.PUBLIC_ASSETS.length,37);assert.equal(new Set(urls()).size,37);
+ assert.equal(assets.PUBLIC_ASSETS.length,44);assert.equal(new Set(urls()).size,44);
  for(const path of ['/','/app.js','/api.js','/views.js','/backdrop.js','/chat.js','/toast.js','/ui-state.js','/question-topics.js','/style.css','/manifest.webmanifest','/assets/icons/icon-192.png','/assets/icons/icon-512.png','/assets/portraits/bento.webp','/assets/fonts/Rye-Regular.ttf','/assets/fonts/OFL-Rye.txt'])assert.ok(urls().includes(path),path);
  for(const path of ['/case-films.js','/assets/steps/deduce.webp','/assets/steps/analyse.webp','/assets/steps/interrogate.webp','/private/train-case.mjs','/assets/portraits/unknown.webp','/assets/../private/file','/assets/fonts/secret.key','/server/game.mjs'])assert.equal(assets.publicAsset(path),undefined,path);
  assert.equal(assets.publicAsset('/manifest.webmanifest').type,'application/manifest+json');
@@ -59,4 +59,13 @@ function serve(path){return new Promise(resolve=>{const server=createServer({ori
 test('HTTP serves the real modules, manifest and artwork with correct MIME and rejects non-allowlisted paths',async()=>{
  for(const [path,type]of [['/views.js','text/javascript'],['/api.js','text/javascript'],['/backdrop.js','text/javascript'],['/ui-state.js','text/javascript'],['/manifest.webmanifest','application/manifest+json'],['/assets/icons/icon-192.png','image/png'],['/assets/portraits/bento.webp','image/webp'],['/assets/fonts/Rye-Regular.ttf','font/ttf']]){const r=await serve(path);assert.equal(r.status,200,path);assert.ok(r.headers['Content-Type'].startsWith(type),path);assert.ok(r.body.length>0);}
  for(const path of ['/assets/portraits/not-real.webp','/private/train-case.mjs','/case-films.js','/assets/steps/deduce.webp'])assert.equal((await serve(path)).status,404,path);
+});
+
+test('audio routes ship bounded MP3 music, WAV effects and the CC0 licence',async()=>{
+ let total=0;
+ for(const id of ['investigation-noir','investigation']){const a=assets.publicAsset(`/assets/audio/${id}.mp3`);assert.equal(a?.type,'audio/mpeg');const bytes=await assets.readPublicAsset(a.file);assert.ok(bytes.length>100000);total+=bytes.length;}
+ assert.ok(total<6*1024*1024);
+ for(const id of ['click','send','receive']){const a=assets.publicAsset(`/assets/audio/${id}.wav`);assert.equal(a?.type,'audio/wav');const bytes=await assets.readPublicAsset(a.file);assert.equal(bytes.subarray(0,4).toString(),'RIFF');assert.equal(bytes.subarray(8,12).toString(),'WAVE');assert.ok(bytes.length<100000);}
+ assert.match((await assets.readPublicAsset('assets/audio/Kenney-CC0.txt')).toString(),/Creative Commons Zero/);
+ assert.equal(assets.publicAsset('/assets/audio/original.mp3'),undefined);
 });

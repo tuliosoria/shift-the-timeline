@@ -4,9 +4,11 @@ import {createUiState, uiContext} from './ui-state.js';
 import * as views from './views.js';
 import {setScene} from './backdrop.js';
 import {mountChat} from './chat.js';
+import {mountAudio, hasNewReply} from './audio.js';
 import {showUnlocked, freshDeductions} from './toast.js';
 
 const $ = s => document.querySelector(s);
+const audio = mountAudio();
 const SESSION = 'shift-session', PENDING = 'shift-pending', RESUME = 'shift-resume';
 const ROOM_EXPIRED = 'This room has expired. Open or join another case.';
 const store = {
@@ -58,6 +60,7 @@ function chatFor(main) {
     if (persistent && !ui.persistent) notice('Draft storage is unavailable. Keep this tab open; unsent text cannot survive a reload.', true);
   },
     onSend: question => {
+      audio.effect('send');
       const interview = views.currentInterview(state, local);
       // `count` (messages before this one) lets the chat tell a held retry from a delivered repeat.
       return act('ask', {question, round: interview?.round ?? state.round}, {count: interview?.messages.length ?? 0});
@@ -131,6 +134,7 @@ function applyState(next) {
   const restored = !state;
   // Toasts only for deductions unlocked while watching: never on first load or reload.
   const fresh = freshDeductions(state, next);
+  if (hasNewReply(state, next)) audio.effect('receive');
   const reviewing = local.tab === 'deductions' && state?.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview);
   const pendingReplies = new Set(reviewing ? reviewing.messages.filter(m => m.status === 'pending').map(m => m.id) : []);
   const arrived = next.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview)?.messages.filter(m => pendingReplies.has(m.id) && m.status !== 'pending') ?? [];
