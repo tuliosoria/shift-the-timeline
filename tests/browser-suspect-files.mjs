@@ -42,10 +42,18 @@ try {
     await page.setViewportSize({width, height: 600});
     const asks = () => writes.filter(w => w.type === 'ask').length;
     const beforeChip = asks();
+    assert.deepEqual(await page.locator('.chip').allTextContents(), [
+      'Where were you during the preparations?',
+      'Have you noticed anything unusual?',
+      'Have you had any disagreements with Fictional character recently?',
+      'Do you know Fictional character?',
+    ]);
+    const suggestedDraft = await page.locator('.chip').first().textContent();
     await page.locator('.chip').first().click();
-    assert.equal(asks(), beforeChip); assert.ok(await page.inputValue('#question'));
+    assert.equal(asks(), beforeChip); assert.equal(await page.inputValue('#question'), suggestedDraft);
     await page.reload(); await page.locator('#question').waitFor();
-    assert.equal(await page.inputValue('#question'), 'Where were you during the preparations?');
+    assert.equal(await page.inputValue('#question'), suggestedDraft);
+    assert.equal(asks(), beforeChip, 'restoring a suggestion must not send it');
     assert.ok(await page.locator('.chip').first().isDisabled());
     await page.fill('#question', 'My own question'); assert.ok(await page.locator('.chip').first().isDisabled());
     await ask('Where is the first private clue? ' + 'A long synthetic detail. '.repeat(9), 1);
