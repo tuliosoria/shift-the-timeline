@@ -48,7 +48,7 @@ button:disabled { cursor: default; }
 @media (min-width: 640px) {
   #app { border-left: 1px solid var(--line-soft); border-right: 1px solid var(--line-soft); background: rgba(8, 14, 22, .35); box-shadow: 0 0 80px rgba(0, 0, 0, .5); }
 }
-#header { flex: none; padding: calc(var(--safe-top) + 14px) var(--gutter) 0; }
+#header { flex: none; padding: 8px var(--gutter) 0; }
 #header[hidden] { display: none; }
 #main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; outline: none; }
 #main[data-view="chat"] { display: flex; flex-direction: column; overflow: hidden; }
@@ -326,3 +326,19 @@ dialog b { color: var(--ivory); }
 .evidence-results li { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(0, 0, 0, .4); overflow-wrap: anywhere; }
 .evidence-results p { margin: 0 0 10px; white-space: pre-wrap; }
 .evidence-results .label { margin-top: 0; }
+
+/* Persistent, non-floating audio controls never cover the composer or notebook. */
+#audio-controls { flex: none; display: flex; justify-content: flex-end; gap: 6px; padding: calc(var(--safe-top) + 4px) 12px 0; }
+#audio-controls button { min-height: 44px; padding: 6px 10px; border: 1px solid var(--line-soft); border-radius: 10px; color: var(--muted); background: rgba(8,14,22,.72); font-size: 12px; }
+#audio-controls #sound-toggle[aria-pressed="true"] { color: var(--brass); border-color: var(--line); }
+#sound-dialog { width: min(360px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; }
+#sound-dialog label { display: flex; justify-content: space-between; margin-top: 18px; }
+#sound-dialog input[type="range"] { width: 100%; min-height: 44px; accent-color: var(--brass); }
+#sound-dialog .btn { margin-top: 20px; }
+#sound-track { color: var(--brass); }
+/* On short chat viewports keep the suspect, composer and sound controls usable.
+   The case clock remains available on Investigate's other screens and Case file. */
+@media (max-height: 450px) {
+  #app:has(#main[data-view="chat"]) #header { display: none; }
+}
+.kb-open #app:has(#main[data-view="chat"]) #header { display: none; }

@@ -22,6 +22,10 @@
 <div class="veil" aria-hidden="true"></div>
 <a href="#main" class="skip">Skip to the investigation</a>
 <div id="app">
+<div id="audio-controls" role="group" aria-label="Game sound">
+<button type="button" id="sound-toggle" aria-pressed="false">Enable sound</button>
+<button type="button" id="sound-settings" aria-haspopup="dialog" aria-controls="sound-dialog" aria-label="Sound settings">Sound settings</button>
+</div>
 <header id="header"></header>
 <main id="main" tabindex="-1"><p class="loading">Connecting to the Bureau…</p></main>
 <div id="tabbar"></div>
@@ -30,5 +34,15 @@
 <div id="toasts" role="status" aria-live="polite"></div>
 <div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
 <dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><div id="confirm-body"></div><div class="dialog-actions"><button type="button" id="confirm-cancel" class="btn ghost">Cancel</button><button type="button" id="confirm-accept" class="btn" data-submit>Confirm</button></div></dialog>
+<dialog id="sound-dialog" aria-labelledby="sound-title">
+<h2 id="sound-title">Sound</h2><p id="sound-track" role="status">Sound is off</p>
+<p class="sub">Two investigation tracks play in a loop. Sound pauses when you leave this tab.</p>
+<label for="music-volume">Music <output id="music-level" for="music-volume">20%</output></label>
+<input type="range" id="music-volume" min="0" max="100" step="5" value="20">
+<label for="effects-volume">Effects <output id="effects-level" for="effects-volume">35%</output></label>
+<input type="range" id="effects-volume" min="0" max="100" step="5" value="35">
+<p class="hint">All clues and messages remain visible with sound off.</p>
+<button type="button" id="sound-close" class="btn ghost">Done</button>
+</dialog>
 </body>
 </html>

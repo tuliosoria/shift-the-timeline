@@ -37,3 +37,28 @@ The backend uses AWS SDK v3; esbuild is the existing build tool. Versions are pi
 The full editorial case, including its English localisation and solution, stays private and outside this repository and browser bundle. Public tests and screenshots use synthetic content.
 
 Before competition submission, review the organiser's current AI disclosure requirements and record all contributions and materials actually distributed. This file does not assert compliance with rules that have not been checked.
+
+## Music and interface audio
+
+Tulio supplied two investigation music files for this game on 12 November 2026:
+“Trilha Steampunk de Investigação Noir” and “Trilha Steampunk de Investigação”.
+Web copies are 128 kb/s MP3, loudness-normalised to -20 LUFS with short edge fades,
+and stripped of embedded metadata. They form a repeating two-track playlist.
+Original authorship/generation details were not supplied; this notice does **not**
+relicense the music as CC0 or imply independent redistribution permission.
+
+The three interface effects are Kenney Vleugels' **UI Audio / UI SFX Set**, CC0 1.0:
+- `click.wav`: original `click1.wav` (button click)
+- `send.wav`: original `switch15.wav` (message submission)
+- `receive.wav`: original `switch3.wav` (new resolved reply)
+
+Verified primary licence page: https://kenney.nl/assets/ui-audio
+CC0: https://creativecommons.org/publicdomain/zero/1.0/
+Bytes sourced from the public Calinou packaging of Kenney's pack (Ogg-to-WAV
+conversion), commit `8c3d81b9159d058c444f89d12d518276b0b09345`:
+https://github.com/Calinou/kenney-ui-audio
+The exact licence is bundled at `public/assets/audio/Kenney-CC0.txt`.
+
+Audio is self-hosted, optional and starts only after Enable sound. Music and
+sound-effect levels are separate; returning after a reload requires opt-in again.
+No audio API, analytics or external audio request is made while playing.
