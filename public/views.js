@@ -316,8 +316,11 @@ export function renderDeductions(state, local = {}) {
   const notebook = local.notebook ?? {}, selected = state.me.interviews.find(i => chatKey(i) === notebook.interview);
   if (selected && (!notebook.suspect || selected.suspectId === notebook.suspect)) return renderInterviewReview(state, selected, notebook, local.archiveDraft, local.draftsPersistent);
   if (notebook.suspect && suspect(state, notebook.suspect)) return renderSuspectFile(state, notebook);
-  const history = notebook.section === 'interviews';
-  const sections = `<div class="segmented" role="group" aria-label="Private notebook"><button type="button" id="notebook-deductions" data-notebook="deductions" aria-pressed="${!history}">Deductions</button><button type="button" id="notebook-interviews" data-notebook="interviews" aria-pressed="${history}">Interviews (${state.me.interviews.length})</button></div>`;
+  const history = notebook.section === 'interviews', searching = notebook.section === 'search';
+  const sections = `<div class="segmented" role="group" aria-label="Private notebook"><button type="button" id="notebook-deductions" data-notebook="deductions" aria-pressed="${!history && !searching}">Deductions</button><button type="button" id="notebook-interviews" data-notebook="interviews" aria-pressed="${history}">Interviews (${state.me.interviews.length})</button><button type="button" id="notebook-search" data-notebook="search" aria-pressed="${searching}">Search</button></div>`;
+  if (searching) return `<section class="screen notebook evidence-search"><h1 class="title">Search your evidence</h1><p class="sub">Find your own questions, replies and unlocked deductions. Nothing is sent or shared.</p>${sections}
+<label for="evidence-query">Search words or a suspect’s name</label><div class="search-controls"><input type="search" id="evidence-query" maxlength="100" value="${esc(notebook.query)}" placeholder="Try a name, place or object" autocomplete="off" spellcheck="false" aria-controls="evidence-results"><button type="button" class="btn ghost small" data-action="clear-search">Clear</button></div>
+<div id="evidence-results">${renderEvidenceResults(state, notebook.query)}</div></section>`;
   if (history) {
     const interviews = [...state.me.interviews].sort((a, b) => b.round - a.round);
     return `<section class="screen notebook"><h1 class="title">Your interviews</h1><p class="sub">Only you can read these. Reviewing never uses a question.</p>${sections}
@@ -336,6 +339,51 @@ ${sections}
 ${unlocked.length ? '' : '<p class="hint">They unlock as you talk to the suspects.</p>'}
 <ol class="dlist">${items}</ol>
 </section>`;
+}
+
+// Search only the already-authorised personal projection. No case definitions, other
+// players, unsent drafts or locked deductions are consulted or uploaded.
+const searchText = value => String(value ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+export function searchEvidence(state, query) {
+  const words = searchText(String(query ?? '').slice(0, 100)).trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const results = [], matches = (...parts) => { const text = searchText(parts.join(' ')); return words.every(word => text.includes(word)); };
+  for (const i of [...state.me.interviews].sort((a, b) => b.round - a.round)) {
+    const name = suspect(state, i.suspectId)?.name ?? 'Suspect';
+    if (i.opening && matches(name, i.opening)) results.push({kind: 'opening', id: chatKey(i), interview: i, name, text: i.opening});
+    for (const m of i.messages) {
+      const reply = m.status === 'pending' ? '' : m.reply;
+      if (matches(name, m.question, reply)) results.push({kind: 'answer', id: m.id, interview: i, message: m, name, text: reply || m.question});
+    }
+  }
+  for (const d of state.me.deductions) {
+    const name = suspect(state, d.suspectId)?.name ?? 'Suspect';
+    if (matches(name, d.text)) results.push({kind: 'deduction', id: d.id, ...deductionSource(state, d), deduction: d, name, text: d.text});
+  }
+  return results;
+}
+
+function evidenceExcerpt(text, query) {
+  const value = String(text ?? ''), offsets = [];
+  let normal = '', offset = 0;
+  for (const point of value) {
+    const folded = searchText(point);
+    for (let n = 0; n < folded.length; n++) offsets.push(offset);
+    normal += folded; offset += point.length;
+  }
+  const indexes = searchText(query).trim().split(/\s+/).filter(Boolean).map(word => normal.indexOf(word)).filter(n => n >= 0);
+  const start = Math.max(0, (indexes.length ? offsets[Math.min(...indexes)] : 0) - 50), end = start + 180;
+  return (start ? '…' : '') + value.slice(start, end) + (value.length > end ? '…' : '');
+}
+
+export function renderEvidenceResults(state, query = '') {
+  if (!String(query).trim()) return '<p class="hint" role="status">Enter a few words to search your private evidence. Reviewing uses no questions.</p>';
+  const results = searchEvidence(state, query);
+  return `<p class="hint" role="status">${plural(results.length, 'result')} in your private evidence.</p>${results.length ? `<ol class="evidence-results">${results.map(r => {
+    const label = r.kind === 'deduction' ? 'Deduction' : r.kind === 'opening' ? 'Opening statement' : r.message.status === 'pending' ? 'Question · reply pending' : replyProvenance(r.message);
+    const round = r.interview?.round ?? r.deduction?.round;
+    return `<li><p class="label">${esc(r.name)} · Turn ${esc(round)} · ${esc(label)}</p>${r.kind === 'answer' ? `<p><b>You:</b> ${esc(evidenceExcerpt(r.message.question, query))}</p>` : ''}<p>${esc(evidenceExcerpt(r.text, query))}</p>${r.interview ? `<button type="button" class="evidence-link" id="search-${r.kind}-${esc(r.id)}" data-interview="${esc(chatKey(r.interview))}" data-message="${esc(r.message?.id)}" data-deduction="${esc(r.deduction?.id)}">${r.kind === 'deduction' ? 'Review source' : 'Read in interview'}</button>` : '<p class="hint">The source interview is no longer available.</p>'}</li>`;
+  }).join('')}</ol>` : '<p>No matching evidence yet. Try fewer words or another spelling. Only your own recorded evidence is searched.</p>'}`;
 }
 
 export function renderSuspectFile(state, notebook) {
@@ -357,7 +405,7 @@ function renderInterviewReview(state, interview, notebook, draft, persistent = t
   const s = suspect(state, interview.suspectId);
   const source = state.me.deductions.find(d => d.id === notebook.deduction && deductionSource(state, d)?.interview === interview);
   return `<section class="screen notebook review">
-<button type="button" id="notebook-back" class="btn ghost small" data-action="notebook-back">Back to ${notebook.suspect ? 'suspect file' : notebook.section === 'interviews' ? 'interviews' : 'deductions'}</button>
+<button type="button" id="notebook-back" class="btn ghost small" data-action="notebook-back">Back to ${notebook.suspect ? 'suspect file' : notebook.section === 'search' ? 'search results' : notebook.section === 'interviews' ? 'interviews' : 'deductions'}</button>
 <p class="eyebrow">Private interview · Turn ${interview.round}</p><h1 class="title" id="review-title" tabindex="-1">${esc(s?.name)}</h1>
 <p class="sub">Read-only · reviewing uses no questions. Return to ${state.phase === 'reveal' ? 'Outcome' : state.phase === 'accusation' ? 'Summon' : 'Investigate'} when you are ready.</p>
 ${source ? `<aside class="source-note"><b>Source for your deduction</b><p>${esc(source.text)}</p></aside>` : ''}

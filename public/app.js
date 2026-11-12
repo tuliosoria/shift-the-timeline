@@ -93,7 +93,13 @@ function render() {
     if (chat.restoreOnUpdate) { chat.restoreReadingPosition(chat.restoreOnUpdate); chat.restoreOnUpdate = null; }
   } else {
     if (chat) { chatPositions.set(chat.key, chat.readingPosition()); chat.destroy(); chat = null; }
-    main.innerHTML = view === 'deductions' ? views.renderDeductions(state, local) : view === 'casefile' ? views.renderCaseFile(state) : RENDER[screen](state, local);
+    const searchField = view === 'deductions' && local.notebook?.section === 'search' && !local.notebook.interview && !local.notebook.suspect && $('#evidence-query');
+    if (searchField) {
+      // A changed room snapshot must not replace a search field mid-composition.
+      if (searchField.value !== local.notebook.query) searchField.value = local.notebook.query ?? '';
+      $('#evidence-results').innerHTML = views.renderEvidenceResults(state, local.notebook.query);
+      $('#notebook-interviews').textContent = `Interviews (${state.me.interviews.length})`;
+    } else main.innerHTML = view === 'deductions' ? views.renderDeductions(state, local) : view === 'casefile' ? views.renderCaseFile(state) : RENDER[screen](state, local);
     for (const [id, value] of Object.entries(entryValues)) { const el = document.getElementById(id); if (el && el.type !== 'hidden') el.value = value; }
     main.scrollTop = keepScroll;
     if (focusId) { const el = document.getElementById(focusId); el?.focus({preventScroll: true}); try { if (caret?.[0] != null) el.setSelectionRange(...caret); } catch {} }
@@ -296,11 +302,15 @@ const actions = {
     render();
     ($('#chat-suspect-file') ?? $('#suspect-dossier') ?? $('#main')).focus({preventScroll: true});
   },
+  'clear-search': () => { saveNotebook({query: ''}); render(); $('#evidence-query')?.focus(); },
   'notebook-back': () => {
     const saved = local.notebook;
     saveNotebook({interview: null, message: null, deduction: null});
     render();
-    document.getElementById(saved.deduction ? `source-${saved.deduction}` : `interview-${saved.interview}`)?.focus();
+    const target = saved.section === 'search' && !saved.suspect
+      ? saved.deduction ? `search-deduction-${saved.deduction}` : saved.message ? `search-answer-${saved.message}` : `search-opening-${saved.interview}`
+      : saved.deduction ? `source-${saved.deduction}` : `interview-${saved.interview}`;
+    (document.getElementById(target) ?? $('#evidence-query'))?.focus();
   },
   'copy-code': () => copy(state.code, 'Room code copied.', `Room code: ${state.code}`),
   'copy-invite': () => copy(inviteLink(), 'Invite link copied. Send it to the table.', `Invite link: ${inviteLink()}`),
@@ -354,7 +364,13 @@ document.addEventListener('click', event => {
     if (local.notebook?.suspect) saveNotebook({returnSelected: local.selected, returnRound: state.round, returnPhase: state.phase});
     render(); $('#suspect-dossier')?.focus(); return; }
   const action = actions[b.dataset.action];
-  if (action && (!busy || ['reset', 'notebook-back', 'dossier-return'].includes(b.dataset.action))) action();
+  if (action && (!busy || ['reset', 'notebook-back', 'dossier-return', 'clear-search'].includes(b.dataset.action))) action();
+});
+document.addEventListener('input', event => {
+  if (event.target.id !== 'evidence-query' || !state) return;
+  saveNotebook({query: event.target.value.slice(0, 100)});
+  // Keep the input node, composition and caret intact while results change.
+  $('#evidence-results').innerHTML = views.renderEvidenceResults(state, local.notebook.query);
 });
 document.addEventListener('submit', event => {
   event.preventDefault();
