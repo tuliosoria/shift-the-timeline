@@ -259,3 +259,13 @@ test('landing offers a saved seat only when a resume target exists', () => {
   assert.match(html, /Return to room ABCD2345/);
   assert.match(html, /while the room is still available/);
 });
+
+
+test('replay preserves the completed investigation instead of offering a destructive reset', () => {
+  const s = state({phase:'reveal', result:{outcome:'defeat', correct:0, total:2, culpritId:'mara', solution:{}, votes:[]}});
+  const html = views.renderReveal(s, local());
+  assert.match(html, /data-action="new-investigation" data-submit/);
+  assert.doesNotMatch(html, /data-action="reset"/);
+  assert.match(html, /private drafts are kept/);
+  assert.match(html, /while it remains available/);
+});

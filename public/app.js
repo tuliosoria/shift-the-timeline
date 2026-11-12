@@ -297,6 +297,14 @@ async function resumeRoom() {
 const actions = {
   retry: () => pending && run(pending),
   reset: () => resetSession(),
+  'new-investigation': () => {
+    if (state?.phase !== 'reveal' || busy || pending) return;
+    // Starting again is navigation, not permission to erase a private notebook.
+    resume = {...session}; store.set(RESUME, resume);
+    clearInvitation();
+    resetSession({preserve: true});
+    $('#create-name')?.focus();
+  },
   'switch-room': () => switchRoom(),
   resume: () => resumeRoom(),
   'dossier-return': () => {

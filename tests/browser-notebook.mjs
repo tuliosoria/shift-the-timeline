@@ -156,8 +156,44 @@ try {
     const state = await snapshot(page, code);
     assert.ok(!JSON.stringify(state).includes('private notebook clue'), 'other players never receive private testimony');
   }
+  // Finish using only this synthetic server, then start again through the real UI.
+  // A new investigation must not erase interrupted-turn drafts or the completed seat.
+  const act = (page, action) => page.evaluate(async ({code, action}) => {
+    const response = await fetch(`/api/rooms/${code}/actions`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: crypto.randomUUID(), ...action})});
+    if (!response.ok) throw Error(`Synthetic setup action failed: ${response.status}`);
+    return response.json();
+  }, {code, action});
+  for (let round = 2; round <= 4; round++) await act(host, {type: 'advance', round, confirmed: true});
+  for (const page of pages) await act(page, {type: 'vote', suspectId: 'suspect-0'});
+  await reader.waitForFunction(() => document.querySelector('#header .clock')?.textContent === 'Timeline closed');
+  await reader.click('#tabbar [data-tab=investigate]');
+  await reader.locator('.screen.reveal').waitFor();
+  const finished = await snapshot(reader, code), saved = await reader.evaluate(() => localStorage.getItem('shift-ui-v2'));
+  const replayWrites = () => writes.filter(w => w.page === reader && w.body.type !== 'heartbeat');
+  const writesBeforeReplay = replayWrites().length;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await reader.getByRole('button', {name: 'New investigation', exact: true}).click();
+    await reader.locator('#create-form').waitFor();
+    assert.equal(await reader.evaluate(() => document.activeElement.id), 'create-name');
+    assert.match(await reader.locator('[data-action=resume]').textContent(), new RegExp(code));
+    assert.equal(await reader.evaluate(() => localStorage.getItem('shift-ui-v2')), saved, 'starting over does not delete any saved private UI data');
+    assert.ok(await reader.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'replay entry fits a narrow phone');
+    if (attempt === 0) await reader.screenshot({path: `${shot}/shift-safe-replay-320.png`});
+    await reader.reload(); await reader.locator('[data-action=resume]').waitFor();
+    await reader.click('[data-action=resume]'); await reader.locator('.screen.reveal').waitFor();
+    const returned = await snapshot(reader, code);
+    assert.equal(returned.me.id, finished.me.id, 'return to the same seat');
+    assert.deepEqual(returned.me.interviews, finished.me.interviews);
+    assert.deepEqual(returned.players, finished.players, 'replay navigation never changes the table');
+  }
+  assert.equal(replayWrites().length, writesBeforeReplay, 'replay navigation and return consume no game actions');
+  await reader.click('.debrief [data-tab=deductions]');
+  await reader.locator('.source-answer').waitFor();
+  assert.equal(await reader.locator('.source-answer').getAttribute('id'), `review-message-${sourceId}`);
+  assert.match(await reader.locator('.saved-draft').textContent(), /Unsent after the interruption/);
+  assert.doesNotMatch(await reader.locator('.review').textContent(), /Ada alone|Cy alone/);
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
-  console.log('Notebook browser passed: 3 phones, exact private sources, interrupted delivery/retry, reload, draft recovery, late answer, host advance, revisit and 320px low-height layout.');
+  console.log('Notebook browser passed: 3 phones, exact private sources, interrupted delivery/retry, reload, draft recovery, late answer, host advance, revisit, safe replay/return after reveal and 320px low-height layout.');
 } finally {
   releasePending();
   await browser?.close(); await server.close();
