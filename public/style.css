@@ -316,3 +316,13 @@ dialog b { color: var(--ivory); }
   .chead { padding-top: 6px; padding-bottom: 6px; }
   .suggestion-hint { display: none; }
 }
+
+/* Private notebook search stays inside a narrow phone, even for unbroken testimony. */
+.evidence-search > label { display: block; margin: 18px 0 8px; }
+.search-controls { display: flex; gap: 8px; align-items: center; }
+.search-controls input { min-width: 0; flex: 1; }
+.search-controls .btn { flex: 0 0 auto; width: auto; }
+.evidence-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.evidence-results li { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(0, 0, 0, .4); overflow-wrap: anywhere; }
+.evidence-results p { margin: 0 0 10px; white-space: pre-wrap; }
+.evidence-results .label { margin-top: 0; }

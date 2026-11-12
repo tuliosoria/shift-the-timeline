@@ -87,7 +87,7 @@ test('notebook location and unsent drafts recover separately and stay scoped to 
   const location = {open: true, section: 'interviews', interview: '1:one', message: 'm1', deduction: null};
   ui.saveNotebook(context.room, context.player, location);
   const restored = createUiState(storage);
-  assert.deepEqual(restored.notebook(context.room, context.player), {...location, suspect: null, returnTab: 'investigate', returnSelected: null, returnRound: null, returnPhase: null});
+  assert.deepEqual(restored.notebook(context.room, context.player), {...location, query: '', suspect: null, returnTab: 'investigate', returnSelected: null, returnRound: null, returnPhase: null});
   assert.equal(restored.draft(context), 'A newer thought');
   assert.equal(restored.notebook(context.room, 'bo').interview, null);
   assert.equal(restored.notebook('OTHERONE', context.player).interview, null);
