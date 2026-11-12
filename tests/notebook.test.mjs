@@ -87,7 +87,7 @@ test('notebook location and unsent drafts recover separately and stay scoped to 
   const location = {open: true, section: 'interviews', interview: '1:one', message: 'm1', deduction: null};
   ui.saveNotebook(context.room, context.player, location);
   const restored = createUiState(storage);
-  assert.deepEqual(restored.notebook(context.room, context.player), location);
+  assert.deepEqual(restored.notebook(context.room, context.player), {...location, suspect: null, returnTab: 'investigate', returnSelected: null, returnRound: null, returnPhase: null});
   assert.equal(restored.draft(context), 'A newer thought');
   assert.equal(restored.notebook(context.room, 'bo').interview, null);
   assert.equal(restored.notebook('OTHERONE', context.player).interview, null);
@@ -104,4 +104,32 @@ test('blocked storage is labelled as an in-memory draft, never promised to survi
   const html = renderDeductions(state, {notebook: {interview: '1:suspect-0'}, archiveDraft: ui.draft(context), draftsPersistent: ui.persistent});
   assert.match(html, /Only in this open tab.*reloading will lose this draft/);
   assert.doesNotMatch(html, /Saved on this browser/);
+});
+
+
+test('suspect files show all and only your visits and unlocked source receipts', () => {
+  const {host, act, state} = game();
+  act(host, 'advance', {round: 1, confirmed: true});
+  act(host, 'select', {round: 2, suspectId: 'suspect-0'});
+  const next = act(host, 'ask', {round: 2, question: 'Where were you again?'});
+  const html = renderDeductions(next, {notebook: {suspect: 'suspect-0'}});
+  assert.match(html, /Turn 1/); assert.match(html, /Turn 2/);
+  assert.match(html, new RegExp(`data-message="${state.me.interviews[0].messages[0].id}"`));
+  assert.doesNotMatch(html, /Synthetic private brief|question-form|data-submit|data-action="summon"/);
+  assert.doesNotMatch(renderDeductions(next, {notebook: {suspect: 'suspect-1'}}), /data-interview=/);
+  for (const d of caseData.deductions.filter(d => !next.me.deductions.some(u => u.id === d.id))) assert.ok(!html.includes(d.text));
+  const source = renderDeductions(next, {notebook: {suspect: 'suspect-0', interview: '1:suspect-0'}});
+  assert.match(source, /Back to suspect file/);
+  assert.doesNotMatch(renderDeductions(next, {notebook: {suspect: 'suspect-1', interview: '1:suspect-0'}}), /Where were you/);
+});
+
+test('suspect file recovery remains scoped and sanitises navigation fields', () => {
+  let value; const storage = {getItem: () => value, setItem: (_, v) => {value = v;}};
+  const ui = createUiState(storage);
+  ui.saveNotebook('ROOM', 'PLAYER', {open: true, suspect: 'suspect-0', returnTab: 'external', returnRound: 4, returnPhase: 'accusation', returnSelected: 'suspect-0'});
+  const restored = createUiState(storage);
+  assert.equal(restored.notebook('ROOM', 'PLAYER').suspect, 'suspect-0');
+  assert.equal(restored.notebook('ROOM', 'PLAYER').returnTab, 'investigate');
+  assert.equal(restored.notebook('OTHER', 'PLAYER').suspect, null);
+  assert.equal(restored.notebook('ROOM', 'OTHER').suspect, null);
 });

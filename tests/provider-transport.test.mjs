@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createProvider} from '../server/ai/provider.mjs';
 const ctx={instructions:'Scoped instructions',input:'Scoped question',allowedIds:[]};
-const envelope={status:'completed',output:[{type:'message',content:[{type:'output_text',text:'{"reply":"A scoped reply.","unlocked":[]}'}]}],usage:{input_tokens:30,output_tokens:20}};
+const envelope={status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'{"reply":"A scoped reply.","unlocked":[]}'}]}],usage:{input_tokens:30,output_tokens:20}};
 const provider=response=>createProvider({model:'synthetic-model',getSecret:async()=>'synthetic-test-only',fetchImpl:async()=>response});
 const bytes=text=>new TextEncoder().encode(text);
 
@@ -29,7 +29,7 @@ test('response ceiling counts UTF-8 bytes, accepts the exact boundary and reject
 });
 
 test('decodes a multibyte character split across transport chunks',async()=>{
- const raw=bytes(JSON.stringify({...envelope,output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({reply:'A café.',unlocked:[]})}]}]}));
+ const raw=bytes(JSON.stringify({...envelope,output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify({reply:'A café.',unlocked:[]})}]}]}));
  const at=raw.indexOf(0xc3)+1;
  const response=new Response(new ReadableStream({start(c){c.enqueue(raw.slice(0,at));c.enqueue(raw.slice(at));c.close();}}));
  assert.equal((await provider(response)(ctx)).reply,'A café.');
@@ -52,4 +52,32 @@ test('does not wait for a stalled upstream cancellation acknowledgement',async()
  let cancelled=false;
  const response=new Response(new ReadableStream({pull(c){c.enqueue(new Uint8Array(16385));},cancel(){cancelled=true;return new Promise(()=>{});}},{highWaterMark:0}));
  await assert.rejects(provider(response)(ctx),/too large/);assert.equal(cancelled,true);
+});
+
+test('accepts reasoning followed by one completed assistant message without exposing reasoning',async()=>{
+ for(const status of [undefined,'completed']){
+  const reasoning={type:'reasoning',summary:[{type:'summary_text',text:'Not spoken dialogue.'}],...(status?{status}:{})};
+  const result=await provider(new Response(JSON.stringify({...envelope,output:[reasoning,...envelope.output]})))(ctx);
+  assert.equal(result.reply,'A scoped reply.');
+ }
+});
+
+test('rejects ambiguous, incomplete, foreign-role and refusal output rather than stitching fragments',async()=>{
+ const message=envelope.output[0],text=message.content[0];
+ const invalid=[
+  undefined,null,{},[],[null],
+  [{...message,role:undefined}],[{...message,role:'user'}],[{...message,role:'tool'}],
+  [{...message,status:undefined}],[{...message,status:'in_progress'}],[{...message,status:'incomplete'}],
+  [message,message],
+  [{type:'function_call',name:'unexpected',arguments:'{}'},message],
+  [{type:'reasoning',status:'in_progress'},message],
+  [{...message,content:[]}],[{...message,content:null}],
+  [{...message,content:[{type:'refusal',refusal:'No.'}]}],
+  [{...message,content:[text,{type:'refusal',refusal:'No.'}]}],
+  [{...message,content:[text,text]}],
+  [{...message,content:[{type:'output_text',text:42}]}]
+ ];
+ for(const output of invalid)await assert.rejects(provider(new Response(JSON.stringify({...envelope,output})))(ctx),/Invalid provider|not completed/);
+ for(const data of [null,[],{...envelope,status:undefined},{...envelope,incomplete_details:{reason:'max_output_tokens'}}])
+  await assert.rejects(provider(new Response(JSON.stringify(data)))(ctx),/not completed/);
 });

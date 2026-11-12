@@ -41,7 +41,7 @@ test('inactive provider requests British English and keeps its original safety b
  let payload;
  const provider=createProvider({model:'synthetic-model',getSecret:async()=> 'synthetic-key',fetchImpl:async(_url,options)=>{
   payload=JSON.parse(options.body);
-  return new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({reply:'A fictional line.',unlocked:[]})}]}],usage:{input_tokens:10,output_tokens:5}}));
+  return new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify({reply:'A fictional line.',unlocked:[]})}]}],usage:{input_tokens:10,output_tokens:5}}));
  }});
  await provider({...buildChatContext({caseData:{title:'T',victim:'V',place:'P',method:'M',prediction:'X',culpritId:'z',suspects:[{id:'s',name:'Ann',role:'Clerk',brief:'B',responses:{alibi:'a',motive:'m',clue:'c',relationship:'r'}}]},suspectId:'s',question:'What did you notice?'}),allowedIds:[]});
  assert.match(payload.input[0].content,/British English/);assert.ok(!payload.input[0].content.includes('Portuguese'));

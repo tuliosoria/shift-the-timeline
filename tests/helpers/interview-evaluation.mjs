@@ -21,7 +21,7 @@ export const adversarialQuestions=Object.freeze([
 ]);
 const credential='synthetic-evaluation-credential-not-real';
 const SUSPECT=TRAIN_CASE.suspects[1];
-const output=(result)=>JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(result)}]}],usage:{input_tokens:25,output_tokens:12}});
+const output=(result)=>JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify(result)}]}],usage:{input_tokens:25,output_tokens:12}});
 const response=(result={reply:'I have already told you what I noticed.',unlocked:[]})=>new Response(output(result));
 const makeProvider=fetchImpl=>createProvider({model:policy.model,getSecret:async()=>credential,fetchImpl});
 const scopedContext=question=>({...buildChatContext({caseData:TRAIN_CASE,suspectId:SUSPECT.id,question}),allowedIds:['d-alibi-gap']});
@@ -52,10 +52,10 @@ export const invalidResponses=Object.freeze([
  {name:'output limit exhausted with no visible JSON',response:()=>new Response(JSON.stringify({status:'incomplete',incomplete_details:{reason:'max_output_tokens'},output:[],usage:{input_tokens:862,output_tokens:400,output_tokens_details:{reasoning_tokens:400}}}))},
  {name:'incomplete response with otherwise valid reply JSON',response:()=>new Response(JSON.stringify({...JSON.parse(output({reply:'Must not be presented from an incomplete response.',unlocked:[]})),status:'incomplete',incomplete_details:{reason:'max_output_tokens'}}))},
  {name:'timeout exception',response:()=>{throw new DOMException('Synthetic timeout','TimeoutError');}},
- {name:'provider refusal without reply',response:()=>new Response(JSON.stringify({output:[{type:'message',content:[{type:'refusal',refusal:'Synthetic refusal'}]}],usage:{input_tokens:25,output_tokens:12}}))},
+ {name:'provider refusal without reply',response:()=>new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'refusal',refusal:'Synthetic refusal'}]}],usage:{input_tokens:25,output_tokens:12}}))},
  {name:'HTTP failure',response:()=>new Response('synthetic failure',{status:503})},
  {name:'malformed outer JSON',response:()=>new Response('{')},
- {name:'malformed reply JSON',response:()=>new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:'not json'}]}],usage:{input_tokens:25,output_tokens:12}}))},
+ {name:'malformed reply JSON',response:()=>new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'not json'}]}],usage:{input_tokens:25,output_tokens:12}}))},
  {name:'extra field',response:()=>response({reply:'Fine',unlocked:[],solution:'invented'})},
  {name:'missing reply',response:()=>response({answer:'Fine',unlocked:[]})},
  {name:'missing unlocked',response:()=>response({reply:'Fine'})},
@@ -69,7 +69,7 @@ export const invalidResponses=Object.freeze([
  {name:'null result object',response:()=>response(null)},
  {name:'oversized UTF-8 reply',response:()=>response({reply:'é'.repeat(601),unlocked:[]})},
  {name:'oversized transport response',response:()=>new Response('x'.repeat(16385))},
- {name:'missing usage',response:()=>new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:'{"reply":"Fine","unlocked":[]}'}]}]}))},
+ {name:'missing usage',response:()=>new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'{"reply":"Fine","unlocked":[]}'}]}]}))},
  {name:'excess usage',response:()=>new Response(output({reply:'Fine',unlocked:[]}).replace('"input_tokens":25',`"input_tokens":${PROPOSED_LIMITS.inputTokens+1}`))},
  {name:'transport exception',response:()=>{throw new Error('Synthetic transport failure');}},
 ]);

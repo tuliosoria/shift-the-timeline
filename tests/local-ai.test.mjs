@@ -6,7 +6,7 @@ import {MemoryStore} from '../server/storage/memory.mjs';
 import {DurableGame} from '../server/persistent-game.mjs';
 import {TRAIN_CASE,CASES} from './fixtures/case.mjs';
 const env={SHIFT_LOCAL_AI_ENABLED:'true',SHIFT_LOCAL_AI_CONSENT:'true',SHIFT_ORIGIN:'http://127.0.0.1:3000',SHIFT_LOCAL_AI_MODEL:'synthetic-model',SHIFT_LOCAL_AI_INPUT_RATE:'0.4',SHIFT_LOCAL_AI_OUTPUT_RATE:'1.6',SHIFT_LOCAL_AI_MAX_CALLS:'2',SHIFT_LOCAL_AI_MAX_RESERVE_MICROUSD:'10000'};
-const response=()=>new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({reply:'A fictional voice.',unlocked:[]})}]}],usage:{input_tokens:10,output_tokens:5}}));
+const response=()=>new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify({reply:'A fictional voice.',unlocked:[]})}]}],usage:{input_tokens:10,output_tokens:5}}));
 let serial=0;const id=()=>`local-request-${++serial}-xxxxxxxx`;
 async function setup(overrides={},fetchImpl=async()=>response()){
  const store=new MemoryStore();let secrets=0;

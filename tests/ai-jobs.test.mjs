@@ -155,4 +155,24 @@ for(const corruption of ['missing','invalid'])test(`provider start fails closed 
 test('a lost previously initialized budget is never reset to zero by a new admission',async()=>{const h=await harness({dayMicroUsd:RESERVE});await h.ask();const job=h.jobList()[0];await run(h,job.id,Object.assign(async()=>({reply:'Voice',unlocked:[],inputTokens:2500,outputTokens:350}),{model:policy.model}));h.store.ai.delete(job.budgetKeys[1]);await h.ask('session-B');assert.equal(h.jobList().length,1);assert.equal((await mine(h,'session-B')).status,'canonical');});
 test('time spent reading room data cannot authorize provider start after deadline',async()=>{const h=await harness();await h.ask();const job=h.jobList()[0],get=h.store.getRoom.bind(h.store);let delay=true;h.store.getRoom=async code=>{const room=await get(code);if(delay){delay=false;h.advance(31000);}return room;};const calls={n:0};await run(h,job.id,counted({reply:'Voice',unlocked:[]},calls));assert.equal(calls.n,0);});
 test('time spent confirming the start marker cannot outlive the claim before calling provider',async()=>{const h=await harness();await h.ask();const job=h.jobList()[0],commit=h.store.commitAi.bind(h.store);h.store.commitAi=async args=>{await commit(args);if(args.writes.some(w=>w.value.kind==='job'&&w.value.status==='provider_started'))h.advance(6000);};const calls={n:0};await run(h,job.id,counted({reply:'Voice',unlocked:[]},calls));assert.equal(calls.n,0);assert.equal((await mine(h)).status,'canonical');});
-test('provider preparation carries the deadline through delayed secret retrieval to HTTP start',async()=>{const {createProvider}=await import('../server/ai/provider.mjs');const h=await harness();await h.ask();const job=h.jobList()[0];let calls=0;const provider=createProvider({model:policy.model,getSecret:async()=>{h.advance(31000);return 'synthetic-key-not-real';},fetchImpl:async()=>{calls++;return new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:'{"reply":"Text","unlocked":[]}'}]}],usage:{input_tokens:10,output_tokens:5}}));}});await run(h,job.id,provider);assert.equal(calls,0);assert.equal((await mine(h)).status,'canonical');});
+test('provider preparation carries the deadline through delayed secret retrieval to HTTP start',async()=>{const {createProvider}=await import('../server/ai/provider.mjs');const h=await harness();await h.ask();const job=h.jobList()[0];let calls=0;const provider=createProvider({model:policy.model,getSecret:async()=>{h.advance(31000);return 'synthetic-key-not-real';},fetchImpl:async()=>{calls++;return new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'{"reply":"Text","unlocked":[]}'}]}],usage:{input_tokens:10,output_tokens:5}}));}});await run(h,job.id,provider);assert.equal(calls,0);assert.equal((await mine(h)).status,'canonical');});
+
+test('ambiguous provider dialogue settles canonically exactly once without paid retries or foreign awards',async()=>{
+ const {createProvider}=await import('../server/ai/provider.mjs');
+ const h=await harness();await h.ask('session-A',id(),ALIBI);const job=h.jobList()[0];let calls=0;
+ const provider=createProvider({model:policy.model,getSecret:async()=>'synthetic-test-only',fetchImpl:async()=>{
+  calls++;return new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[
+   {type:'output_text',text:JSON.stringify({reply:'Must not reach testimony.',unlocked:['d-clue-object']})},
+   {type:'refusal',refusal:'Synthetic refusal.'}
+  ]}],usage:{input_tokens:10,output_tokens:5}}));
+ }});
+ assert.equal((await run(h,job.id,provider)).status,'fallback');
+ const first=await mine(h);assert.equal(first.status,'canonical');assert.equal(first.reply,SUSPECT.responses.alibi);
+ assert.deepEqual(first.unlocked,['d-alibi-gap']);
+ const settled=await h.store.getAi(`AIJOB#${job.id}`);assert.equal(settled.costUncertain,true);assert.equal(settled.settledMicroUsd,RESERVE);
+ for(const key of job.budgetKeys)assert.equal((await h.store.getAi(key)).usedMicroUsd,RESERVE);
+ assert.equal((await run(h,job.id,provider)).status,'not_claimed');assert.equal(calls,1);
+ assert.deepEqual(await mine(h),first);
+ assert.equal((await h.game.view(h.code,'session-A')).me.deductions.length,1);
+ assert.deepEqual((await h.game.view(h.code,'session-B')).me.deductions,[]);
+});
