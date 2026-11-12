@@ -10,7 +10,7 @@ import {createProvider} from '../server/ai/provider.mjs';
 
 const KEY='sk-SECRETKEYVALUE123';
 const env={SHIFT_LOCAL_AI_KEY_FILE:'/x/key',SHIFT_LOCAL_AI_MODEL:'m',SHIFT_LOCAL_AI_INPUT_RATE:'0.5',SHIFT_LOCAL_AI_OUTPUT_RATE:'2'};
-const resp=(reply,unlocked,usage={input_tokens:1000,output_tokens:100})=>new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({reply,unlocked})}]}],usage}));
+const resp=(reply,unlocked,usage={input_tokens:1000,output_tokens:100})=>new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify({reply,unlocked})}]}],usage}));
 const questionOf=body=>JSON.parse(JSON.parse(body).input[1].content).question;
 const run=async(over={})=>{const out=await mkdtemp(path.join(tmpdir(),'ev-'));const r=await runLiveEvaluation({env,caseData,getSecret:async()=>KEY,outDir:out,...over});return {...r,out};};
 

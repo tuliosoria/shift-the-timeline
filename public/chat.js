@@ -37,7 +37,7 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
     // Once the last question is asked nothing more can be typed: it would be lost with the composer.
     refs.field.readOnly = !!interview()?.closed;
     refs.send.disabled = hold() || !refs.field.value.trim();
-    for (const chip of refs.chips) chip.disabled = hold();
+    for (const chip of refs.chips) chip.disabled = hold() || !!refs.field.value;
   }
   function announce(text) {
     const el = doc.getElementById('announcer');
@@ -149,7 +149,11 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
       }
       if (!refs?.field) return;
       if (button.classList.contains('send')) send(refs.field.value);
-      else if (button.dataset.chip) { refs.field.value = button.dataset.chip; send(button.dataset.chip); }
+      else if (button.dataset.chip && !refs.field.value && !hold()) {
+        refs.field.value = button.dataset.chip;
+        onDraft(refs.field.value); fit(); syncControls();
+        refs.field.focus({preventScroll: true});
+      }
     },
     submit(event) { event.preventDefault(); send(refs?.field?.value); },
   };
@@ -184,6 +188,13 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
       // Hydrate only an empty composer; polling must never replace newer local typing.
       if (refs?.field && !refs.field.value && local.draft) { refs.field.value = local.draft; fit(); }
       if (refs) refresh(); else build();
+    },
+    readingPosition() { return refs ? {top: refs.transcript.scrollTop, stick, unread: !refs.newReply.hidden, replied: (interview()?.messages ?? []).filter(m => m.status !== 'pending').map(m => m.id)} : null; },
+    restoreReadingPosition(saved) {
+      if (!refs || !saved) return;
+      stick = saved.stick;
+      if (stick) scrollToEnd();
+      else { refs.transcript.scrollTop = saved.top; refs.newReply.hidden = !saved.unread && !(interview()?.messages ?? []).some(m => m.status !== 'pending' && !saved.replied.includes(m.id)); }
     },
     destroy() {
       for (const [type, fn] of Object.entries(listeners)) root.removeEventListener(type, fn);

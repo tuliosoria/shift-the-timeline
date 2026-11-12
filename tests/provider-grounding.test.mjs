@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createProvider} from '../server/ai/provider.mjs';
-const body=(parsed,usage={input_tokens:100,output_tokens:10})=>new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(parsed)}]}],usage}));
+const body=(parsed,usage={input_tokens:100,output_tokens:10})=>new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify(parsed)}]}],usage}));
 const ctx={instructions:'Be the suspect.',input:'{"question":"Where were you?"}',allowedIds:['x'],solution:'MUST NOT SEND'};
 const make=(fn)=>createProvider({model:'synthetic-model',getSecret:async()=>'synthetic-test-only',fetchImpl:fn});
 test('sends scoped instructions and input with strict reply+unlocked schema and parses the result',async()=>{
@@ -21,3 +21,8 @@ test('rejects oversize reply and usage outside the 6000/1024 envelope',async()=>
  assert.equal((await make(async()=>body({reply:'Hi.',unlocked:[]},{input_tokens:6000,output_tokens:1024}))(ctx)).inputTokens,6000);
 });
 test('rejects context over the byte ceiling',async()=>{await assert.rejects(make(async()=>assert.fail('no call'))({...ctx,input:'x'.repeat(20001)}),/envelope/);});
+
+test('preserves raw model IDs for evaluation; settlement owns scope and duplicate filtering',async()=>{
+ const result=await make(async()=>body({reply:'A valid reply.',unlocked:['x','foreign','x']}))(ctx);
+ assert.deepEqual(result.unlocked,['x','foreign','x']);assert.equal(result.reply,'A valid reply.');
+});

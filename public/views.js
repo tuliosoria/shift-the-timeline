@@ -180,7 +180,7 @@ export function renderPick(state, local) {
   return `<section class="screen pick">
 <h1 class="title">Who will you question?</h1>
 <p class="sub">Pick one suspect for this turn. Only you will see the conversation.</p>
-${chosen ? `<section class="dossier" id="suspect-dossier" tabindex="-1" aria-labelledby="dossier-name"><p class="eyebrow">Suspect file</p><h2 id="dossier-name">${esc(chosen.name)}</h2><p>${esc(chosen.profile)}</p><small>You can keep browsing. Starting the chat commits this turn to ${esc(firstName(chosen.name))}.</small></section>` : ''}
+${chosen ? `<section class="dossier" id="suspect-dossier" tabindex="-1" aria-labelledby="dossier-name"><p class="eyebrow">Suspect file</p><h2 id="dossier-name">${esc(chosen.name)}</h2><p>${esc(chosen.profile)}</p><small>You can keep browsing. Starting the chat commits this turn to ${esc(firstName(chosen.name))}.</small><button type="button" id="selected-suspect-file" class="evidence-link" data-dossier="${esc(chosen.id)}">Your private suspect file</button></section>` : ''}
 ${suspectGrid(state, local, {taken, asked})}
 <div class="cta"><button type="button" class="btn" data-action="question" data-submit ${chosen ? '' : 'disabled data-locked="true"'}>${chosen ? `Question ${esc(firstName(chosen.name))} →` : 'Choose a suspect'}</button><p class="hint">You get ${q} questions.</p></div>
 </section>`;
@@ -203,7 +203,7 @@ export function replyProvenance(message) {
 
 export function renderChatHead(state, local) {
   const {interview, s, q} = chatParts(state, local), asked = interview.messages.length;
-  return `${face(state, s, 'avatar')}<div class="who"><b>${esc(s?.name)}</b><small>${esc(s?.role)}</small></div><div class="count" aria-label="${asked} of ${q} questions asked"><div class="dots" aria-hidden="true">${Array.from({length: q}, (_, i) => `<i class="${i < asked ? 'u' : ''}"></i>`).join('')}</div>${asked} of ${q}</div>`;
+  return `${face(state, s, 'avatar')}<button type="button" id="chat-suspect-file" class="who file-access" data-dossier="${esc(s?.id)}" aria-label="${esc(s?.name)}, ${esc(s?.role)}. Open your private suspect file and earlier visits" title="Private suspect file and earlier visits"><b>${esc(s?.name)} <span aria-hidden="true">›</span></b><small>${esc(s?.role)}</small></button><div class="count" aria-label="${asked} of ${q} questions asked"><div class="dots" aria-hidden="true">${Array.from({length: q}, (_, i) => `<i class="${i < asked ? 'u' : ''}"></i>`).join('')}</div>${asked} of ${q}</div>`;
 }
 
 export function renderTranscript(state, local) {
@@ -220,7 +220,7 @@ export const CHAT_DONE = `<div class="done"><p>That's all your questions for thi
 export function renderChatFooter(state, local) {
   if (chatEnded(state, local)) return CHAT_DONE;
   const {interview, s, pending} = chatParts(state, local), hold = pending || interview.closed || local?.busy;
-  return `<div class="chips" role="group" aria-label="Suggested questions">${Object.values(topicLabels).map(label => `<button type="button" class="chip" data-chip="${esc(label)}" ${hold ? 'disabled' : ''}>${esc(label)}</button>`).join('')}</div>
+  return `<p class="suggestion-hint">Suggestions fill an empty draft. Review, then send.</p><div class="chips" role="group" aria-label="Suggested question drafts">${Object.values(topicLabels).map(label => `<button type="button" class="chip" data-chip="${esc(label)}" ${hold || String(local?.draft ?? '').length ? 'disabled' : ''}>${esc(label)}</button>`).join('')}</div>
 <form id="question-form" class="composer"><label class="visually-hidden" for="question">Your question</label><textarea id="question" name="question" rows="1" maxlength="300" placeholder="Ask ${esc(firstName(s?.name))} anything…" enterkeyhint="send" autocomplete="off" ${interview.closed ? 'readonly' : ''}>${esc(local?.draft)}</textarea><button type="button" class="send" aria-label="Send question" ${hold || !String(local?.draft ?? '').trim() ? 'disabled' : ''}>↑</button></form>`;
 }
 
@@ -275,6 +275,7 @@ ${state.hostRecoverable && !state.me.host ? '<div class="cta"><button type="butt
   return `<section class="screen accuse">
 <h1 class="title">Who is the killer?</h1>
 <p class="sub">Summon one suspect, on your own. Talk it over first.</p>
+${chosen ? `<section class="dossier" id="suspect-dossier" tabindex="-1"><h2>${esc(chosen.name)}</h2><p>${esc(chosen.profile)}</p><button type="button" id="selected-suspect-file" class="evidence-link" data-dossier="${esc(chosen.id)}">Review your private suspect file</button></section>` : ''}
 ${suspectGrid(state, local)}
 <div class="cta"><button type="button" class="btn" data-action="summon" data-submit ${chosen ? '' : 'disabled data-locked="true"'}>${chosen ? `Summon ${esc(firstName(chosen.name))} →` : 'Choose a suspect'}</button><p class="hint">This cannot be undone.</p></div>
 </section>`;
@@ -309,7 +310,8 @@ export function deductionSource(state, deduction) {
 
 export function renderDeductions(state, local = {}) {
   const notebook = local.notebook ?? {}, selected = state.me.interviews.find(i => chatKey(i) === notebook.interview);
-  if (selected) return renderInterviewReview(state, selected, notebook, local.archiveDraft, local.draftsPersistent);
+  if (selected && (!notebook.suspect || selected.suspectId === notebook.suspect)) return renderInterviewReview(state, selected, notebook, local.archiveDraft, local.draftsPersistent);
+  if (notebook.suspect && suspect(state, notebook.suspect)) return renderSuspectFile(state, notebook);
   const history = notebook.section === 'interviews';
   const sections = `<div class="segmented" role="group" aria-label="Private notebook"><button type="button" id="notebook-deductions" data-notebook="deductions" aria-pressed="${!history}">Deductions</button><button type="button" id="notebook-interviews" data-notebook="interviews" aria-pressed="${history}">Interviews (${state.me.interviews.length})</button></div>`;
   if (history) {
@@ -332,11 +334,26 @@ ${unlocked.length ? '' : '<p class="hint">They unlock as you talk to the suspect
 </section>`;
 }
 
+export function renderSuspectFile(state, notebook) {
+  const person = suspect(state, notebook.suspect);
+  const visits = state.me.interviews.filter(i => i.suspectId === person.id).sort((a, b) => b.round - a.round);
+  const clues = state.me.deductions.filter(d => d.suspectId === person.id);
+  return `<section class="screen notebook suspect-file">
+<button type="button" id="dossier-return" class="btn ghost small" data-action="dossier-return">Return to ${notebook.returnTab === 'deductions' ? 'notebook' : state.phase === 'accusation' ? 'Summon' : state.phase === 'reveal' ? 'Outcome' : 'Investigate'}</button>
+<p class="eyebrow">Your private suspect file</p><h1 class="title" id="suspect-file-title" tabindex="-1">${esc(person.name)}</h1><p class="sub">${esc(person.role)}</p><p>${esc(person.profile)}</p>
+<p class="hint">Only your own recorded visits and unlocked deductions appear here. Reviewing uses no questions.</p>
+<h2 class="label">Your visits</h2>
+${visits.length ? `<ol class="interview-list">${visits.map(i => `<li><button type="button" class="btn ghost interview-link" id="interview-${esc(chatKey(i))}" data-interview="${esc(chatKey(i))}"><span>Turn ${i.round}</span><small>${plural(i.messages.length, 'question')} · ${pendingLast(i) ? 'Reply pending' : i.closed ? 'Closed' : 'In progress'}</small></button></li>`).join('')}</ol>` : '<p>You have not questioned this suspect yet.</p>'}
+<h2 class="label">Your deductions from this suspect</h2>
+${clues.length ? `<ol class="dlist">${clues.map(d => { const source = deductionSource(state, d); return `<li class="unlocked"><p>${esc(d.text)}</p>${source ? `<button type="button" class="evidence-link" id="source-${esc(d.id)}" data-interview="${esc(chatKey(source.interview))}" data-message="${esc(source.message?.id)}" data-deduction="${esc(d.id)}">${source.message ? 'Read source answer' : 'Review source interview'} · Turn ${d.round}</button>` : ''}</li>`; }).join('')}</ol>` : '<p>No deductions unlocked from this suspect yet.</p>'}
+</section>`;
+}
+
 function renderInterviewReview(state, interview, notebook, draft, persistent = true) {
   const s = suspect(state, interview.suspectId);
   const source = state.me.deductions.find(d => d.id === notebook.deduction && deductionSource(state, d)?.interview === interview);
   return `<section class="screen notebook review">
-<button type="button" id="notebook-back" class="btn ghost small" data-action="notebook-back">Back to ${notebook.section === 'interviews' ? 'interviews' : 'deductions'}</button>
+<button type="button" id="notebook-back" class="btn ghost small" data-action="notebook-back">Back to ${notebook.suspect ? 'suspect file' : notebook.section === 'interviews' ? 'interviews' : 'deductions'}</button>
 <p class="eyebrow">Private interview · Turn ${interview.round}</p><h1 class="title" id="review-title" tabindex="-1">${esc(s?.name)}</h1>
 <p class="sub">Read-only · reviewing uses no questions. Return to ${state.phase === 'reveal' ? 'Outcome' : state.phase === 'accusation' ? 'Summon' : 'Investigate'} when you are ready.</p>
 ${source ? `<aside class="source-note"><b>Source for your deduction</b><p>${esc(source.text)}</p></aside>` : ''}

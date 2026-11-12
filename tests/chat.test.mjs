@@ -90,13 +90,18 @@ test('a reply scrolls to the bottom and is announced once', () => {
   assert.equal(doc.getElementById('announcer').textContent, '', 'never twice');
 });
 
-test('chips fill and send in one tap', () => {
+test('chips fill a reviewable draft without sending', () => {
   const {doc, view, sent, $} = setup();
   view.update(state());
   const chip = $('.chip');
   fire(chip, 'click');
+  assert.deepEqual(sent, []);
+  assert.equal($('#question').value, chip.dataset.chip);
+  assert.ok(chip.disabled, 'a filled draft disables suggestions');
+  fire(chip, 'click');
+  assert.deepEqual(sent, []);
+  fire($('.send'), 'click');
   assert.deepEqual(sent, [chip.dataset.chip]);
-  assert.equal($('#question').value, '');
   assert.equal(doc.activeElement, $('#question'));
 });
 
@@ -322,4 +327,38 @@ test('new replies do not move a reader and remain reachable after the composer c
   assert.equal(transcript.scrollTop, transcript.scrollHeight);
   assert.equal($('.new-reply').hidden, true);
   assert.equal(doc.activeElement, transcript, 'focus is not stranded on a hidden button');
+});
+
+
+test('suggestions never overwrite typed or restored text, including whitespace', () => {
+  for (const draft of ['A question in progress', '   ']) {
+    const {view, sent, $, drafts} = setup({draft}); view.update(state());
+    const chip = $('.chip'); assert.ok(chip.disabled); fire(chip, 'click');
+    assert.equal($('#question').value, draft); assert.deepEqual(sent, []); assert.deepEqual(drafts, []);
+  }
+});
+
+test('returning to a chat restores reading position and flags a reply completed while away', () => {
+  const {view, $, root} = setup(); view.update(state([message(1), message(2, 'pending')]));
+  const transcript = $('#transcript'); transcript.scrollTop = 0; transcript.scrollHeight = 900; transcript.clientHeight = 200;
+  fire(transcript, 'scroll'); const saved = view.readingPosition();
+  view.destroy();
+  const restored = chat.mountChat(root, {onSend() {}}); restored.update(state([message(1), message(2)]));
+  restored.restoreReadingPosition(saved);
+  assert.equal(root.querySelector('#transcript').scrollTop, 0);
+  assert.equal(root.querySelector('.new-reply').hidden, false);
+});
+
+
+test('an existing unread reply indicator survives leaving and returning without another reply', () => {
+  const {view, $, root} = setup(); view.update(state([message(1), message(2, 'pending')]));
+  const transcript = $('#transcript'); transcript.scrollTop = 0; transcript.scrollHeight = 900; transcript.clientHeight = 200;
+  fire(transcript, 'scroll'); view.update(state([message(1), message(2)]));
+  assert.equal($('.new-reply').hidden, false);
+  const saved = view.readingPosition(); view.destroy();
+  const restored = chat.mountChat(root, {onSend() {}}); restored.update(state([message(1), message(2)]));
+  restored.restoreReadingPosition(saved);
+  assert.equal(root.querySelector('.new-reply').hidden, false);
+  fire(root.querySelector('.new-reply'), 'click');
+  assert.equal(restored.readingPosition().unread, false);
 });

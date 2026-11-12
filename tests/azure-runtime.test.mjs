@@ -43,7 +43,7 @@ test('explicit room admission supports durable create and idempotent retries wit
 });
 test('AI answers each question through the worker and falls back to the canonical answer on provider failure',async()=>{
  let fail=false,calls=0;const store=ready();
- const runtime=await setup({SHIFT_ALLOW_NEW_ROOMS:'true',SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic',SHIFT_AI_POLICY:JSON.stringify(policy)},store,async()=>{calls++;if(fail)return new Response('synthetic failure',{status:503});return new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({reply:'In character.',unlocked:['d-alibi-gap']})}]}],usage:{input_tokens:10,output_tokens:5}}));});
+ const runtime=await setup({SHIFT_ALLOW_NEW_ROOMS:'true',SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic',SHIFT_AI_POLICY:JSON.stringify(policy)},store,async()=>{calls++;if(fail)return new Response('synthetic failure',{status:503});return new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify({reply:'In character.',unlocked:['d-alibi-gap']})}]}],usage:{input_tokens:10,output_tokens:5}}));});
  let serial=0;const id=()=>`azure-ai-request-${++serial}`;
  const post=async(path,body,cookie)=>{const response=await runtime.api(request(path,body,cookie?{cookie}:{}));assert.ok([200,201].includes(response.status),`${path}: ${response.status}`);return {body:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};};
  const get=async(code,cookie)=>(await runtime.api(new Request(`${env.SHIFT_ORIGIN}/api/rooms/${code}`,{headers:{cookie}}))).json();
@@ -63,7 +63,7 @@ test('AI answers each question through the worker and falls back to the canonica
 });
 test('AI replies due on the same tick run in parallel, capped at the policy concurrency, without blocking later ticks',async()=>{
  let hold=true,calls=0,active=0,peak=0;const releases=[];const store=ready();
- const reply=()=>new Response(JSON.stringify({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({reply:'In character.',unlocked:[]})}]}],usage:{input_tokens:10,output_tokens:5}}));
+ const reply=()=>new Response(JSON.stringify({status:'completed',output:[{type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify({reply:'In character.',unlocked:[]})}]}],usage:{input_tokens:10,output_tokens:5}}));
  const runtime=await setup({SHIFT_ALLOW_NEW_ROOMS:'true',SHIFT_AI_ENABLED:'true',SHIFT_AI_OPERATOR_CONSENT:'true',OPENAI_API_KEY:'synthetic',SHIFT_AI_POLICY:JSON.stringify({...policy,maxConcurrent:2})},store,async()=>{
   calls++;active++;peak=Math.max(peak,active);
   try{if(hold)await new Promise(resolve=>releases.push(resolve));return reply();}finally{active--;}

@@ -26,6 +26,7 @@ let session = store.get(SESSION), pending = store.get(PENDING), state = null, bu
 // `reading` keeps a finished chat on screen until the player moves on, even after the turn
 // itself has moved on (see views.screenFor): the transition waits for it.
 const local = {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, entry: 'create', cases: [], invite: ''};
+const chatPositions = new Map();
 let chat = null, transition = {key: null, timer: null};
 if (!session && !pending && requestedInvite) {
   Object.assign(local, {entry: 'join', invite: requestedInvite});
@@ -49,7 +50,7 @@ function clearNotice() { const el = $('#notice'); el.className = ''; el.textCont
 function chatFor(main) {
   const key = JSON.stringify([state.code, state.me.id, views.chatKey(views.currentInterview(state, local))]);
   if (chat?.key === key) return chat;
-  chat?.destroy();
+  if (chat) { chatPositions.set(chat.key, chat.readingPosition()); chat.destroy(); }
   const context = uiContext(state);
   chat = mountChat(main, {draft: ui.draft(context), onDraft: text => {
     const persistent = ui.persistent;
@@ -62,6 +63,7 @@ function chatFor(main) {
       return act('ask', {question, round: interview?.round ?? state.round}, {count: interview?.messages.length ?? 0});
     }});
   chat.key = key;
+  chat.restoreOnUpdate = chatPositions.get(key);
   return chat;
 }
 
@@ -88,8 +90,9 @@ function render() {
   if (view === 'chat') {
     const outgoing = pending?.action?.type === 'ask' && Number.isInteger(pending.count) ? {text: pending.action.question, count: pending.count} : null;
     chatFor(main).update(state, {...local, busy, outgoing});
+    if (chat.restoreOnUpdate) { chat.restoreReadingPosition(chat.restoreOnUpdate); chat.restoreOnUpdate = null; }
   } else {
-    if (chat) { chat.destroy(); chat = null; }
+    if (chat) { chatPositions.set(chat.key, chat.readingPosition()); chat.destroy(); chat = null; }
     main.innerHTML = view === 'deductions' ? views.renderDeductions(state, local) : view === 'casefile' ? views.renderCaseFile(state) : RENDER[screen](state, local);
     for (const [id, value] of Object.entries(entryValues)) { const el = document.getElementById(id); if (el && el.type !== 'hidden') el.value = value; }
     main.scrollTop = keepScroll;
@@ -131,6 +134,7 @@ function applyState(next) {
     local.tab = local.notebook.open ? 'deductions' : 'investigate';
   }
   if (moved) { local.selected = null; if (local.tab !== 'deductions') local.tab = 'investigate'; closeConfirmation(); }
+  if (restored && local.notebook?.suspect && local.notebook.returnRound === state.round && local.notebook.returnPhase === state.phase && state.suspects.some(s => s.id === local.notebook.returnSelected)) local.selected = local.notebook.returnSelected;
   if (fresh.length) showUnlocked(fresh);
   render();
   offerInvitation();
@@ -285,6 +289,13 @@ const actions = {
   reset: () => resetSession(),
   'switch-room': () => switchRoom(),
   resume: () => resumeRoom(),
+  'dossier-return': () => {
+    const saved = local.notebook;
+    local.tab = saved.returnTab === 'deductions' ? 'deductions' : 'investigate';
+    saveNotebook({suspect: null, interview: null, message: null, deduction: null});
+    render();
+    ($('#chat-suspect-file') ?? $('#suspect-dossier') ?? $('#main')).focus({preventScroll: true});
+  },
   'notebook-back': () => {
     const saved = local.notebook;
     saveNotebook({interview: null, message: null, deduction: null});
@@ -324,7 +335,14 @@ document.addEventListener('click', event => {
   if (!b || b.disabled) return;
   if (b.dataset.entry) { if (busy || pending) return; local.entry = b.dataset.entry; render(); return; }
   if (b.dataset.tab) { local.tab = b.dataset.tab; saveNotebook({}); render(); $('#main').scrollTop = 0; $('#main').focus({preventScroll: true}); return; }
-  if (b.dataset.notebook) { saveNotebook({section: b.dataset.notebook, interview: null, message: null, deduction: null}); render(); document.getElementById(`notebook-${b.dataset.notebook}`)?.focus(); return; }
+  if (b.dataset.dossier) {
+    if (!state?.suspects.some(s => s.id === b.dataset.dossier)) return;
+    const returnTab = local.tab;
+    local.tab = 'deductions';
+    saveNotebook({suspect: b.dataset.dossier, interview: null, message: null, deduction: null, returnTab, returnSelected: local.selected, returnRound: state.round, returnPhase: state.phase});
+    render(); $('#suspect-file-title')?.focus(); return;
+  }
+  if (b.dataset.notebook) { saveNotebook({suspect: null, section: b.dataset.notebook, interview: null, message: null, deduction: null}); render(); document.getElementById(`notebook-${b.dataset.notebook}`)?.focus(); return; }
   if (b.dataset.interview) {
     if (!state.me.interviews.some(i => views.chatKey(i) === b.dataset.interview)) return;
     saveNotebook({interview: b.dataset.interview, message: b.dataset.message || null, deduction: b.dataset.deduction || null});
@@ -332,9 +350,11 @@ document.addEventListener('click', event => {
     (document.getElementById(`review-message-${local.notebook.message}`) ?? $('#review-title'))?.focus();
     return;
   }
-  if (b.dataset.suspect) { local.selected = local.selected === b.dataset.suspect ? null : b.dataset.suspect; render(); $('#suspect-dossier')?.focus(); return; }
+  if (b.dataset.suspect) { local.selected = local.selected === b.dataset.suspect ? null : b.dataset.suspect;
+    if (local.notebook?.suspect) saveNotebook({returnSelected: local.selected, returnRound: state.round, returnPhase: state.phase});
+    render(); $('#suspect-dossier')?.focus(); return; }
   const action = actions[b.dataset.action];
-  if (action && (!busy || ['reset', 'notebook-back'].includes(b.dataset.action))) action();
+  if (action && (!busy || ['reset', 'notebook-back', 'dossier-return'].includes(b.dataset.action))) action();
 });
 document.addEventListener('submit', event => {
   event.preventDefault();
