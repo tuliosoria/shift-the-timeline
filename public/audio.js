@@ -129,7 +129,9 @@ export function mountAudio(doc = document, win = window) {
     if (!event.isTrusted || event.target.closest?.('#audio-controls, #sound-dialog') || !audio.settings.enabled || audio.settings.playing) return;
     void audio.start();
   };
-  doc.addEventListener('pointerdown', unlock, true);
+  // Activation arrives on press for mouse, release for touch/pen.
+  doc.addEventListener('pointerdown', event => { if (event.pointerType === 'mouse') unlock(event); }, true);
+  doc.addEventListener('pointerup', event => { if (event.pointerType !== 'mouse') unlock(event); }, true);
   doc.addEventListener('keydown', unlock, true);
   doc.addEventListener('click', event => {
     const button = event.target.closest?.('button');
