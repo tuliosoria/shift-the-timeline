@@ -16,9 +16,9 @@ function setup(saved, {rejectPlay = false, rejectFetch = false} = {}) {
     fetch: async url => { requests.push(url); if (rejectFetch) throw Error('Offline'); return {ok: true, arrayBuffer: async () => new ArrayBuffer(4)}; }});
   return {audio, media, context, requests, sources, gains, plays, fire: name => listeners[name]?.(), saved: () => JSON.parse(saved)};
 }
-test('no playback or audio downloads before explicit opt-in, even with stored enabled setting', async () => {
+test('sound defaults on and remembered enabled survives reload', async () => {
   const s = setup(JSON.stringify({enabled: true, music: .2, effects: .4}));
-  assert.equal(s.audio.settings.enabled, false); assert.equal(s.media.src, ''); assert.equal(s.requests.length, 0);
+  assert.equal(s.audio.settings.enabled, true); assert.equal(s.media.src, ''); assert.equal(s.requests.length, 0);
   s.audio.effect('click'); await tick(); assert.equal(s.plays.length, 0);
   await s.audio.setEnabled(true); await tick();
   assert.equal(s.media.src, mod.TRACKS[0].url); assert.equal(s.media.paused, false); assert.equal(s.requests.length, 3);
@@ -45,10 +45,10 @@ test('mute and hiding stop music and current effects; return resumes only if ena
   await s.audio.setEnabled(false); assert.equal(s.media.paused, true);
   s.audio.setHidden(true); s.audio.setHidden(false); assert.equal(s.media.paused, true);
 });
-test('play rejection disables sound cleanly and missing effects never reject gameplay', async () => {
+test('play rejection preserves enabled preference and waits for interaction', async () => {
   const s = setup(null, {rejectPlay: true, rejectFetch: true});
   assert.equal(await s.audio.setEnabled(true), false); await tick();
-  assert.equal(s.audio.settings.enabled, false); s.audio.effect('receive');
+  assert.equal(s.audio.settings.enabled, true); assert.equal(s.audio.settings.waiting, true); s.audio.effect('receive');
   assert.equal(s.sources.length, 0);
 });
 test('invalid settings clamp to safe defaults and blocked storage is harmless', async () => {
@@ -76,4 +76,25 @@ test('a late rejection from a failed track cannot stop its successfully playing 
   assert.equal(s.media.src, mod.TRACKS[1].url);
   rejectFirst(Error('Failed old track')); await starting; await tick();
   assert.equal(s.audio.settings.enabled, true); assert.equal(s.media.paused, false);
+});
+
+test('explicit mute and volumes survive controller recreation', async () => {
+ const s = setup(); assert.equal(s.audio.settings.enabled, true);
+ await s.audio.setEnabled(false); s.audio.setVolume('music', .6);
+ const reloaded = setup(JSON.stringify(s.saved()));
+ assert.equal(reloaded.audio.settings.enabled, false); assert.equal(reloaded.audio.settings.music, .6);
+ await reloaded.audio.start(); assert.equal(reloaded.plays.length, 0);
+});
+test('blocked automatic playback retries without changing enabled preference', async () => {
+ const s = setup(null, {rejectPlay:true}); await s.audio.start();
+ assert.equal(s.audio.settings.enabled, true); assert.equal(s.audio.settings.playing, false); assert.equal(s.audio.settings.waiting, true);
+ s.media.play = function () { this.paused = false; return Promise.resolve(); };
+ await s.audio.start(); assert.equal(s.audio.settings.playing, true); assert.equal(s.audio.settings.waiting, false);
+});
+
+test('an enabled page initially hidden starts when revealed and waiting can be muted', async () => {
+ const s = setup(); s.audio.setHidden(true); await s.audio.start(); assert.equal(s.plays.length, 0);
+ s.audio.setHidden(false); await tick(); assert.equal(s.audio.settings.playing, true);
+ const blocked = setup(null, {rejectPlay: true}); await blocked.audio.start(); await blocked.audio.setEnabled(false);
+ assert.equal(blocked.audio.settings.enabled, false); assert.equal(blocked.saved().enabled, false);
 });

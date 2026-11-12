@@ -1,4 +1,4 @@
-// Optional, self-hosted sound. No network or playback until an explicit user gesture.
+// Self-hosted sound: on by default, with remembered mute and browser autoplay fallback.
 export const TRACKS = Object.freeze([
   {url: '/assets/audio/investigation-noir.mp3', title: 'Noir Investigation'},
   {url: '/assets/audio/investigation.mp3', title: 'Steampunk Investigation'},
@@ -15,30 +15,31 @@ export function hasNewReply(previous, next) {
 
 export function createAudio({createMedia, createContext, fetch, storage, onChange = () => {}}) {
   let saved; try { saved = JSON.parse(storage?.getItem(KEY)); } catch {}
-  // Opt-in again after a reload: remembered volume is not permission to autoplay.
-  const settings = {enabled: false, music: validVolume(saved?.music) ? saved.music : DEFAULTS.music, effects: validVolume(saved?.effects) ? saved.effects : DEFAULTS.effects};
+  // User preference is separate from browser permission and actual playback.
+  const settings = {enabled: saved?.enabled !== false, playing: false, waiting: false, music: validVolume(saved?.music) ? saved.music : DEFAULTS.music, effects: validVolume(saved?.effects) ? saved.effects : DEFAULTS.effects};
   const media = createMedia(); media.preload = 'none';
   let context, musicGain, effectsGain, hidden = false, track = 0, generation = 0, failedTracks = 0;
   const buffers = new Map(), active = new Set();
   const notify = () => onChange({...settings, track: TRACKS[track].title});
-  const save = () => { try { storage?.setItem(KEY, JSON.stringify({music: settings.music, effects: settings.effects})); } catch {} };
-  const stop = () => { media.pause(); for (const source of active) { try { source.stop(); } catch {} } active.clear(); };
+  const save = () => { try { storage?.setItem(KEY, JSON.stringify({enabled: settings.enabled, music: settings.music, effects: settings.effects})); } catch {} };
+  const stop = () => { settings.playing = false; media.pause(); for (const source of active) { try { source.stop(); } catch {} } active.clear(); };
   function initialise() {
     if (context) return;
     context = createContext();
     musicGain = context.createGain(); effectsGain = context.createGain();
     musicGain.gain.value = settings.music; effectsGain.gain.value = settings.effects;
     context.createMediaElementSource(media).connect(musicGain); musicGain.connect(context.destination); effectsGain.connect(context.destination);
-    // Effects are tiny and decoded once, only after the player's opt-in. Missing clips are silent.
+    // Effects are tiny and decoded once. Missing clips are silent.
     for (const [name, url] of Object.entries(EFFECTS)) {
       Promise.resolve().then(() => fetch(url)).then(response => { if (!response.ok) throw Error('Missing sound'); return response.arrayBuffer(); })
         .then(bytes => context.decodeAudioData(bytes)).then(buffer => buffers.set(name, buffer)).catch(() => {});
     }
   }
-  function fail() { settings.enabled = false; generation++; stop(); notify(); }
+  function fail() { generation++; stop(); settings.waiting = settings.enabled; notify(); }
   async function play() {
     if (!settings.enabled || hidden) return false;
     const request = generation;
+    settings.waiting = true; settings.playing = false; notify();
     try {
       // Invoke both while still inside the gesture for Safari's autoplay policy.
       const resume = context.resume();
@@ -46,13 +47,16 @@ export function createAudio({createMedia, createContext, fetch, storage, onChang
       const playback = media.play();
       await Promise.all([resume, playback]);
       if (request !== generation || !settings.enabled || hidden) { if (!settings.enabled || hidden) stop(); return false; }
-      return true;
+      settings.playing = true; settings.waiting = false; notify(); return true;
     } catch { if (request === generation) fail(); return false; }
   }
   function nextTrack() {
     generation++; // A rejected play() from the previous URL must not stop this track.
     track = (track + 1) % TRACKS.length; media.src = TRACKS[track].url; notify(); void play();
   }
+  media.addEventListener('pause', () => { settings.playing = false; notify(); });
+  media.addEventListener('waiting', () => { settings.playing = false; notify(); });
+  media.addEventListener('playing', () => { settings.playing = settings.enabled && !hidden && context?.state === 'running'; if (settings.playing) settings.waiting = false; notify(); });
   media.addEventListener('ended', () => { failedTracks = 0; if (settings.enabled) nextTrack(); });
   media.addEventListener('error', () => {
     if (!settings.enabled) return;
@@ -61,8 +65,14 @@ export function createAudio({createMedia, createContext, fetch, storage, onChang
   });
   return {
     get settings() { return {...settings}; },
+    async start() {
+      if (!settings.enabled || hidden) return false;
+      generation++;
+      try { initialise(); } catch { fail(); return false; }
+      return play();
+    },
     async setEnabled(enabled) {
-      generation++; settings.enabled = !!enabled;
+      generation++; settings.enabled = !!enabled; settings.waiting = false; save();
       if (!settings.enabled) { stop(); notify(); return true; }
       try { initialise(); } catch { fail(); return false; }
       failedTracks = 0; notify(); return play();
@@ -74,7 +84,7 @@ export function createAudio({createMedia, createContext, fetch, storage, onChang
       if (gain) gain.gain.value = value;
       save(); notify();
     },
-    setHidden(value) { hidden = !!value; generation++; if (hidden) stop(); else void play(); },
+    setHidden(value) { hidden = !!value; generation++; if (hidden) { stop(); notify(); } else if (settings.enabled) { try { initialise(); void play(); } catch { fail(); } } },
     effect(name) {
       if (!settings.enabled || hidden || !settings.effects || !buffers.has(name) || context?.state !== 'running') return;
       // Limit rapid taps; sound is feedback, not a queue of delayed events.
@@ -93,11 +103,17 @@ export function mountAudio(doc = document, win = window) {
   let storage; try { storage = win.localStorage; } catch {}
   const audio = createAudio({createMedia: () => new win.Audio(), createContext: () => new (win.AudioContext || win.webkitAudioContext)(), fetch: win.fetch.bind(win), storage,
     onChange: state => {
-      toggle.textContent = state.enabled ? 'Mute sound' : 'Enable sound'; toggle.setAttribute('aria-pressed', String(state.enabled));
+      const label = state.enabled ? 'Mute sound' : 'Enable sound';
+      toggle.querySelector('.sound-label').textContent = label; toggle.setAttribute('aria-label', label);
+      toggle.classList.toggle('is-playing', state.playing); toggle.classList.toggle('is-waiting', state.waiting);
+      toggle.setAttribute('aria-pressed', String(state.enabled));
       music.value = Math.round(state.music * 100); effects.value = Math.round(state.effects * 100);
       doc.getElementById('music-level').textContent = `${music.value}%`; doc.getElementById('effects-level').textContent = `${effects.value}%`;
-      doc.getElementById('sound-track').textContent = state.enabled ? state.track : 'Sound is off';
+      doc.getElementById('sound-track').textContent = state.enabled ? (state.waiting ? 'Sound is on · tap anywhere in the game to start' : state.track) : 'Sound is off';
     }});
+  toggle.querySelector('.sound-label').textContent = audio.settings.enabled ? 'Mute sound' : 'Enable sound';
+  toggle.setAttribute('aria-label', audio.settings.enabled ? 'Mute sound' : 'Enable sound');
+  toggle.setAttribute('aria-pressed', String(audio.settings.enabled));
   music.value = Math.round(audio.settings.music * 100); effects.value = Math.round(audio.settings.effects * 100);
   doc.getElementById('music-level').textContent = `${music.value}%`; doc.getElementById('effects-level').textContent = `${effects.value}%`;
   toggle.addEventListener('click', () => { void audio.setEnabled(!audio.settings.enabled); });
@@ -108,6 +124,13 @@ export function mountAudio(doc = document, win = window) {
   effects.addEventListener('input', () => audio.setVolume('effects', Number(effects.value) / 100));
   doc.addEventListener('visibilitychange', () => audio.setHidden(doc.hidden));
   audio.setHidden(doc.hidden);
+  // Try normal autoplay; a blocked browser gets the same attempt on a real gesture.
+  const unlock = event => {
+    if (!event.isTrusted || event.target.closest?.('#audio-controls, #sound-dialog') || !audio.settings.enabled || audio.settings.playing) return;
+    void audio.start();
+  };
+  doc.addEventListener('pointerdown', unlock, true);
+  doc.addEventListener('keydown', unlock, true);
   doc.addEventListener('click', event => {
     const button = event.target.closest?.('button');
     if (!button || button.disabled || button.closest('#audio-controls, #sound-dialog') || button.classList.contains('send')) return;
