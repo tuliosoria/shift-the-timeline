@@ -26,7 +26,7 @@ test('question admission atomically reserves budgets and persists private job/ou
 test('chat context carries this interview\'s earlier resolved exchanges',async()=>{
  const h=await harness();await h.ask('session-A',id(),'First question');await run(h,pendingJob(h).id,fakeProvider({reply:'First reply',unlocked:[]}));
  await h.ask('session-A',id(),'Second question');const input=JSON.parse(pendingJob(h).context.input);
- assert.deepEqual(input.history,[{question:'First question',reply:'First reply'}]);assert.equal(input.question,'Second question');
+ assert.deepEqual(input.history,[{round:1,question:'First question',reply:'First reply'}]);assert.equal(input.question,'Second question');
 });
 
 test('pending question resolves with ai reply and unlocks',async()=>{
@@ -81,7 +81,7 @@ test('consent field no longer exists',async()=>{
  assert.equal(h.store.ai.size,0);
 });
 
-test('chat context that is too large for the job record resolves canonically at ask time',async()=>{
+test('chat context above the provider envelope resolves canonically at ask time',async()=>{
  for(const size of [15500,21000]){
   const caseData={...TRAIN_CASE,suspects:TRAIN_CASE.suspects.map(s=>s.id==='suspect-1'?{...s,brief:'x'.repeat(size)}:s)};
   const h=await harness({},{caseData});const message=(await h.ask('session-A',id(),ALIBI)).me.interviews[0].messages[0];

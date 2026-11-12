@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import {PostgresStore} from '../server/storage/postgres.mjs';
+import {aiPut,MAX_AI_ITEM_BYTES} from '../server/storage/ai-codec.mjs';
 import {DurableGame} from '../server/persistent-game.mjs';
 import {TRAIN_CASE,CASES} from './fixtures/case.mjs';
 const url=process.env.SHIFT_POSTGRES_TEST_URL;
@@ -46,6 +47,23 @@ test('PostgreSQL integration: atomic durable storage contract',{skip:!url},async
    await assert.rejects(()=>restarted.act(created.code,'session-A',{...command,question:'Changed question'}),e=>e.status===409);
    assert.equal((await store.getRoom(created.code)).players.length,3);
    assert.equal((await pool.query("SELECT count(*)::integer n FROM shift_records WHERE kind='room'")).rows[0].n,1);
+  });
+  await t.test('legacy and larger AI contexts round-trip in schema version one with conditional writes',async()=>{
+   const legacy=ai('AIJOB#legacy',null,{kind:'job',status:'pending',context:{instructions:'Original instructions',input:'{"history":[],"question":"Old question?"}'}});
+   const large=ai('AIJOB#large',null,{kind:'job',status:'pending',dueAt:123,context:{instructions:'i'.repeat(1000),input:JSON.stringify({history:Array.from({length:6},()=>({question:'"'.repeat(300),reply:'\\'.repeat(1200)})),question:'Continue?'})}});
+   assert.ok(Buffer.byteLength(large.value.context.instructions+large.value.context.input)<=20000);
+   const size=Buffer.byteLength(JSON.stringify(aiPut('synthetic-test',large).Put.Item));assert.ok(size>16000&&size<MAX_AI_ITEM_BYTES);
+   await store.commitAi({writes:[legacy,large]});
+   assert.deepEqual(await store.getAi(legacy.key),legacy.value);assert.deepEqual(await store.getAi(large.key),large.value);
+   const completed={...large.value,version:2,status:'complete',dueAt:undefined};
+   await store.commitAi({writes:[{key:large.key,expectedVersion:1,value:completed}]});
+   assert.deepEqual(await store.getAi(large.key),JSON.parse(JSON.stringify(completed)));
+   await assert.rejects(()=>store.commitAi({writes:[{key:large.key,expectedVersion:1,value:{...completed,status:'fallback'}}]}),{name:'ConflictError'});
+   const oversized=ai('AIJOB#oversized',null,{padding:'x'.repeat(MAX_AI_ITEM_BYTES)});
+   await assert.rejects(()=>store.commitAi({writes:[ai('AIJOB#must-not-appear'),oversized]}),/AI record too large/);
+   assert.equal(await store.getAi('AIJOB#oversized'),null);assert.equal(await store.getAi('AIJOB#must-not-appear'),null);
+   assert.deepEqual(await store.getAi(large.key),JSON.parse(JSON.stringify(completed)));
+   assert.equal((await pool.query('SELECT version FROM shift_schema_version WHERE singleton=true')).rows[0].version,1);
   });
   await t.test('concurrent room updates have exactly one winner',async()=>{
    await store.commitRoom({expectedVersion:null,room:room(),receipt:receipt('init')});

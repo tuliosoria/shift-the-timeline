@@ -79,9 +79,7 @@ misses each major clue source; redundant evidence must remain discoverable
 within the 12 questions (four turns of three) each player has. Have people unfamiliar
 with the solution distinguish the culprit from plausible alternatives.
 
-A repeated topic is rejected without spending another question; its existing
-answer remains available for review. Later turns can revisit a suspect; consider whether
-those choices are editorially useful. Canonical keyword matching is not AI
+Repeated questions and topics are allowed and consume a question like any other accepted ask; a retry of the same request remains idempotent. Earlier answers remain available for review. Later turns can revisit a suspect. AI conversation context can retain up to eleven settled exchanges with the same player and suspect across turns, subject to storage limits. Author distinct voices and useful follow-up knowledge in the brief; do not rely on every earlier exchange being retained. Canonical keyword matching is not AI
 understanding. When AI voices the answers it may only echo the case and unlock
 deductions of the suspect being interviewed; it never decides the truth or the
 outcome, and canonical answers are the fallback.
