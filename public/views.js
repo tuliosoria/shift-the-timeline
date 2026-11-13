@@ -240,7 +240,11 @@ export function renderQuestionReminder(state, local, draft) {
 }
 
 export function renderChatFooter(state, local) {
-  if (chatEnded(state, local)) return CHAT_DONE;
+  if (chatEnded(state, local)) {
+    const {interview, q} = chatParts(state, local), remaining = Math.max(0, q - interview.messages.length);
+    if (!remaining) return CHAT_DONE;
+    return `<div class="done interrupted"><div><p>The host advanced the turn. You had ${plural(remaining, 'question')} left.</p>${local?.draft ? `<button type="button" class="evidence-link" data-review-draft="${esc(chatKey(interview))}">Review your unsent draft</button>` : ''}</div><button type="button" class="btn ghost" data-action="leave-chat">Continue</button></div>`;
+  }
   const {interview, s, pending} = chatParts(state, local), hold = pending || interview.closed || local?.busy;
   const victim = String(state.case?.victim ?? '').split(',')[0].trim();
   const labels = victim ? {...topicLabels, relationship: `Do you know ${victim}?`, motive: `Have you had any disagreements with ${victim} recently?`} : topicLabels;
@@ -431,7 +435,7 @@ function renderInterviewReview(state, interview, notebook, draft, persistent = t
 <p class="sub">Read-only · reviewing uses no questions. Return to ${state.phase === 'reveal' ? 'Outcome' : state.phase === 'accusation' ? 'Summon' : 'Investigate'} when you are ready.</p>
 ${source ? `<aside class="source-note"><b>Source for your deduction</b><p>${esc(source.text)}</p></aside>` : ''}
 <ol class="review-transcript">${interview.opening ? `<li class="b them"><small>${esc(s?.name)}</small>${esc(interview.opening)}</li>` : ''}${interview.messages.map((m, n) => `<li class="review-exchange${m.id === notebook.message ? ' source-answer' : ''}" id="review-message-${esc(m.id)}" tabindex="-1"><p class="b me"><small>You · Question ${n + 1}</small>${esc(m.question)}</p><p class="b them"><small>${esc(s?.name)}${m.status !== 'pending' ? ' · ' + esc(replyProvenance(m)) : ''}</small>${m.status === 'pending' ? 'Reply pending. This conversation will update when it arrives.' : esc(m.reply)}</p></li>`).join('')}</ol>
-${draft ? `<aside class="saved-draft"><h2 class="label">Unsent draft · Turn ${interview.round}</h2><p>${esc(draft)}</p><p class="sub">${persistent ? 'Saved on this browser.' : 'Only in this open tab. Storage is unavailable; reloading will lose this draft.'} This text was never sent.</p></aside>` : ''}
+${draft ? `<aside class="saved-draft" id="saved-draft" tabindex="-1"><h2 class="label">Unsent draft · Turn ${interview.round}</h2><p>${esc(draft)}</p><p class="sub">${persistent ? 'Saved on this browser.' : 'Only in this open tab. Storage is unavailable; reloading will lose this draft.'} This text was never sent.</p></aside>` : ''}
 </section>`;
 }
 

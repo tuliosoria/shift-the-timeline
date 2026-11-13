@@ -295,3 +295,24 @@ test('repeat reminders escape private identifiers and provide direct return from
   const review = views.renderDeductions(s, {notebook:{suspect:'mara',interview:'1:mara',message:'<script>',directAnswer:true}});
   assert.match(review, /data-action="dossier-return">Return to Investigate/);
 });
+
+test('early interview closure explains unused questions and links only an existing draft', () => {
+  for (const count of [0, 1, 2]) {
+    const s = state({round:2}, {interviews:[interview({closed:true,messages:Array.from({length:count},(_,n)=>message({id:`m${n}`}))})]});
+    const l = local({reading:'1:mara',draft:'Private unfinished thought'});
+    const html = views.renderChatFooter(s,l);
+    assert.match(html, new RegExp(`${3-count} question`));
+    assert.match(html, /The host advanced the turn/);
+    assert.match(html, /data-review-draft="1:mara"/);
+    assert.doesNotMatch(html, /Private unfinished thought|That's all/);
+    assert.doesNotMatch(views.renderChatFooter(s,{...l,draft:''}), /data-review-draft/);
+  }
+});
+test('pending interrupted replies keep their composer until resolved; fully used turns keep normal ending', () => {
+  const i = interview({closed:true,messages:[message({status:'pending',reply:null})]});
+  const s = state({round:2},{interviews:[i]}), l = local({reading:'1:mara',draft:'Saved'});
+  assert.match(views.renderChatFooter(s,l), /id="question".*readonly/);
+  assert.doesNotMatch(views.renderChatFooter(s,l), /questions? left/);
+  i.messages = [message(),message({id:'m2'}),message({id:'m3'})];
+  assert.equal(views.renderChatFooter(s,l), views.CHAT_DONE);
+});
