@@ -99,3 +99,24 @@ AI understanding. Closed/history interviews keep review links; unused question
 controls remain disabled. Client and transactional regressions cover this rule,
 and the synthetic Chromium flow exercises keyboard focus, draft preservation
 and rejected repeat submissions.
+
+## Keyboard continuity during live updates
+
+A room snapshot can replace controls while another agent joins, chooses a suspect
+or receives a reply. The client now restores focus to the same uniquely identified
+control, rather than its position or label. Text selections are retained when an
+input is replaced; a live input is left untouched. Deliberate navigation and open
+dialogs keep ownership of focus. If the former control disappears, becomes disabled
+or belongs to a replaced screen, the main content is the safe fallback.
+
+Confirmation cancellation resolves the current equivalent of its opener, including
+when a room update replaced the original button while the dialog was open. A turn
+change can still dismiss an obsolete confirmation and focus the new screen.
+
+`tests/focus.test.mjs` covers semantic identity, caret restoration, hidden/disabled
+and ambiguous targets, deliberate focus moves and modal boundaries.
+`tests/browser-focus.mjs` uses three isolated Chromium contexts and synthetic local
+AI to cover live lobby updates, navigation focus, modal polling and Escape,
+round-change dismissal, draft caret preservation and 320-pixel short-phone layout.
+Screenshots are local test artefacts. These checks do not claim native screen-reader
+or iOS/Android assistive-technology validation.
