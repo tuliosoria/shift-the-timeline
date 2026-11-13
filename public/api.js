@@ -96,7 +96,8 @@ export function roomGone(error) {
 }
 
 // getState() returns the current snapshot, or null to skip this tick (no room, or a command in flight).
-export function pollLoop({getState, onState, onError = () => {}, isHidden = () => document.hidden}) {
+// onSuccess includes unchanged 204s and retains the source snapshot for stale-room guards.
+export function pollLoop({getState, onState, onSuccess = () => {}, onError = () => {}, isHidden = () => document.hidden}) {
   let timer = null, stopped = false, running = false, pendingSince = null;
   const delay = () => {
     const state = getState();
@@ -114,6 +115,8 @@ export function pollLoop({getState, onState, onError = () => {}, isHidden = () =
       if (state?.code) {
         const {status, data} = await fetchJson(`/api/rooms/${encodeURIComponent(state.code)}/state?since=${state.version}`);
         if (status === 200) onState(validateRoomState(data, {code: state.code, playerId: state.me?.id}), state);
+        else if (status !== 204) throw invalidResponse();
+        onSuccess(state, status);
       }
     } catch (error) { onError(error, state); }
     finally {
