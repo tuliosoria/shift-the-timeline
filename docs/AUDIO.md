@@ -29,3 +29,7 @@ Verification: `node --test tests/audio.test.mjs tests/audio-http.test.mjs tests/
 and `node tests/browser-audio.mjs`; the latter uses synthetic dialogue and native
 headless Chromium audio, tests both tracks, independent controls, mute, reload
 and exactly-once send/receive. Full repository checks remain required before merge.
+
+### Touch and pen activation
+
+Automatic sound unlock follows browser activation timing: mouse pointerdown, touch/pen pointerup, and keyboard keydown. A first tap is sufficient; muted preference remains authoritative. Regression coverage uses real touchscreen and pen input with activation-neutral CDP reads, so test inspection cannot accidentally grant activation.

@@ -99,5 +99,54 @@ try {
   assert.equal(await blocked.evaluate(() => window.blockedAttempts), 0);
   await blockedContext.close();
   assert.deepEqual(errors, []);
+  // Use actual browser activation, not a test flag set on pointerdown: touch and
+  // pen grant activation on release, whereas mouse grants it on press.
+  for (const input of ['touch', 'pen', 'mouse', 'keyboard']) {
+    const activationContext = await browser.newContext({hasTouch: true, isMobile: true, viewport: {width: 390, height: 800}});
+    const activationPage = await activationContext.newPage();
+    await activationPage.addInitScript(() => {
+      window.activationEvents = []; window.activationAttempts = [];
+      for (const name of ['pointerdown', 'pointerup', 'keydown']) document.addEventListener(name, e => {
+        window.activationEvents.push({type: e.type, pointer: e.pointerType, trusted: e.isTrusted, active: navigator.userActivation.isActive});
+      }, true);
+      const original = HTMLMediaElement.prototype.play;
+      HTMLMediaElement.prototype.play = function (...args) {
+        if (!(this instanceof HTMLAudioElement)) return original.apply(this, args);
+        window.activationMusic = this;
+        window.activationAttempts.push(navigator.userActivation.isActive);
+        if (!navigator.userActivation.isActive) return Promise.reject(new DOMException('Activation required', 'NotAllowedError'));
+        return original.apply(this, args);
+      };
+    });
+    const activationCdp = await activationContext.newCDPSession(activationPage);
+    const readWithoutGesture = async expression => (await activationCdp.send('Runtime.evaluate', {expression, returnByValue: true, userGesture: false})).result.value;
+    await activationPage.goto(server.origin);
+    for (let tries = 0; tries < 80 && !await readWithoutGesture("document.querySelector('#sound-toggle')?.classList.contains('is-waiting')"); tries++) await new Promise(r => setTimeout(r, 100));
+    assert.equal(await readWithoutGesture('navigator.userActivation.hasBeenActive'), false);
+    const box = await readWithoutGesture("JSON.parse(JSON.stringify(document.querySelector('h1').getBoundingClientRect()))"), x = box.x + box.width / 2, y = box.y + box.height / 2;
+    if (input === 'touch') await activationPage.touchscreen.tap(x, y);
+    else if (input === 'mouse') await activationPage.mouse.click(x, y);
+    else if (input === 'keyboard') await activationPage.keyboard.press('a');
+    else {
+      const cdp = await activationContext.newCDPSession(activationPage);
+      await cdp.send('Input.dispatchMouseEvent', {type: 'mousePressed', x, y, button: 'left', clickCount: 1, pointerType: 'pen'});
+      await cdp.send('Input.dispatchMouseEvent', {type: 'mouseReleased', x, y, button: 'left', clickCount: 1, pointerType: 'pen'});
+      await cdp.detach();
+    }
+    for (let tries = 0; tries < 80 && !await readWithoutGesture("document.querySelector('#sound-toggle').classList.contains('is-playing')"); tries++) await new Promise(r => setTimeout(r, 100));
+    assert.equal(await readWithoutGesture("document.querySelector('#sound-toggle').classList.contains('is-playing')"), true, `${input}: first interaction unlocks audio`);
+    const observed = await readWithoutGesture('({events: activationEvents, attempts: activationAttempts})');
+    assert.deepEqual(observed.attempts, [false, true], `${input}: one blocked autoplay and one activated retry`);
+    if (input === 'touch') {
+      assert.equal(observed.events.find(e => e.type === 'pointerdown').active, false);
+      assert.equal(observed.events.find(e => e.type === 'pointerup').active, true);
+    }
+    assert.equal(await activationPage.evaluate(() => !activationMusic.paused), true, `${input} starts audio after one interaction`);
+    await activationPage.locator('#sound-toggle').tap();
+    await activationPage.reload();
+    assert.equal(await activationPage.locator('#sound-toggle').getAttribute('aria-pressed'), 'false');
+    assert.deepEqual(await activationPage.evaluate(() => activationAttempts), [], `${input}: mute survives F5`);
+    await activationContext.close();
+  }
   console.log('Browser audio passed: default on, reload preference, both tracks, controls, persistence, send/receive once and mute.');
 } finally { await browser?.close(); await server.close(); }
