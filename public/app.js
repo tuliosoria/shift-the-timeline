@@ -53,7 +53,8 @@ function chatFor(main) {
   const key = JSON.stringify([state.code, state.me.id, views.chatKey(views.currentInterview(state, local))]);
   if (chat?.key === key) return chat;
   if (chat) { chatPositions.set(chat.key, chat.readingPosition()); chat.destroy(); }
-  const context = uiContext(state);
+  const interview = views.currentInterview(state, local);
+  const context = {...uiContext(state), round: interview.round, suspect: interview.suspectId};
   chat = mountChat(main, {draft: ui.draft(context), onDraft: text => {
     const persistent = ui.persistent;
     ui.writeDraft(context, text);
@@ -78,6 +79,8 @@ function render() {
   if (screen === 'chat') local.reading = views.chatKey(views.currentInterview(state, local));
   const tab = tabBar ? local.tab : 'investigate';
   const view = tab === 'deductions' ? 'deductions' : tab === 'case' ? 'casefile' : screen;
+  const activeInterview = state && views.currentInterview(state, local);
+  if (activeInterview) local.draft = ui.draft({...uiContext(state), round: activeInterview.round, suspect: activeInterview.suspectId});
   const archived = state?.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview);
   local.archiveDraft = archived ? ui.draft({room: state.code, player: state.me.id, round: archived.round, suspect: archived.suspectId}) : '';
   local.draftsPersistent = ui.persistent;
@@ -357,6 +360,14 @@ document.addEventListener('click', event => {
   if (!b || b.disabled) return;
   if (b.dataset.entry) { if (busy || pending) return; local.entry = b.dataset.entry; render(); return; }
   if (b.dataset.tab) { local.tab = b.dataset.tab; saveNotebook({}); render(); $('#main').scrollTop = 0; $('#main').focus({preventScroll: true}); return; }
+  if (b.dataset.reviewDraft) {
+    const interview = state?.me.interviews.find(i => views.chatKey(i) === b.dataset.reviewDraft);
+    if (!interview || !ui.draft({...uiContext(state), round: interview.round, suspect: interview.suspectId})) return;
+    local.tab = 'deductions';
+    saveNotebook({suspect: interview.suspectId, interview: views.chatKey(interview), message: null, deduction: null, directAnswer: true,
+      returnTab: 'investigate', returnSelected: local.selected, returnRound: state.round, returnPhase: state.phase});
+    render(); $('#saved-draft')?.focus(); return;
+  }
   if (b.dataset.previousQuestion) {
     const prior = state?.me.interviews.find(i => views.chatKey(i) === b.dataset.priorInterview);
     const message = prior?.messages.find(m => m.id === b.dataset.previousQuestion && m.status !== 'pending');

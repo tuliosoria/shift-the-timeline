@@ -1,0 +1,66 @@
+// Two browser identities and local synthetic delayed replies; no paid provider.
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {launchBrowser} from './helpers/browser.mjs';
+import {startFakeAiServer} from './helpers/fake-ai-server.mjs';
+const server=await startFakeAiServer({delay:6000});
+let browser;
+try {
+  browser=await launchBrowser();
+  const contexts=await Promise.all([0,1].map(()=>browser.newContext({viewport:{width:320,height:600},reducedMotion:'reduce'})));
+  for(const context of contexts) await context.route('**/*',r=>new URL(r.request().url()).origin===server.origin?r.continue():r.abort());
+  const [host,reader]=await Promise.all(contexts.map(c=>c.newPage())), errors=[], writes=[];
+  reader.on('pageerror',e=>errors.push(e.message));
+  reader.on('request',r=>{if(r.method()==='POST'&&r.url().endsWith('/actions'))writes.push(r.postDataJSON());});
+  await host.goto(server.origin); await host.fill('#create-name','Ada'); await host.click('#create-form button');
+  const code=(await host.locator('.room-code').textContent()).trim();
+  await reader.goto(`${server.origin}/#join=${code}`); await reader.fill('#join-name','Bo'); await reader.click('#join-form button');
+  await server.game.join(code,'Cy','Cy',randomUUID());
+  await host.waitForFunction(()=>!document.querySelector('[data-action=start]')?.disabled);
+  await host.click('[data-action=start]'); await reader.click('[data-action=begin]');
+  await reader.click('[data-suspect=suspect-1]'); await reader.click('[data-action=question]');
+  await reader.fill('#question','Where were you?'); await reader.click('.send'); await reader.locator('.typing').waitFor();
+  const draft='My private question that was never sent';
+  await reader.fill('#question',draft);
+  const advance=async round=>{
+    await host.evaluate(async({code,round})=>{const r=await fetch(`/api/rooms/${code}/actions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({type:'advance',round,confirmed:true,id:crypto.randomUUID()})});if(!r.ok)throw Error('Advance failed');},{code,round});
+    await reader.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  };
+  await advance(1);
+  await reader.locator('#question[readonly]').waitFor();
+  assert.ok(await reader.locator('.typing').isVisible(),'pending answer stays visible after host advance');
+  assert.equal(await reader.inputValue('#question'),draft);
+  await reader.locator('.interrupted').waitFor();
+  assert.match(await reader.locator('.interrupted').textContent(),/2 questions left/);
+  assert.equal(await reader.locator('#transcript .b.them',{hasText:'synthetic reply'}).count(),1);
+  const before=writes.filter(w=>w.type!=='heartbeat').length;
+  await reader.click('[data-review-draft]');
+  assert.equal(await reader.evaluate(()=>document.activeElement.id),'saved-draft');
+  assert.match(await reader.locator('#saved-draft').textContent(),/My private question that was never sent/);
+  await reader.click('[data-action=dossier-return]'); await reader.click('[data-review-draft]');
+  await reader.reload(); await reader.locator('#saved-draft').waitFor();
+  await reader.click('[data-action=dossier-return]');
+  await reader.locator('[data-action=continue]').waitFor(); await reader.click('[data-action=continue]');
+  assert.equal(writes.filter(w=>w.type!=='heartbeat').length,before,'review and reload never send the draft');
+  await reader.click('[data-suspect=suspect-2]'); await reader.click('[data-action=question]');
+  assert.equal(await reader.inputValue('#question'),'','no draft crosses into another suspect');
+  // Zero questions used, no draft: explain all three unused without an empty recovery link.
+  await advance(2); await reader.locator('.interrupted').waitFor();
+  assert.match(await reader.locator('.interrupted').textContent(),/3 questions left/);
+  assert.equal(await reader.locator('[data-review-draft]').count(),0);
+  await reader.setViewportSize({width:320,height:380});
+  assert.ok(await reader.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  assert.ok((await reader.locator('#transcript').boundingBox()).height>=90);
+  await reader.screenshot({path:`${process.env.SHIFT_SCREENSHOTS??'/tmp'}/shift-interrupted-turn.png`});
+  await reader.click('[data-action=leave-chat]'); await reader.click('[data-action=continue]');
+  await reader.click('[data-suspect=suspect-3]'); await reader.click('[data-action=question]');
+  await reader.fill('#question','Another private unsent draft'); await advance(3);
+  await reader.click('[data-review-draft]'); await advance(4);
+  await reader.locator('[data-action=dossier-return]',{hasText:'Return to Summon'}).waitFor();
+  assert.match(await reader.locator('#saved-draft').textContent(),/Another private unsent draft/);
+  await reader.click('[data-action=dossier-return]'); await reader.click('[data-action=leave-chat]'); await reader.click('[data-action=continue]');
+  await reader.locator('.accuse').waitFor();
+  assert.equal(writes.filter(w=>w.type==='ask').length,1,'only the original question was sent');
+  assert.deepEqual(errors,[]);
+  console.log('Interrupted-turn browser checks passed.');
+} finally {await browser?.close();await server.close();}

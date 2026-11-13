@@ -10,7 +10,7 @@ const NEAR_BOTTOM = 48, MAX_FIELD = 120, KEYBOARD_RATIO = 0.85;
 export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
   const doc = root.ownerDocument, win = doc.defaultView, viewport = win?.visualViewport, html$ = doc.documentElement;
   const coarse = win?.matchMedia?.('(pointer: coarse)'), tallest = {};
-  let state = null, local = {}, refs = null, ended = false, head = '', html = '', announced = null, stick = true;
+  let state = null, local = {}, refs = null, ended = false, head = '', html = '', footer = '', announced = null, stick = true;
   // The question this chat just sent, shown until the server's copy arrives. `count` is the
   // number of messages before it, so a repeated question is never mistaken for the new one.
   // The app's held retry (`local.outgoing`) has the same {text, count} shape.
@@ -59,6 +59,7 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
       if (stick) refs.newReply.hidden = true;
     });
     ended = !refs.field;
+    if (ended) footer = views.renderChatFooter(state, local);
     head = views.renderChatHead(state, local);
     html = views.renderTranscript(state, local);
     refresh();
@@ -92,10 +93,14 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
     if (!ended && views.chatEnded(state, local)) {
       const focused = doc.activeElement === refs.field;
       ended = true;
-      refs.foot.innerHTML = views.CHAT_DONE;
+      refs.foot.innerHTML = footer = views.renderChatFooter(state, local);
       Object.assign(refs, {field: null, send: null, chips: []});
       if (focused) refs.foot.querySelector('button')?.focus({preventScroll: true});
       syncKeyboard(false);
+    }
+    if (ended) {
+      const nextFooter = views.renderChatFooter(state, local);
+      if (nextFooter !== footer) refs.foot.innerHTML = footer = nextFooter;
     }
     syncControls();
   }
