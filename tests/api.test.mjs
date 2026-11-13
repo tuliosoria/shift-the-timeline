@@ -176,3 +176,40 @@ test('nested records and phase-required reveal data cannot become an acknowledge
     assert.throws(() => api.validateRoomEntry({code: broken.code, playerId: broken.me.id, state: broken}), /incomplete response/);
   }
 });
+
+test('successful polling explicitly reports unchanged 204 and validated 200 responses', async t => {
+  const source = snapshot(), events = [];
+  stubFetch(t, [{status: 204}, {status: 200, body: snapshot({version: 5})}]);
+  const loop = api.pollLoop({getState: () => source, isHidden: () => false,
+    onState: next => events.push(['state', next.version]), onSuccess: (origin, status) => events.push(['success', origin, status])});
+  t.after(() => loop.stop());
+  await loop.now(); await loop.now();
+  assert.deepEqual(events, [['success', source, 204], ['state', 5], ['success', source, 200]]);
+});
+test('failed, malformed, unexpected or unapplied poll responses never report recovery', async t => {
+  const source = snapshot(), successes = [], failures = [];
+  stubFetch(t, [new TypeError('Offline'), {status: 503, body: {error: 'Unavailable'}},
+    {status: 200, body: null}, {status: 200, body: {}}, {status: 201, body: snapshot()}, {status: 200, body: snapshot()}]);
+  const loop = api.pollLoop({getState: () => source, isHidden: () => false,
+    onState: () => { throw new Error('Synthetic render failure'); }, onSuccess: (...args) => successes.push(args), onError: error => failures.push(error)});
+  t.after(() => loop.stop());
+  for (let i = 0; i < 6; i++) await loop.now();
+  assert.deepEqual(successes, []);
+  assert.equal(failures.length, 6);
+});
+test('a skipped poll reports no success and a delayed success retains the originating room', async t => {
+  let active = null, resolve;
+  const original = globalThis.fetch, successes = [];
+  globalThis.fetch = () => new Promise(done => { resolve = done; });
+  t.after(() => { globalThis.fetch = original; });
+  const loop = api.pollLoop({getState: () => active, onState: () => {}, isHidden: () => false,
+    onSuccess: (origin, status) => successes.push({origin, status})});
+  t.after(() => loop.stop());
+  await loop.now(); assert.deepEqual(successes, []);
+  active = {...snapshot(), localEpoch: 1};
+  const source = active, running = loop.now();
+  active = {...snapshot({code: 'EFGH6789'}), localEpoch: 2};
+  resolve(new Response(null, {status: 204})); await running;
+  assert.deepEqual(successes, [{origin: source, status: 204}]);
+  assert.notEqual(successes[0].origin.localEpoch, active.localEpoch);
+});

@@ -182,9 +182,9 @@ export function renderPick(state, local) {
   return `<section class="screen pick">
 <h1 class="title">Who will you question?</h1>
 <p class="sub">Pick one suspect for this turn. Only you will see the conversation.</p>
-${chosen ? `<section class="dossier" id="suspect-dossier" tabindex="-1" aria-labelledby="dossier-name"><p class="eyebrow">Suspect file</p><h2 id="dossier-name">${esc(chosen.name)}</h2><p>${esc(chosen.profile)}</p><small>You can keep browsing. Starting the chat commits this turn to ${esc(firstName(chosen.name))}.</small><button type="button" id="selected-suspect-file" class="evidence-link" data-dossier="${esc(chosen.id)}">Your private suspect file</button></section>` : ''}
+${chosen ? `<section class="dossier" id="suspect-dossier" tabindex="-1" aria-labelledby="dossier-name"><p class="eyebrow">Suspect file</p><h2 id="dossier-name">${esc(chosen.name)}</h2><p>${esc(chosen.profile)}</p><small>You can keep browsing. Starting the chat commits this turn to ${esc(firstName(chosen.name))}.</small><button type="button" id="selected-suspect-file" class="evidence-link" data-dossier="${esc(chosen.id)}">Your private suspect file</button><div class="selection-commit"><button type="button" class="btn" data-action="question" data-submit>Question ${esc(chosen.name)} →</button><p class="hint">You get ${q} questions.</p></div></section>` : ''}
 ${suspectGrid(state, local, {taken, asked})}
-<div class="cta"><button type="button" class="btn" data-action="question" data-submit ${chosen ? '' : 'disabled data-locked="true"'}>${chosen ? `Question ${esc(firstName(chosen.name))} →` : 'Choose a suspect'}</button><p class="hint">You get ${q} questions.</p></div>
+${chosen ? '' : `<div class="cta"><button type="button" class="btn" data-action="question" data-submit disabled data-locked="true">Choose a suspect</button><p class="hint">You get ${q} questions.</p></div>`}
 </section>`;
 }
 
@@ -304,9 +304,9 @@ ${state.hostRecoverable && !state.me.host ? '<div class="cta"><button type="butt
   return `<section class="screen accuse">
 <h1 class="title">Who is the killer?</h1>
 <p class="sub">Summon one suspect, on your own. Talk it over first.</p>
-${chosen ? `<section class="dossier" id="suspect-dossier" tabindex="-1"><h2>${esc(chosen.name)}</h2><p>${esc(chosen.profile)}</p><button type="button" id="selected-suspect-file" class="evidence-link" data-dossier="${esc(chosen.id)}">Review your private suspect file</button></section>` : ''}
+${chosen ? `<section class="dossier" id="suspect-dossier" tabindex="-1" aria-labelledby="dossier-name"><h2 id="dossier-name">${esc(chosen.name)}</h2><p>${esc(chosen.profile)}</p><button type="button" id="selected-suspect-file" class="evidence-link" data-dossier="${esc(chosen.id)}">Review your private suspect file</button><div class="selection-commit"><button type="button" class="btn" data-action="summon" data-submit>Summon ${esc(chosen.name)} →</button><p class="hint">This cannot be undone.</p></div></section>` : ''}
 ${suspectGrid(state, local)}
-<div class="cta"><button type="button" class="btn" data-action="summon" data-submit ${chosen ? '' : 'disabled data-locked="true"'}>${chosen ? `Summon ${esc(firstName(chosen.name))} →` : 'Choose a suspect'}</button><p class="hint">This cannot be undone.</p></div>
+${chosen ? '' : '<div class="cta"><button type="button" class="btn" data-action="summon" data-submit disabled data-locked="true">Choose a suspect</button><p class="hint">This cannot be undone.</p></div>'}
 </section>`;
 }
 

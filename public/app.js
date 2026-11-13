@@ -39,7 +39,9 @@ if (!session && !pending && requestedInvite) {
 const RENDER = {landing: views.renderLanding, lobby: views.renderLobby, briefing: views.renderBriefing, pick: views.renderPick, chat: views.renderChat,
   waiting: views.renderWaiting, transition: views.renderTransition, accuse: views.renderAccuse, reveal: views.renderReveal};
 
-function notice(message, error = false) {
+let noticeKind = null;
+function notice(message, error = false, kind = null) {
+  noticeKind = kind;
   const el = $('#notice');
   el.className = error ? 'show error' : 'show';
   el.textContent = message;
@@ -47,7 +49,7 @@ function notice(message, error = false) {
   clearTimeout(notice.timer);
   if (!error) notice.timer = setTimeout(clearNotice, 4000);
 }
-function clearNotice() { const el = $('#notice'); el.className = ''; el.textContent = ''; }
+function clearNotice() { noticeKind = null; const el = $('#notice'); el.className = ''; el.textContent = ''; }
 
 // One chat per interview: polls update it in place instead of rebuilding the composer.
 function chatFor(main) {
@@ -259,6 +261,7 @@ function resetSession({preserve = false, invite = ''} = {}) {
   if (!preserve && state) ui.forget(state.code, state.me.id); else if (!preserve && session) ui.forget(session.code, session.playerId);
   closeConfirmation();
   roomEpoch++;
+  if (noticeKind === 'connection') clearNotice();
   session = null; state = null; pending = null; lastVersion = -1; lastHeartbeat = 0;
   Object.assign(local, {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, notebook: null, entry: 'create', invite: ''});
   store.remove(SESSION); store.remove(PENDING);
@@ -460,12 +463,14 @@ function pollFailed(error) {
     resetSession();
     notice(gone === 'expired' ? ROOM_EXPIRED : 'Your place in the room could not be restored. Join a new case.', true);
     offerInvitation();
-  } else notice('Connection interrupted. Reconnecting…', true);
+  } else notice('Connection interrupted. Reconnecting…', true, 'connection');
 }
+const currentPoll = source => !!session && source?.code === session.code && source.localEpoch === roomEpoch && !busy && !pending;
 const poller = pollLoop({
-  getState: () => (!session || busy || pending ? null : {...(state ?? {code: session.code, version: -1}), localEpoch: roomEpoch}),
-  onState: (next, source) => { if (source.localEpoch === roomEpoch && !busy && !pending && applyState(next) && $('#notice').textContent.startsWith('Connection interrupted')) clearNotice(); },
-  onError: (error, source) => { if (source?.localEpoch === roomEpoch && !busy && !pending && session) pollFailed(error); },
+  getState: () => (!session || busy || pending ? null : {...(state ?? {code: session.code, version: -1, me: {id: session.playerId}}), localEpoch: roomEpoch}),
+  onState: (next, source) => { if (currentPoll(source)) applyState(next); },
+  onSuccess: source => { if (currentPoll(source) && noticeKind === 'connection') clearNotice(); },
+  onError: (error, source) => { if (currentPoll(source)) pollFailed(error); },
 });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) poller.now(); });
 // Heartbeat lets the server tell an absent host or voter from one who is still at the table.

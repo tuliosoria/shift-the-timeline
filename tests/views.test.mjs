@@ -92,7 +92,7 @@ test('pick has no search input', () => {
 });
 test('pick CTA names the selected suspect', () => {
   const html = views.renderPick(state(), local({selected:'mara'}));
-  assert.match(html, /Question Martha →/);
+  assert.match(html, /Question Martha Vale →/);
   assert.match(html, /You get 3 questions\./);
   assert.match(html, /data-suspect="mara"[^>]*aria-pressed="true"/);
 });
@@ -199,7 +199,7 @@ test('host sees Advance now only as host', () => {
   assert.match(views.ADVANCE_CONFIRM.body, /loses their remaining questions/);
 });
 test('accuse CTA summons the selected suspect', () => {
-  assert.match(views.renderAccuse(state({phase:'accusation', round:4}), local({selected:'basil'})), /Summon Basil →/);
+  assert.match(views.renderAccuse(state({phase:'accusation', round:4}), local({selected:'basil'})), /Summon Basil Wren →/);
 });
 test('accuse requires confirm text "This cannot be undone."', () => {
   const c = views.summonConfirmation(suspects[2]);

@@ -120,3 +120,20 @@ AI to cover live lobby updates, navigation focus, modal polling and Escape,
 round-change dismissal, draft caret preservation and 320-pixel short-phone layout.
 Screenshots are local test artefacts. These checks do not claim native screen-reader
 or iOS/Android assistive-technology validation.
+
+## Selected suspect review and commitment
+
+The selected dossier now contains its single Question or Summon action, immediately
+after the private-file review link and before the other suspect cards. From dossier
+focus, two Tab presses reach the action instead of traversing the review link and
+all 15 cards (17 presses). The previous sticky footer was already visible on touch;
+this change fixes the mismatched reading/focus order, not an offscreen touch button.
+A full suspect name identifies the selected action even when a long profile scrolls
+its heading out of view. An unselected screen retains its disabled Choose a suspect
+footer. Summoning still opens the existing irreversible-action confirmation.
+
+`tests/selection-actions.test.mjs` checks order, a unique action, disabled empty/stale
+selections, escaping and read-only rendering. `tests/browser-selection-actions.mjs`
+uses local synthetic data and isolated 320/390px phones to cover last-card selection,
+deselect/reselect, keyboard and touch, live polls, private-file reload/return,
+long profiles and names at 380px height, and Cancel/Escape before one confirmed vote.
