@@ -1,6 +1,7 @@
 // Bootstrap, state, routing and event wiring. Views are pure (views.js); the network is api.js.
 import {fetchJson, command, requestIdFor, newRequestId, pollLoop, roomGone} from './api.js';
 import {createUiState, uiContext} from './ui-state.js';
+import {captureFocus, restoreFocus} from './focus.js';
 import * as views from './views.js';
 import {setScene} from './backdrop.js';
 import {mountChat} from './chat.js';
@@ -84,8 +85,7 @@ function render() {
   const archived = state?.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview);
   local.archiveDraft = archived ? ui.draft({room: state.code, player: state.me.id, round: archived.round, suspect: archived.suspectId}) : '';
   local.draftsPersistent = ui.persistent;
-  const main = $('#main'), active = document.activeElement, focusId = main.contains(active) ? active?.id : null;
-  const caret = focusId ? [active.selectionStart, active.selectionEnd] : null;
+  const main = $('#main'), focus = captureFocus($('#app')), previousView = main.dataset.view;
   const keepScroll = main.dataset.view === view ? main.scrollTop : 0;
   const entryValues = state ? {} : Object.fromEntries([...main.querySelectorAll('input[id]')].map(el => [el.id, el.value]));
   const header = views.renderHeader(state, local);
@@ -108,11 +108,11 @@ function render() {
     } else main.innerHTML = view === 'deductions' ? views.renderDeductions(state, local) : view === 'casefile' ? views.renderCaseFile(state) : RENDER[screen](state, local);
     for (const [id, value] of Object.entries(entryValues)) { const el = document.getElementById(id); if (el && el.type !== 'hidden') el.value = value; }
     main.scrollTop = keepScroll;
-    if (focusId) { const el = document.getElementById(focusId); el?.focus({preventScroll: true}); try { if (caret?.[0] != null) el.setSelectionRange(...caret); } catch {} }
   }
   setScene(screen);
   playTransition(view);
   setBusy();
+  restoreFocus($('#app'), focus, {fallback: main, match: previousView === view});
 }
 
 // The transition moves on by itself unless the player prefers reduced motion; then it waits for Continue.
@@ -209,14 +209,19 @@ function act(type, data = {}, extra = {}) {
 }
 
 function openConfirmation({title, body, label, onConfirm, onCancel, kind}) {
-  confirmation = {onConfirm, onCancel, kind, epoch: roomEpoch, round: state.round, phase: state.phase};
+  confirmation = {onConfirm, onCancel, kind, focus: captureFocus($('#app')), view: $('#main').dataset.view, epoch: roomEpoch, round: state.round, phase: state.phase};
   $('#confirm-title').textContent = title;
   $('#confirm-body').innerHTML = body;
   $('#confirm-accept').textContent = label;
   $('#confirm-dialog').showModal();
   $('#confirm-cancel').focus();
 }
-function closeConfirmation() { confirmation = null; if ($('#confirm-dialog').open) $('#confirm-dialog').close(); }
+function closeConfirmation() {
+  const chosen = confirmation;
+  confirmation = null;
+  if ($('#confirm-dialog').open) $('#confirm-dialog').close();
+  restoreFocus($('#app'), chosen?.focus, {fallback: $('#main'), match: chosen?.view === $('#main').dataset.view});
+}
 async function confirmAction() {
   const chosen = confirmation;
   closeConfirmation();
