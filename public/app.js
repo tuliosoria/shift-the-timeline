@@ -1,5 +1,5 @@
 // Bootstrap, state, routing and event wiring. Views are pure (views.js); the network is api.js.
-import {fetchJson, command, requestIdFor, newRequestId, pollLoop, roomGone} from './api.js';
+import {fetchJson, command, validateRoomEntry, validateRoomState, requestIdFor, newRequestId, pollLoop, roomGone} from './api.js';
 import {createUiState, uiContext} from './ui-state.js';
 import {captureFocus, restoreFocus} from './focus.js';
 import * as views from './views.js';
@@ -133,32 +133,45 @@ function setBusy() {
 function applyState(next) {
   if (!next || !session || next.code !== session.code || next.me?.id !== session.playerId) return false;
   if (state && next.code === state.code && next.version < lastVersion) return false;
-  const moved = !state || state.round !== next.round || state.phase !== next.phase;
-  const restored = !state;
-  // Toasts only for deductions unlocked while watching: never on first load or reload.
-  const fresh = freshDeductions(state, next);
-  if (hasNewReply(state, next)) audio.effect('receive');
-  const reviewing = local.tab === 'deductions' && state?.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview);
-  const pendingReplies = new Set(reviewing ? reviewing.messages.filter(m => m.status === 'pending').map(m => m.id) : []);
-  const arrived = next.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview)?.messages.filter(m => pendingReplies.has(m.id) && m.status !== 'pending') ?? [];
-  state = next; lastVersion = next.version;
-  if (restored) {
-    local.notebook = ui.notebook(state.code, state.me.id);
-    local.tab = local.notebook.open ? 'deductions' : 'investigate';
+  const previous = {state, lastVersion, local: {...local}};
+  try {
+    const moved = !state || state.round !== next.round || state.phase !== next.phase;
+    const restored = !state;
+    // Toasts only for deductions unlocked while watching: never on first load or reload.
+    const fresh = freshDeductions(state, next);
+    const newReply = hasNewReply(state, next);
+    const reviewing = local.tab === 'deductions' && state?.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview);
+    const pendingReplies = new Set(reviewing ? reviewing.messages.filter(m => m.status === 'pending').map(m => m.id) : []);
+    const arrived = next.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview)?.messages.filter(m => pendingReplies.has(m.id) && m.status !== 'pending') ?? [];
+    state = next; lastVersion = next.version;
+    if (restored) {
+      local.notebook = ui.notebook(state.code, state.me.id);
+      local.tab = local.notebook.open ? 'deductions' : 'investigate';
+    }
+    if (moved) { local.selected = null; if (local.tab !== 'deductions') local.tab = 'investigate'; closeConfirmation(); }
+    if (restored && local.notebook?.suspect && local.notebook.returnRound === state.round && local.notebook.returnPhase === state.phase && state.suspects.some(s => s.id === local.notebook.returnSelected)) local.selected = local.notebook.returnSelected;
+    render();
+    if (fresh.length) showUnlocked(fresh);
+    if (newReply) audio.effect('receive');
+    offerInvitation();
+    if (arrived.length) $('#announcer').textContent = `Reply added to your private interview: ${arrived.map(m => m.reply).join(' ')}`;
+    return true;
+  } catch (error) {
+    // A projection or render failure must not replace the last usable snapshot.
+    state = previous.state; lastVersion = previous.lastVersion;
+    for (const key of Object.keys(local)) delete local[key];
+    Object.assign(local, previous.local);
+    if (chat) { chat.destroy(); chat = null; }
+    try { render(); } catch {} // The durable retry also survives a persistent rendering fault.
+    throw error;
   }
-  if (moved) { local.selected = null; if (local.tab !== 'deductions') local.tab = 'investigate'; closeConfirmation(); }
-  if (restored && local.notebook?.suspect && local.notebook.returnRound === state.round && local.notebook.returnPhase === state.phase && state.suspects.some(s => s.id === local.notebook.returnSelected)) local.selected = local.notebook.returnSelected;
-  if (fresh.length) showUnlocked(fresh);
-  render();
-  offerInvitation();
-  if (arrived.length) $('#announcer').textContent = `Reply added to your private interview: ${arrived.map(m => m.reply).join(' ')}`;
-  return true;
 }
 
 // Every network write goes through here: one at a time, persisted so a reload can retry it with the same id.
 async function run(work) {
   if (busy || (pending && pending !== work)) return false;
   pending = work; store.set(PENDING, work); busy = true; render();
+  const previousSession = session, previousEpoch = roomEpoch;
   try {
     if (work.entry) {
       let data;
@@ -169,22 +182,29 @@ async function run(work) {
         catch (error) { if (error.status !== 401 || error.message !== 'Your session is not valid for this room.') throw error; }
       }
       data ??= (await fetchJson(work.path, {body: work.body})).data;
+      validateRoomEntry(data, work.joinCode);
+      session = {code: data.code, playerId: data.playerId};
       roomEpoch++;
-      session = {code: data.code, playerId: data.playerId}; store.set(SESSION, session);
+      // Clear only in memory while rendering synchronously. The persisted request
+      // remains recoverable until its snapshot has actually been accepted.
+      pending = null; busy = false;
+      if (!applyState(data.state)) throw new Error('The room response could not be applied.');
+      store.set(SESSION, session);
       if (resume?.code === session.code) { resume = null; store.remove(RESUME); }
       // A newer invitation may have arrived while this entry request was in flight.
       if (!requestedInvite || requestedInvite === session.code) history.replaceState(null, '', location.pathname);
-      pending = null; store.remove(PENDING); busy = false; clearNotice();
-      applyState(data.state);
+      store.remove(PENDING); clearNotice();
     } else {
-      const next = await command(work.code, work.action);
-      pending = null; store.remove(PENDING); busy = false; clearNotice();
+      const next = await command(work.code, work.action, {playerId: work.context?.player});
+      pending = null; busy = false;
+      if (!applyState(next)) throw new Error('The room response could not be applied.');
       if (work.action.type === 'ask') ui.clearMatchingDraft(work.context, work.action.question);
-      applyState(next);
+      store.remove(PENDING); clearNotice();
     }
     return true;
   } catch (error) {
-    busy = false;
+    session = previousSession; roomEpoch = previousEpoch;
+    pending = work; busy = false;
     // A room from a retired case version never comes back: leave it instead of retrying forever.
     if (error.status === 503 && roomGone(error)) {
       if (work.entry) { pending = null; store.remove(PENDING); notice(ROOM_EXPIRED, true); }
@@ -288,14 +308,17 @@ async function resumeRoom() {
   const target = {...resume};
   clearInvitation();
   busy = true; render();
+  const previousSession = session, previousEpoch = roomEpoch;
   try {
     const {data} = await fetchJson(`/api/rooms/${target.code}/state`);
+    validateRoomState(data, {code: target.code});
     if (data?.me?.id !== target.playerId) throw Object.assign(new Error('Your original place could not be restored.'), {status: 401});
-    roomEpoch++; session = target; store.set(SESSION, session);
-    resume = null; store.remove(RESUME);
-    busy = false; clearNotice(); applyState(data);
+    roomEpoch++; session = target; busy = false;
+    if (!applyState(data)) throw new Error('The room response could not be applied.');
+    store.set(SESSION, session);
+    resume = null; store.remove(RESUME); clearNotice();
   } catch (error) {
-    busy = false;
+    session = previousSession; roomEpoch = previousEpoch; busy = false;
     if (roomGone(error)) { resume = null; store.remove(RESUME); }
     render(); notice(roomGone(error) ? 'That room or your place in it is no longer available.' : 'Could not reconnect to your room. Try again when the connection returns.', true);
     offerInvitation();

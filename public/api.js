@@ -20,7 +20,46 @@ export async function fetchJson(path, {method, body} = {}) {
     error.status = response.status;
     throw error;
   }
+  // An HTTP success with a missing/truncated JSON body does not prove delivery.
+  // Leave its request id held for a safe retry rather than clearing the action.
+  if (!isRecord(data)) throw invalidResponse();
   return {status: response.status, data};
+}
+
+const isRecord = value => !!value && typeof value === 'object' && !Array.isArray(value);
+const invalidResponse = () => new Error('The server returned an incomplete response. Retry safely.');
+const nonempty = value => typeof value === 'string' && value.length > 0;
+const records = (value, valid) => Array.isArray(value) && value.every(item => isRecord(item) && valid(item));
+const validMessage = m => nonempty(m.id) && typeof m.question === 'string' && nonempty(m.status)
+  && (m.status === 'pending' ? m.reply === null : typeof m.reply === 'string')
+  && Array.isArray(m.unlocked) && m.unlocked.every(nonempty);
+const validInterview = i => Number.isSafeInteger(i.round) && i.round > 0 && nonempty(i.suspectId)
+  && typeof i.closed === 'boolean' && (i.opening == null || typeof i.opening === 'string') && records(i.messages, validMessage);
+const validDeduction = d => nonempty(d.id) && typeof d.text === 'string' && nonempty(d.suspectId)
+  && Number.isSafeInteger(d.round) && d.round > 0 && (d.messageId == null || nonempty(d.messageId));
+const validPerson = p => nonempty(p.id) && typeof p.name === 'string';
+const validResult = r => isRecord(r) && nonempty(r.culpritId) && nonempty(r.outcome)
+  && records(r.votes, v => nonempty(v.playerId) && (v.suspectId === null || nonempty(v.suspectId)) && typeof v.correct === 'boolean')
+  && (r.solution == null || isRecord(r.solution));
+
+// Validate the acknowledgement envelope before any held command or session is changed.
+// Extra fields are allowed, so additive server updates remain compatible.
+export function validateRoomState(state, {code, playerId} = {}) {
+  if (!isRecord(state) || typeof state.code !== 'string' || !/^[A-HJ-NP-Z2-9]{8}$/.test(state.code) || (code && state.code !== code)
+      || !Number.isSafeInteger(state.version) || state.version < 1 || !Number.isSafeInteger(state.round) || state.round < 0
+      || !['lobby', 'investigation', 'accusation', 'reveal'].includes(state.phase)
+      || !isRecord(state.me) || typeof state.me.id !== 'string' || !state.me.id || (playerId && state.me.id !== playerId)
+      || !records(state.me.interviews, validInterview) || !records(state.me.deductions, validDeduction)
+      || !records(state.players, validPerson) || !records(state.suspects, validPerson)
+      || (state.phase === 'reveal' && !validResult(state.result))
+      || !isRecord(state.case) || !isRecord(state.config) || !isRecord(state.clock)) throw invalidResponse();
+  return state;
+}
+export function validateRoomEntry(entry, code) {
+  if (!isRecord(entry) || typeof entry.playerId !== 'string' || !entry.playerId || typeof entry.code !== 'string'
+      || (code && entry.code !== code)) throw invalidResponse();
+  validateRoomState(entry.state, {code: entry.code, playerId: entry.playerId});
+  return entry;
 }
 
 // The same action object always travels with the same id, so a retry after a lost
@@ -31,9 +70,9 @@ export function requestIdFor(action) {
   if (!requestIds.has(action)) requestIds.set(action, newRequestId());
   return requestIds.get(action);
 }
-export async function command(code, action) {
+export async function command(code, action, {playerId} = {}) {
   const {data} = await fetchJson(`/api/rooms/${encodeURIComponent(code)}/actions`, {body: {...action, id: requestIdFor(action)}});
-  return data;
+  return validateRoomState(data, {code, playerId});
 }
 
 export function myLastMessagePending(state) {
@@ -74,7 +113,7 @@ export function pollLoop({getState, onState, onError = () => {}, isHidden = () =
       state = getState();
       if (state?.code) {
         const {status, data} = await fetchJson(`/api/rooms/${encodeURIComponent(state.code)}/state?since=${state.version}`);
-        if (status === 200 && data) onState(data, state);
+        if (status === 200) onState(validateRoomState(data, {code: state.code, playerId: state.me?.id}), state);
       }
     } catch (error) { onError(error, state); }
     finally {
