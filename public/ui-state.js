@@ -76,7 +76,7 @@ export function createUiState(storage) {
 
 function cleanNotebook(value) {
   const text = key => typeof value?.[key] === 'string' ? value[key].slice(0, 200) : null;
-  return {open: value?.open === true, section: ['interviews', 'search'].includes(value?.section) ? value.section : 'deductions', query: typeof value?.query === 'string' ? value.query.slice(0, 100) : '',
+  return {open: value?.open === true, directAnswer: value?.directAnswer === true, section: ['interviews', 'search'].includes(value?.section) ? value.section : 'deductions', query: typeof value?.query === 'string' ? value.query.slice(0, 100) : '',
     interview: text('interview'), message: text('message'), deduction: text('deduction'), suspect: text('suspect'), returnTab: value?.returnTab === 'deductions' ? 'deductions' : 'investigate',
     returnSelected: text('returnSelected'), returnRound: Number.isInteger(value?.returnRound) ? value.returnRound : null, returnPhase: text('returnPhase')};
 }

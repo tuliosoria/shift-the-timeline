@@ -219,12 +219,33 @@ export function renderTranscript(state, local) {
 export const chatEnded = (state, local) => { const {interview, pending} = chatParts(state, local); return !!interview?.closed && !pending; };
 export const CHAT_DONE = `<div class="done"><p>That's all your questions for this turn.</p><button type="button" class="btn ghost" data-action="leave-chat">Continue</button></div>`;
 
+// Exact-text reminders use only this player's resolved replies to the same suspect.
+// Do not infer equivalent topics: a follow-up or an intentional repeat may be useful.
+const questionText = text => String(text ?? '').normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase();
+export function previousQuestion(state, local, draft) {
+  const current = currentInterview(state, local), text = questionText(draft);
+  if (!current || !text) return null;
+  for (const interview of [...state.me.interviews].sort((a, b) => b.round - a.round)) {
+    if (interview.suspectId !== current.suspectId) continue;
+    for (const message of [...interview.messages].reverse()) {
+      if (message.status !== 'pending' && message.reply && questionText(message.question) === text) return {interview, message};
+    }
+  }
+  return null;
+}
+
+export function renderQuestionReminder(state, local, draft) {
+  const prior = previousQuestion(state, local, draft);
+  return prior ? `<button type="button" class="evidence-link" data-previous-question="${esc(prior.message.id)}" data-prior-interview="${esc(chatKey(prior.interview))}">Asked in Turn ${prior.interview.round} · Read answer</button><small>You can still send it again.</small>` : '';
+}
+
 export function renderChatFooter(state, local) {
   if (chatEnded(state, local)) return CHAT_DONE;
   const {interview, s, pending} = chatParts(state, local), hold = pending || interview.closed || local?.busy;
   const victim = String(state.case?.victim ?? '').split(',')[0].trim();
   const labels = victim ? {...topicLabels, relationship: `Do you know ${victim}?`, motive: `Have you had any disagreements with ${victim} recently?`} : topicLabels;
   return `<p class="suggestion-hint">Suggestions fill an empty draft. Review, then send.</p><div class="chips" role="group" aria-label="Suggested question drafts">${Object.values(labels).map(label => `<button type="button" class="chip" data-chip="${esc(label)}" ${hold || String(local?.draft ?? '').length ? 'disabled' : ''}>${esc(label)}</button>`).join('')}</div>
+<div class="question-reminder" role="status" aria-live="polite" hidden></div>
 <form id="question-form" class="composer"><label class="visually-hidden" for="question">Your question</label><textarea id="question" name="question" rows="1" maxlength="300" placeholder="Ask ${esc(firstName(s?.name))} anything…" enterkeyhint="send" autocomplete="off" ${interview.closed ? 'readonly' : ''}>${esc(local?.draft)}</textarea><button type="button" class="send" aria-label="Send question" ${hold || !String(local?.draft ?? '').trim() ? 'disabled' : ''}>↑</button></form>`;
 }
 
@@ -405,7 +426,7 @@ function renderInterviewReview(state, interview, notebook, draft, persistent = t
   const s = suspect(state, interview.suspectId);
   const source = state.me.deductions.find(d => d.id === notebook.deduction && deductionSource(state, d)?.interview === interview);
   return `<section class="screen notebook review">
-<button type="button" id="notebook-back" class="btn ghost small" data-action="notebook-back">Back to ${notebook.suspect ? 'suspect file' : notebook.section === 'search' ? 'search results' : notebook.section === 'interviews' ? 'interviews' : 'deductions'}</button>
+<button type="button" id="notebook-back" class="btn ghost small" data-action="${notebook.directAnswer ? 'dossier-return' : 'notebook-back'}">${notebook.directAnswer ? `Return to ${state.phase === 'reveal' ? 'Outcome' : state.phase === 'accusation' ? 'Summon' : 'Investigate'}` : `Back to ${notebook.suspect ? 'suspect file' : notebook.section === 'search' ? 'search results' : notebook.section === 'interviews' ? 'interviews' : 'deductions'}`}</button>
 <p class="eyebrow">Private interview · Turn ${interview.round}</p><h1 class="title" id="review-title" tabindex="-1">${esc(s?.name)}</h1>
 <p class="sub">Read-only · reviewing uses no questions. Return to ${state.phase === 'reveal' ? 'Outcome' : state.phase === 'accusation' ? 'Summon' : 'Investigate'} when you are ready.</p>
 ${source ? `<aside class="source-note"><b>Source for your deduction</b><p>${esc(source.text)}</p></aside>` : ''}
