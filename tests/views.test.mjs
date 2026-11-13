@@ -269,3 +269,29 @@ test('replay preserves the completed investigation instead of offering a destruc
   assert.match(html, /private drafts are kept/);
   assert.match(html, /while it remains available/);
 });
+
+test('repeat reminder matches exact normalised question only in own same-suspect resolved history', () => {
+  const prior = interview({closed:true, messages:[message({question:'Where  were you?'})]});
+  const current = interview({round:2});
+  const s = state({round:2}, {interviews:[prior, current]});
+  const l = local({lastSeenRound:2});
+  assert.equal(views.previousQuestion(s, l, '  WHERE\nwere you? ').message.id, 'm1');
+  for (const text of ['', 'Where were you yesterday?', 'Where were you']) assert.equal(views.previousQuestion(s, l, text), null);
+  assert.match(views.renderQuestionReminder(s, l, 'Where were you?'), /Asked in Turn 1/);
+  assert.match(views.renderQuestionReminder(s, l, 'Where were you?'), /You can still send it again/);
+  current.suspectId = 'ada';
+  assert.equal(views.previousQuestion(s, l, 'Where were you?'), null);
+});
+test('repeat reminder ignores pending questions and selects newest resolved answer', () => {
+  const s = state({}, {interviews:[interview({messages:[message(), message({id:'new', status:'canonical'}), message({id:'pending',status:'pending',reply:null})]})]});
+  assert.equal(views.previousQuestion(s, local(), 'Where were you?').message.id, 'new');
+  s.me.interviews[0].messages = [message({status:'pending',reply:null})];
+  assert.equal(views.previousQuestion(s, local(), 'Where were you?'), null);
+});
+test('repeat reminders escape private identifiers and provide direct return from source review', () => {
+  const s = state({}, {interviews:[interview({messages:[message({id:'<script>'})]})]});
+  const html = views.renderQuestionReminder(s, local(), 'Where were you?');
+  assert.match(html, /data-previous-question="&lt;script&gt;"/);
+  const review = views.renderDeductions(s, {notebook:{suspect:'mara',interview:'1:mara',message:'<script>',directAnswer:true}});
+  assert.match(review, /data-action="dossier-return">Return to Investigate/);
+});

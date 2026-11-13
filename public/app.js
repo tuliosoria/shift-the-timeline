@@ -310,7 +310,7 @@ const actions = {
   'dossier-return': () => {
     const saved = local.notebook;
     local.tab = saved.returnTab === 'deductions' ? 'deductions' : 'investigate';
-    saveNotebook({suspect: null, interview: null, message: null, deduction: null});
+    saveNotebook({suspect: null, interview: null, message: null, deduction: null, directAnswer: false});
     render();
     ($('#chat-suspect-file') ?? $('#suspect-dossier') ?? $('#main')).focus({preventScroll: true});
   },
@@ -357,14 +357,23 @@ document.addEventListener('click', event => {
   if (!b || b.disabled) return;
   if (b.dataset.entry) { if (busy || pending) return; local.entry = b.dataset.entry; render(); return; }
   if (b.dataset.tab) { local.tab = b.dataset.tab; saveNotebook({}); render(); $('#main').scrollTop = 0; $('#main').focus({preventScroll: true}); return; }
+  if (b.dataset.previousQuestion) {
+    const prior = state?.me.interviews.find(i => views.chatKey(i) === b.dataset.priorInterview);
+    const message = prior?.messages.find(m => m.id === b.dataset.previousQuestion && m.status !== 'pending');
+    if (!message || prior.suspectId !== views.currentInterview(state, local)?.suspectId) return;
+    local.tab = 'deductions';
+    saveNotebook({suspect: prior.suspectId, interview: views.chatKey(prior), message: message.id, deduction: null, directAnswer: true,
+      returnTab: 'investigate', returnSelected: local.selected, returnRound: state.round, returnPhase: state.phase});
+    render(); document.getElementById(`review-message-${message.id}`)?.focus(); return;
+  }
   if (b.dataset.dossier) {
     if (!state?.suspects.some(s => s.id === b.dataset.dossier)) return;
     const returnTab = local.tab;
     local.tab = 'deductions';
-    saveNotebook({suspect: b.dataset.dossier, interview: null, message: null, deduction: null, returnTab, returnSelected: local.selected, returnRound: state.round, returnPhase: state.phase});
+    saveNotebook({suspect: b.dataset.dossier, interview: null, message: null, deduction: null, directAnswer: false, returnTab, returnSelected: local.selected, returnRound: state.round, returnPhase: state.phase});
     render(); $('#suspect-file-title')?.focus(); return;
   }
-  if (b.dataset.notebook) { saveNotebook({suspect: null, section: b.dataset.notebook, interview: null, message: null, deduction: null}); render(); document.getElementById(`notebook-${b.dataset.notebook}`)?.focus(); return; }
+  if (b.dataset.notebook) { saveNotebook({suspect: null, directAnswer: false, section: b.dataset.notebook, interview: null, message: null, deduction: null}); render(); document.getElementById(`notebook-${b.dataset.notebook}`)?.focus(); return; }
   if (b.dataset.interview) {
     if (!state.me.interviews.some(i => views.chatKey(i) === b.dataset.interview)) return;
     saveNotebook({interview: b.dataset.interview, message: b.dataset.message || null, deduction: b.dataset.deduction || null});

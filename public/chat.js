@@ -38,6 +38,11 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
     refs.field.readOnly = !!interview()?.closed;
     refs.send.disabled = hold() || !refs.field.value.trim();
     for (const chip of refs.chips) chip.disabled = hold() || !!refs.field.value;
+    const reminder = views.renderQuestionReminder(state, local, refs.field.value);
+    if (refs.reminder.innerHTML !== reminder) refs.reminder.innerHTML = reminder;
+    refs.reminder.hidden = !reminder;
+    // Substitute for suggestions, not testimony, on a short phone.
+    refs.foot.classList.toggle('has-reminder', !!reminder);
   }
   function announce(text) {
     const el = doc.getElementById('announcer');
@@ -47,7 +52,7 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
   function build() {
     root.innerHTML = views.renderChat(state, {...local, draft});
     refs = {head: root.querySelector('.chead'), transcript: root.querySelector('#transcript'), newReply: root.querySelector('.new-reply'), foot: root.querySelector('.cfoot'),
-      field: root.querySelector('#question'), send: root.querySelector('.send'), chips: root.querySelectorAll('.chip')};
+      reminder: root.querySelector('.question-reminder'), field: root.querySelector('#question'), send: root.querySelector('.send'), chips: root.querySelectorAll('.chip')};
     refs.transcript.addEventListener('scroll', () => {
       const t = refs.transcript;
       stick = t.scrollHeight - t.scrollTop - t.clientHeight < NEAR_BOTTOM;
