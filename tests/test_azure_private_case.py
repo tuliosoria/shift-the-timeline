@@ -63,6 +63,12 @@ class PrivateCaseTests(unittest.TestCase):
                 return '{}'
             with self.subTest(mode=mode),self.assertRaises(m.PrivateCaseError)as cm:self.run_hydrate(cli=cli)
             self.assertNotIn('RAW_TOKEN',str(cm.exception));self.assertFalse(self.output.exists());self.assertFalse(self.validated)
+    def test_sanitised_read_reason_survives_hydration_boundary_without_retry(self):
+        calls=[]
+        def cli(args):calls.append(args);raise m.PrivateReadError('azure_authorization')
+        with self.assertRaises(m.PrivateCaseError)as cm:self.run_hydrate(cli=cli)
+        self.assertEqual(m.failure_diagnostic(cm.exception),{'event':'private_case_release_failed','stage':'container','reason':'azure_authorization'})
+        self.assertEqual(len(calls),1);self.assertEqual(calls[0][:3],['storage','container','show']);self.assertFalse(self.output.exists())
     def test_pointer_and_public_artifact_rejected_before_any_azure_read(self):
         for field,value in [('sha256','../escape'),('bytes',2_000_001),('url','https://outside.invalid'),('caseCount',True)]:
             bad={**self.pointer,field:value};self.manifest.write_text(json.dumps(bad))
