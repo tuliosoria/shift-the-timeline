@@ -5,7 +5,7 @@ import {validateCaseLibrary} from '../server/case-loader.mjs';
 const [source,destination]=process.argv.slice(2);
 if(!source||!destination||process.argv.length!==4)throw new Error('Usage: node scripts/export-case-library.mjs trusted-module.mjs private/output-directory');
 try{
- const module=await import(pathToFileURL(resolve(source)));const raw=module.caseLibrary??{caseData:module.caseData??module.TRAIN_CASE,catalog:module.catalog??module.CASES};const data=validateCaseLibrary(raw);
+ const module=await import(pathToFileURL(resolve(source)));const raw=module.caseLibrary??{caseData:module.caseData??module.TRAIN_CASE,catalog:module.catalog??module.CASES,translations:module.translations};const data=validateCaseLibrary(raw);
  const bytes=Buffer.from(JSON.stringify(raw)),sha256=createHash('sha256').update(bytes).digest('hex'),dir=resolve(destination);await mkdir(dir,{recursive:true,mode:0o700});
  await writeFile(resolve(dir,'case-library.json'),bytes,{mode:0o600});
  const cases=data.registry?[...data.registry.current.values()]:[data.caseData];
