@@ -141,3 +141,28 @@ Older code may not honour captured translated deduction text or queued language
 context. Prefer a forward repair; otherwise use a compatible rollback package
 or wait for affected rooms and jobs to expire before reverting code. Do not
 rewrite existing testimony or room pins during release or rollback.
+
+## Permanent private source for main deployments
+
+The reviewed source pointer is `config/private-case-release.json`. It contains
+only a SHA-256, byte size and case/translation counts. The immutable source lives
+in the existing private `releases` container as
+`case-libraries/<sha256>.json`. A future private editorial change needs a new
+reviewed blob and a new pointer; never overwrite an existing digest-addressed
+blob or silently fall back to the public museum.
+
+Public PR/CI jobs continue packaging only the museum, and their GitHub artifact
+contains no private story. After the existing exact-main OIDC login, deployment
+uses `scripts/azure-private-case.py` to read the pinned source with Entra login.
+It checks container privacy, size, ETag, digest and the full case/translation
+schema using the exact checked-out code. It then replaces only
+`private/case.json` and `case-manifest.json` in the already-tested ZIP. Every other
+entry's bytes remain identical. The hydrated ZIP goes directly to the existing
+private Azure release helper and is removed from the runner; it is never uploaded
+to GitHub Actions artifacts. A missing, denied or invalid source stops deployment.
+
+This code is not proof that the blob was uploaded or that a particular identity
+can read it. Before the first merge/release, verify the existing identity's access
+and the exact immutable source. Follow the operational gate in
+[AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md). No credentials, IAM or app settings
+change is required or authorised by this design.
