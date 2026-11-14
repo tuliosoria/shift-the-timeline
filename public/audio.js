@@ -1,3 +1,4 @@
+import {t} from './i18n.js';
 // Self-hosted sound: on by default, with remembered mute and browser autoplay fallback.
 export const TRACKS = Object.freeze([
   {url: '/assets/audio/investigation-noir.mp3', title: 'Noir Investigation'},
@@ -101,18 +102,27 @@ export function mountAudio(doc = document, win = window) {
   const toggle = doc.getElementById('sound-toggle'), settingsButton = doc.getElementById('sound-settings');
   const dialog = doc.getElementById('sound-dialog'), music = doc.getElementById('music-volume'), effects = doc.getElementById('effects-volume');
   let storage; try { storage = win.localStorage; } catch {}
+  let lastAudioState;
+  const paintAudio = state => {
+      lastAudioState = state;
+      const label = state.enabled ? t('Mute sound') : t('Enable sound');
+      toggle.querySelector('.sound-label').textContent = label; toggle.setAttribute('aria-label', label);
+      doc.getElementById('sound-track').textContent = state.enabled ? (state.waiting ? t('Sound is on · tap anywhere in the game to start') : t(state.track)) : t('Sound is off');
+  };
+  doc.addEventListener('languagechange', () => { if (lastAudioState) paintAudio(lastAudioState); });
   const audio = createAudio({createMedia: () => new win.Audio(), createContext: () => new (win.AudioContext || win.webkitAudioContext)(), fetch: win.fetch.bind(win), storage,
     onChange: state => {
-      const label = state.enabled ? 'Mute sound' : 'Enable sound';
+      paintAudio(state);
+      const label = state.enabled ? t("Mute sound") : t("Enable sound");
       toggle.querySelector('.sound-label').textContent = label; toggle.setAttribute('aria-label', label);
       toggle.classList.toggle('is-playing', state.playing); toggle.classList.toggle('is-waiting', state.waiting);
       toggle.setAttribute('aria-pressed', String(state.enabled));
       music.value = Math.round(state.music * 100); effects.value = Math.round(state.effects * 100);
       doc.getElementById('music-level').textContent = `${music.value}%`; doc.getElementById('effects-level').textContent = `${effects.value}%`;
-      doc.getElementById('sound-track').textContent = state.enabled ? (state.waiting ? 'Sound is on · tap anywhere in the game to start' : state.track) : 'Sound is off';
+      doc.getElementById('sound-track').textContent = state.enabled ? (state.waiting ? t("Sound is on · tap anywhere in the game to start") : t(state.track)) : t("Sound is off");
     }});
-  toggle.querySelector('.sound-label').textContent = audio.settings.enabled ? 'Mute sound' : 'Enable sound';
-  toggle.setAttribute('aria-label', audio.settings.enabled ? 'Mute sound' : 'Enable sound');
+  toggle.querySelector('.sound-label').textContent = audio.settings.enabled ? t("Mute sound") : t("Enable sound");
+  toggle.setAttribute('aria-label', audio.settings.enabled ? t("Mute sound") : t("Enable sound"));
   toggle.setAttribute('aria-pressed', String(audio.settings.enabled));
   music.value = Math.round(audio.settings.music * 100); effects.value = Math.round(audio.settings.effects * 100);
   doc.getElementById('music-level').textContent = `${music.value}%`; doc.getElementById('effects-level').textContent = `${effects.value}%`;

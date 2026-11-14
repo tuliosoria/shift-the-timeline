@@ -86,3 +86,7 @@ outcome, and canonical answers are the fallback.
 
 For multiple cases, pinned revisions, private export and Azure packaging, see
 [CASE_LIBRARY.md](CASE_LIBRARY.md).
+
+For EN/PT-BR authoring, use the complete text-only sidecar contract in
+[CASE_LIBRARY.md](CASE_LIBRARY.md#individual-languages-and-translation-revisions).
+Keep all translations and linguistic review notes under ignored `private/`.

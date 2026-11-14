@@ -11,8 +11,8 @@ const assets=await import('../server/public-assets.mjs').catch(e=>{if(e.code==='
 const urls=()=>assets.PUBLIC_ASSETS.map(a=>a.url);
 test('exact public asset manifest covers the client modules, PWA files, artwork and font without exposing arbitrary files',()=>{
  assert.ok(Array.isArray(assets.PUBLIC_ASSETS),'Explicit asset manifest exists');
- assert.equal(assets.PUBLIC_ASSETS.length,45);assert.equal(new Set(urls()).size,45);
- for(const path of ['/','/app.js','/api.js','/views.js','/backdrop.js','/chat.js','/toast.js','/ui-state.js','/focus.js','/question-topics.js','/style.css','/manifest.webmanifest','/assets/icons/icon-192.png','/assets/icons/icon-512.png','/assets/portraits/bento.webp','/assets/fonts/Rye-Regular.ttf','/assets/fonts/OFL-Rye.txt'])assert.ok(urls().includes(path),path);
+ assert.equal(assets.PUBLIC_ASSETS.length,46);assert.equal(new Set(urls()).size,46);
+ for(const path of ['/','/app.js','/i18n.js','/api.js','/views.js','/backdrop.js','/chat.js','/toast.js','/ui-state.js','/focus.js','/question-topics.js','/style.css','/manifest.webmanifest','/assets/icons/icon-192.png','/assets/icons/icon-512.png','/assets/portraits/bento.webp','/assets/fonts/Rye-Regular.ttf','/assets/fonts/OFL-Rye.txt'])assert.ok(urls().includes(path),path);
  for(const path of ['/case-films.js','/assets/steps/deduce.webp','/assets/steps/analyse.webp','/assets/steps/interrogate.webp','/private/train-case.mjs','/assets/portraits/unknown.webp','/assets/../private/file','/assets/fonts/secret.key','/server/game.mjs'])assert.equal(assets.publicAsset(path),undefined,path);
  assert.equal(assets.publicAsset('/manifest.webmanifest').type,'application/manifest+json');
  assert.equal(assets.publicAsset('/assets/icons/icon-512.png').type,'image/png');
@@ -57,7 +57,7 @@ test('asset reader refuses symlinks and paths outside its root',async t=>{
 });
 function serve(path){return new Promise(resolve=>{const server=createServer({origin:'http://shift.test',api:async()=>new Response('{"error":"Not found"}',{status:404,headers:{'Content-Type':'application/json'}})});const req=Readable.from([]);Object.assign(req,{url:path,method:'GET',headers:{},socket:{remoteAddress:'127.0.0.1'}});const response={headers:{},status:null,writeHead(status,headers){this.status=status;this.headers=headers;},end(body){resolve({status:this.status,headers:this.headers,body:Buffer.from(body)});}};server.emit('request',req,response);});}
 test('HTTP serves the real modules, manifest and artwork with correct MIME and rejects non-allowlisted paths',async()=>{
- for(const [path,type]of [['/views.js','text/javascript'],['/api.js','text/javascript'],['/backdrop.js','text/javascript'],['/ui-state.js','text/javascript'],['/focus.js','text/javascript'],['/manifest.webmanifest','application/manifest+json'],['/assets/icons/icon-192.png','image/png'],['/assets/portraits/bento.webp','image/webp'],['/assets/fonts/Rye-Regular.ttf','font/ttf']]){const r=await serve(path);assert.equal(r.status,200,path);assert.ok(r.headers['Content-Type'].startsWith(type),path);assert.ok(r.body.length>0);}
+ for(const [path,type]of [['/i18n.js','text/javascript'],['/views.js','text/javascript'],['/api.js','text/javascript'],['/backdrop.js','text/javascript'],['/ui-state.js','text/javascript'],['/focus.js','text/javascript'],['/manifest.webmanifest','application/manifest+json'],['/assets/icons/icon-192.png','image/png'],['/assets/portraits/bento.webp','image/webp'],['/assets/fonts/Rye-Regular.ttf','font/ttf']]){const r=await serve(path);assert.equal(r.status,200,path);assert.ok(r.headers['Content-Type'].startsWith(type),path);assert.ok(r.body.length>0);}
  for(const path of ['/assets/portraits/not-real.webp','/private/train-case.mjs','/case-films.js','/assets/steps/deduce.webp'])assert.equal((await serve(path)).status,404,path);
 });
 

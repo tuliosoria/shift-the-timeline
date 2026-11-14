@@ -1,3 +1,4 @@
+import {t} from './i18n.js';
 // "Deduction unlocked" toasts: one at a time in the corner #toasts region (role="status"),
 // about four seconds each, queued, never focusable. Reduced motion is handled in CSS.
 export function createToaster({document: doc = globalThis.document, duration = 4000, schedule = setTimeout} = {}) {
@@ -9,7 +10,7 @@ export function createToaster({document: doc = globalThis.document, duration = 4
     if (!showing) return;
     const toast = doc.createElement('div'), title = doc.createElement('b'), text = doc.createElement('span');
     toast.className = 'toast';
-    title.textContent = 'Deduction unlocked';
+    title.textContent = t("Deduction unlocked");
     text.textContent = deduction.text;
     toast.append(title, text);
     region.append(toast);

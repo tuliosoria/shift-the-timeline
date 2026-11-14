@@ -1,3 +1,4 @@
+import {validateTranslations} from './case-locales.mjs';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -80,7 +81,7 @@ export function validateCase({caseData,catalog}={}) {
 // A library carries raw authoring data. Validate each raw revision exactly once so legacy
 // room pins remain identical to the single-case loader's original content hash.
 export function validateCaseLibrary(input) {
-  if (!input?.cases) return validateCase(input);
+  if (!input?.cases) {const data=validateCase(input);const registry={current:new Map([[data.caseData.id,data.caseData]]),revisions:new Map([[`${data.caseData.id}@${data.caseData.version}`,data.caseData]])};return {...data,translations:validateTranslations(input?.translations,registry)};}
   object(input,'library');array(input.cases,'library.cases');
   if(input.cases.length<1||input.cases.length>20)invalid('library.cases','expected 1–20 current cases');
   const archived=input.archivedCases??[];array(archived,'library.archivedCases');
@@ -104,7 +105,7 @@ export function validateCaseLibrary(input) {
   let serialized;
   try{serialized=JSON.stringify(input);}catch{invalid('library','expected JSON-serializable content');}
   if(Buffer.byteLength(serialized)>2_000_000)invalid('library','content exceeds 2000000 bytes');
-  return {caseData:current.get(defaultId),catalog:input.catalog,registry:{current,revisions}};
+  return {caseData:current.get(defaultId),catalog:input.catalog,registry:{current,revisions},translations:validateTranslations(input.translations,{current,revisions})};
 }
 export function caseForRoom({caseData,registry},room) {
   if(!registry)return room.caseId===caseData.id&&room.caseVersion===caseData.version?caseData:null;
@@ -113,5 +114,5 @@ export function caseForRoom({caseData,registry},room) {
 export async function loadCase(env=process.env){
   if(!env.SHIFT_CASE_FILE)throw new Error('SHIFT_CASE_FILE is required; no public demo is loaded automatically');
   const data=await import(pathToFileURL(resolve(env.SHIFT_CASE_FILE)));
-  return validateCaseLibrary(data.caseLibrary??{caseData:data.TRAIN_CASE??data.caseData,catalog:data.CASES??data.catalog});
+  return validateCaseLibrary(data.caseLibrary??{caseData:data.TRAIN_CASE??data.caseData,catalog:data.CASES??data.catalog,translations:data.translations});
 }

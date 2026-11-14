@@ -20,29 +20,30 @@
 <body>
 <video id="backdrop" autoplay muted loop playsinline disablepictureinpicture aria-hidden="true" tabindex="-1" poster="/assets/films/train.webp"></video>
 <div class="veil" aria-hidden="true"></div>
-<a href="#main" class="skip">Skip to the investigation</a>
+<a href="#main" class="skip" data-i18n="Skip to the investigation">Skip to the investigation</a>
 <div id="app">
-<div id="audio-controls" role="group" aria-label="Game sound">
+<div id="audio-controls" role="group" aria-label="Game sound" data-i18n-aria="Game sound">
+<label class="language-control"><span class="visually-hidden">Language / Idioma</span><select id="language" aria-label="Language / Idioma"><option value="en-GB">EN</option><option value="pt-BR">PT-BR</option></select></label>
 <button type="button" id="sound-toggle" aria-pressed="true" aria-label="Mute sound"><span class="sound-disc" aria-hidden="true"><span></span></span><span class="sound-label">Mute sound</span></button>
-<button type="button" id="sound-settings" aria-haspopup="dialog" aria-controls="sound-dialog" aria-label="Sound settings">Sound settings</button>
+<button type="button" id="sound-settings" aria-haspopup="dialog" aria-controls="sound-dialog" aria-label="Sound settings" data-i18n-aria="Sound settings" data-i18n="Sound settings">Sound settings</button>
 </div>
 <header id="header"></header>
-<main id="main" tabindex="-1"><p class="loading">Connecting to the Bureau…</p></main>
+<main id="main" tabindex="-1"><p class="loading" data-i18n="Connecting to the Bureau…">Connecting to the Bureau…</p></main>
 <div id="tabbar"></div>
 </div>
 <div id="notice" role="status" aria-live="polite"></div>
 <div id="toasts" role="status" aria-live="polite"></div>
 <div id="announcer" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
-<dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><div id="confirm-body"></div><div class="dialog-actions"><button type="button" id="confirm-cancel" class="btn ghost">Cancel</button><button type="button" id="confirm-accept" class="btn" data-submit>Confirm</button></div></dialog>
+<dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><div id="confirm-body"></div><div class="dialog-actions"><button type="button" id="confirm-cancel" class="btn ghost" data-i18n="Cancel">Cancel</button><button type="button" id="confirm-accept" class="btn" data-submit data-i18n="Confirm">Confirm</button></div></dialog>
 <dialog id="sound-dialog" aria-labelledby="sound-title">
-<h2 id="sound-title">Sound</h2><p id="sound-track" role="status">Sound is off</p>
-<p class="sub">Two investigation tracks play in a loop. Sound pauses when you leave this tab.</p>
-<label for="music-volume">Music <output id="music-level" for="music-volume">20%</output></label>
+<h2 id="sound-title" data-i18n="Sound">Sound</h2><p id="sound-track" role="status">Sound is off</p>
+<p class="sub" data-i18n="Two investigation tracks play in a loop. Sound pauses when you leave this tab.">Two investigation tracks play in a loop. Sound pauses when you leave this tab.</p>
+<label for="music-volume"><span data-i18n="Music">Music</span> <output id="music-level" for="music-volume">20%</output></label>
 <input type="range" id="music-volume" min="0" max="100" step="5" value="20">
-<label for="effects-volume">Effects <output id="effects-level" for="effects-volume">35%</output></label>
+<label for="effects-volume"><span data-i18n="Effects">Effects</span> <output id="effects-level" for="effects-volume">35%</output></label>
 <input type="range" id="effects-volume" min="0" max="100" step="5" value="35">
-<p class="hint">All clues and messages remain visible with sound off.</p>
-<button type="button" id="sound-close" class="btn ghost">Done</button>
+<p class="hint" data-i18n="All clues and messages remain visible with sound off.">All clues and messages remain visible with sound off.</p>
+<button type="button" id="sound-close" class="btn ghost" data-i18n="Done">Done</button>
 </dialog>
 </body>
 </html>

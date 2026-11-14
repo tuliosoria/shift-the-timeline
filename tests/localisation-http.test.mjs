@@ -1,0 +1,12 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';
+import {validateCaseLibrary} from '../server/case-loader.mjs';import {translatedLibrary} from './fixtures/localised-case.mjs';import {startLibraryServer,httpClient} from './helpers/library-server.mjs';
+test('HTTP language preferences preserve privacy, replay and canonical error identities',async()=>{
+ const server=await startLibraryServer(validateCaseLibrary(translatedLibrary()));try{const en=httpClient(server.origin),pt=httpClient(server.origin),other=httpClient(server.origin);for(const c of [en,pt,other])await c('/api/session',{});
+ assert.equal((await en('/api/cases')).body.cases[0].title,'Development test case');assert.equal((await pt('/api/cases?locale=pt-BR')).body.cases[0].title,'Caso sintético');assert.equal((await pt('/api/cases?locale=fr')).status,400);
+ const created=await en('/api/rooms',{name:'English',caseId:'demo',id:randomUUID(),locale:'en-GB'});const code=created.body.code;await pt(`/api/rooms/${code}/join`,{name:'Português',id:randomUUID(),locale:'pt-BR'});await other(`/api/rooms/${code}/join`,{name:'Third',id:randomUUID()});
+ const act=(c,type,extra={})=>c(`/api/rooms/${code}/actions`,{id:randomUUID(),type,...extra});await act(en,'start');await act(pt,'select',{round:1,suspectId:'suspect-0'});const asked=await act(pt,'ask',{round:1,question:'alibi'});assert.equal(asked.body.me.interviews[0].messages[0].reply,'Álibi sintético de suspect-0.');assert.equal((await en(`/api/rooms/${code}`)).body.me.interviews.length,0);assert.ok(!JSON.stringify(asked.body).includes('Resumo privado sintético'));
+ const change={id:randomUUID(),type:'setLocale',locale:'en-GB'};assert.equal((await pt(`/api/rooms/${code}/actions`,change)).status,200);await act(pt,'setLocale',{locale:'pt-BR'});const retry=await pt(`/api/rooms/${code}/actions`,change);assert.equal(retry.body.me.locale,'pt-BR','old replay must not reapply stale preference');assert.equal(retry.body.me.interviews[0].messages.length,1);
+ const bad=await act(pt,'setLocale',{locale:'pt-BR',unused:'x'.repeat(7700)});assert.equal(bad.status,400);assert.equal(bad.body.error,'Unexpected language preference field.');
+ const outsider=httpClient(server.origin);await outsider('/api/session',{});const denied=await outsider(`/api/rooms/${code}`);assert.equal(denied.status,401);assert.equal(denied.body.error,'Your session is not valid for this room.');
+ }finally{await server.close();}
+});

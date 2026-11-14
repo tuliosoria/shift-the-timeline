@@ -94,3 +94,50 @@ forward repair retaining all revision pins. If a rollback is unavoidable, pause
 new admissions and wait for affected rooms/jobs to expire, or use a rollback
 package containing compatible library code and every required raw revision.
 Do not delete or rewrite live rooms to make a rollback fit.
+
+## Individual languages and translation revisions
+
+English (`en-GB`) remains the default. A library can additionally contain a
+`translations` array of complete Brazilian Portuguese (`pt-BR`) sidecars. A
+sidecar names the canonical `caseId` and exact validated `caseVersion`; it cannot
+replace the culprit, suspect IDs/names, clock, deduction keys/sources or timeline
+time anchors. Its allowed text fields are `title`, `victim`, `place`, `method`,
+`prediction`, public `catalog` text, 15 `suspects` with roles/profiles/openings/
+briefs/four responses, matching `deductions` with translated text, and the
+`solution` with matching evidence/timeline counts. No other fields are accepted.
+Timeline time keys remain canonical; the current reveal does not display them.
+
+These sidecars are private, just like the original stories. Their addition does
+not change an English case hash. The exporter copies the original raw library,
+including translations, and records `translationPins` with each sidecar SHA-256
+alongside the existing English `casePins`. Never rebuild an authoring source
+from a validated/localised runtime projection.
+
+Create/join may send a locale; `setLocale` changes only the requesting player.
+Preferences use existing durable receipts for retries rather than consuming the
+player's gameplay request log. Case content falls back to English when the exact
+pinned revision has no Portuguese sidecar; the UI explains that fallback.
+
+Each accepted question captures its effective content language and fallback
+answer; each new deduction stores its displayed text with its source receipt.
+Pending jobs carry the corresponding language and candidate text. Changing a
+preference or updating/removing a sidecar never rewrites settled interviews,
+earned deductions or queued context. Legacy records without these fields remain
+English. Preserve old raw English revisions and any translations you want old
+rooms to use for future interviews. A translated sidecar update may affect future
+interviews and the current public dossier, but not previously earned testimony.
+
+AI output language is selected only in the authored-context instructions. Model,
+provider parameters, budget, credentials and orchestration policy are unchanged.
+Offline tests do not establish live model language fidelity.
+
+The browser translates known UI and API error messages at presentation time;
+unrecognised infrastructure errors retain their original text. User-authored
+names, questions and notes are never translated. A previously stored English
+interview or legacy queued job remains English after selecting Portuguese.
+
+For a language-enabled release, keep compatible code and private data together.
+Older code may not honour captured translated deduction text or queued language
+context. Prefer a forward repair; otherwise use a compatible rollback package
+or wait for affected rooms and jobs to expire before reverting code. Do not
+rewrite existing testimony or room pins during release or rollback.

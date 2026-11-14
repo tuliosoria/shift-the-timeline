@@ -40,7 +40,17 @@ try {
   await page.fill('#question','  WHERE were you during the preparations?  ');
   assert.ok(await page.locator('.question-reminder').isVisible());
   await page.setViewportSize({width:320,height:380}); await page.locator('#question').blur();
-  assert.ok((await page.locator('#transcript').boundingBox()).height >= 90);
+  for (const locale of ['en-GB', 'pt-BR', 'en-GB']) {
+    await page.selectOption('#language', locale);
+    await page.waitForFunction(() => !sessionStorage.getItem('shift-pending') && !sessionStorage.getItem('shift-language-pending'));
+    const shortLayout = await page.evaluate(() => Object.fromEntries(['#audio-controls','#language','#sound-toggle','#sound-settings','#transcript'].map(selector => [selector,document.querySelector(selector).getBoundingClientRect().toJSON()])));
+    assert.ok(shortLayout['#transcript'].height >= 90, `${locale}: ${JSON.stringify(shortLayout)}`);
+    for (const selector of ['#language','#sound-toggle','#sound-settings']) {
+      assert.ok(shortLayout[selector].height >= 44, `${locale}: ${selector} retains a touch target`);
+      assert.ok(shortLayout[selector].left >= 0 && shortLayout[selector].right <= 320, `${locale}: ${selector} remains visible`);
+    }
+    assert.equal(await page.inputValue('#question'), '  WHERE were you during the preparations?  ');
+  }
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:`${process.env.SHIFT_SCREENSHOTS??'/tmp'}/shift-repeat-question.png`});
   await page.setViewportSize({width:320,height:600});

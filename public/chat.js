@@ -1,3 +1,4 @@
+import {t, getLocale} from './i18n.js';
 // Messenger-style interrogation. The composer is built once per interview and survives
 // every poll: only the header and the transcript are refreshed, so focus, caret and
 // draft are never lost. The network stays in app.js, behind onSend.
@@ -14,7 +15,7 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
   // The question this chat just sent, shown until the server's copy arrives. `count` is the
   // number of messages before it, so a repeated question is never mistaken for the new one.
   // The app's held retry (`local.outgoing`) has the same {text, count} shape.
-  let sending = null;
+  let sending = null, renderedLocale = getLocale();
 
   const interview = () => views.currentInterview(state, local);
   const suspectName = () => state.suspects.find(s => s.id === interview()?.suspectId)?.name;
@@ -101,6 +102,22 @@ export function mountChat(root, {onSend, draft = '', onDraft = () => {}}) {
     if (ended) {
       const nextFooter = views.renderChatFooter(state, local);
       if (nextFooter !== footer) refs.foot.innerHTML = footer = nextFooter;
+    }
+    if (renderedLocale !== getLocale()) {
+      renderedLocale = getLocale();
+      refs.transcript.setAttribute('aria-label', t('Private interview'));
+      refs.newReply.textContent = t('New reply ↓');
+      if (refs.field) {
+        // Patch only interface nodes. Keep the actual textarea, its caret and composition.
+        const template = doc.createElement('template');
+        template.innerHTML = views.renderChatFooter(state, local);
+        for (const selector of ['.suggestion-hint', 'label[for="question"]']) refs.foot.querySelector(selector).textContent = template.content.querySelector(selector).textContent;
+        const chips = template.content.querySelectorAll('.chip');
+        refs.chips.forEach((chip, index) => { chip.textContent = chips[index].textContent; chip.dataset.chip = chips[index].dataset.chip; });
+        refs.field.placeholder = template.content.querySelector('textarea').placeholder;
+        refs.send.setAttribute('aria-label', t('Send question'));
+        refs.foot.querySelector('.chips').setAttribute('aria-label', t('Suggested question drafts'));
+      }
     }
     syncControls();
   }

@@ -1,8 +1,10 @@
+import {normaliseLocale} from '../case-locales.mjs';
 import {sourcesFor} from '../deductions.mjs';
 const MAX_BYTES=20000,TOPICS=['alibi','motive','clue','relationship'];
 // Builds the only text a model ever sees for one suspect question: that suspect's brief and answers,
 // public case facts, their own deductions and the prior exchanges. No other suspect, no solution.
-export function buildChatContext({caseData,suspectId,history=[],question,currentRound,earnedIds=[]}){
+export function buildChatContext({caseData,suspectId,history=[],question,currentRound,earnedIds=[],locale=caseData.locale??'en-GB'}){
+ normaliseLocale(locale);
  const suspect=caseData.suspects.find(s=>s.id===suspectId);if(!suspect)throw new Error('Unknown suspect');
  if(typeof question!=='string'||!question.trim())throw new Error('Question required');
  const culprit=suspectId===caseData.culpritId;
@@ -10,7 +12,8 @@ export function buildChatContext({caseData,suspectId,history=[],question,current
  const earned=[...new Set(earnedIds)].filter(id=>ids.has(id));
  const deductions=(caseData.deductions??[]).filter(d=>ids.has(d.id)&&!earned.includes(d.id)).map(({id,text})=>({id,text}));
  const instructions=[
-  `You are ${suspect.name}, ${suspect.role}, a suspect in a fictional mystery. Speak as the suspect in first person, in 1–3 short British English sentences.`,
+  `You are ${suspect.name}, ${suspect.role}, a suspect in a fictional mystery. Speak as the suspect in first person, in 1–3 short ${locale==='pt-BR'?'Brazilian Portuguese':'British English'} sentences.`,
+  ...(locale==='pt-BR'?['Keep the original British setting and proper names unchanged. Translate the meaning faithfully, retaining every time, qualification and source of knowledge; never add facts while translating.']:[]),
   'You know the interviewer is an investigator from the Future Crime Police. They seek to prevent a future murder. The victim is still alive; preparations may have happened, not the death. Recognise their role, but do not invent their personal name or a prior meeting. You do not know their vision, private evidence or the solution.',
   'Facts and chronology take priority over conversational style. Check the premise of the latest question before answering; reject or correct an unsupported premise rather than supplying a different invented explanation. Follow the voice and permitted evasions in your brief; sound like a person being interviewed, not a report or an assistant. Use natural contractions and everyday speech. A brief greeting or acknowledgement is welcome when the player greets you; do not restart the greeting every turn or sound like a customer-service assistant. No stage directions.',
   'Use history to understand follow-ups and avoid repeating your whole previous answer. Clarify the requested detail or limitation; repeat a fact when needed for a clear answer, not simply to fill three sentences. Do not add an uncertainty disclaimer to every reply.',

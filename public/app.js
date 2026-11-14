@@ -1,3 +1,4 @@
+import {t, getLocale, setLocale, readLocale, saveLocale, translateShell} from './i18n.js';
 // Bootstrap, state, routing and event wiring. Views are pure (views.js); the network is api.js.
 import {fetchJson, command, validateRoomEntry, validateRoomState, requestIdFor, newRequestId, pollLoop, roomGone} from './api.js';
 import {createUiState, uiContext} from './ui-state.js';
@@ -9,12 +10,15 @@ import {mountAudio, hasNewReply} from './audio.js';
 import {showUnlocked, freshDeductions} from './toast.js';
 
 const $ = s => document.querySelector(s);
+let languageStorage; try { languageStorage = localStorage; } catch {}
+setLocale(readLocale(languageStorage));
+translateShell(document);
 const audio = mountAudio();
 const SESSION = 'shift-session', PENDING = 'shift-pending', RESUME = 'shift-resume';
-const ROOM_EXPIRED = 'This room has expired. Open or join another case.';
+const ROOM_EXPIRED = "This room has expired. Open or join another case.";
 const store = {
   get(key) { try { return JSON.parse(([SESSION, RESUME].includes(key) ? localStorage : sessionStorage).getItem(key)); } catch { return null; } },
-  set(key, value) { try { ([SESSION, RESUME].includes(key) ? localStorage : sessionStorage).setItem(key, JSON.stringify(value)); } catch { notice('Storage is unavailable. Keep this tab open to stay in the game.', true); } },
+  set(key, value) { try { ([SESSION, RESUME].includes(key) ? localStorage : sessionStorage).setItem(key, JSON.stringify(value)); } catch { notice("Storage is unavailable. Keep this tab open to stay in the game.", true); } },
   remove(key) { try { ([SESSION, RESUME].includes(key) ? localStorage : sessionStorage).removeItem(key); } catch {} },
 };
 let uiStorage;
@@ -29,6 +33,10 @@ let session = store.get(SESSION), pending = store.get(PENDING), state = null, bu
 // `reading` keeps a finished chat on screen until the player moves on, even after the turn
 // itself has moved on (see views.screenFor): the transition waits for it.
 const local = {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, entry: 'create', cases: [], invite: ''};
+const LANGUAGE_PENDING = 'shift-language-pending';
+let localeIntent = store.get(LANGUAGE_PENDING), renderedLocale = getLocale();
+if (!(localeIntent?.entryId && pending?.entry && localeIntent.entryId === pending.body?.requestId) && (!session || localeIntent?.code !== session.code || localeIntent?.player !== session.playerId)) localeIntent = null;
+if (localeIntent) setLocale(localeIntent.locale);
 const chatPositions = new Map();
 let chat = null, transition = {key: null, timer: null};
 if (!session && !pending && requestedInvite) {
@@ -39,17 +47,18 @@ if (!session && !pending && requestedInvite) {
 const RENDER = {landing: views.renderLanding, lobby: views.renderLobby, briefing: views.renderBriefing, pick: views.renderPick, chat: views.renderChat,
   waiting: views.renderWaiting, transition: views.renderTransition, accuse: views.renderAccuse, reveal: views.renderReveal};
 
-let noticeKind = null;
+let noticeKind = null, noticeMessage = null;
 function notice(message, error = false, kind = null) {
   noticeKind = kind;
+  noticeMessage = message;
   const el = $('#notice');
   el.className = error ? 'show error' : 'show';
-  el.textContent = message;
-  if (pending && error) { const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Retry'; b.dataset.action = 'retry'; el.append(' ', b); }
+  el.textContent = t(message);
+  if (pending && error) { const b = document.createElement('button'); b.type = 'button'; b.textContent = t("Retry"); b.dataset.action = 'retry'; el.append(' ', b); }
   clearTimeout(notice.timer);
   if (!error) notice.timer = setTimeout(clearNotice, 4000);
 }
-function clearNotice() { noticeKind = null; const el = $('#notice'); el.className = ''; el.textContent = ''; }
+function clearNotice() { noticeMessage = null; noticeKind = null; const el = $('#notice'); el.className = ''; el.textContent = ''; }
 
 // One chat per interview: polls update it in place instead of rebuilding the composer.
 function chatFor(main) {
@@ -61,7 +70,7 @@ function chatFor(main) {
   chat = mountChat(main, {draft: ui.draft(context), onDraft: text => {
     const persistent = ui.persistent;
     ui.writeDraft(context, text);
-    if (persistent && !ui.persistent) notice('Draft storage is unavailable. Keep this tab open; unsent text cannot survive a reload.', true);
+    if (persistent && !ui.persistent) notice("Draft storage is unavailable. Keep this tab open; unsent text cannot survive a reload.", true);
   },
     onSend: question => {
       audio.effect('send');
@@ -75,6 +84,15 @@ function chatFor(main) {
 }
 
 function render() {
+  const languageChanged = renderedLocale !== getLocale();
+  renderedLocale = getLocale();
+  translateShell(document);
+  $('#language').value = getLocale();
+  if (languageChanged && noticeMessage) {
+    const region = $('#notice'), retry = region.querySelector('[data-action=retry]');
+    region.textContent = t(noticeMessage);
+    if (retry) { retry.textContent = t('Retry'); region.append(' ', retry); }
+  }
   document.body.classList.toggle('busy', busy);
   local.resume = resume;
   if (state) Object.assign(local, ui.seen(state.code, state.me.id), {draft: ui.draft(uiContext(state))});
@@ -97,16 +115,16 @@ function render() {
   $('#tabbar').innerHTML = tabBar;
   if (view === 'chat') {
     const outgoing = pending?.action?.type === 'ask' && Number.isInteger(pending.count) ? {text: pending.action.question, count: pending.count} : null;
-    chatFor(main).update(state, {...local, busy, outgoing});
+    chatFor(main).update(state, {...local, busy: busy || !!localeIntent, outgoing});
     if (chat.restoreOnUpdate) { chat.restoreReadingPosition(chat.restoreOnUpdate); chat.restoreOnUpdate = null; }
   } else {
     if (chat) { chatPositions.set(chat.key, chat.readingPosition()); chat.destroy(); chat = null; }
-    const searchField = view === 'deductions' && local.notebook?.section === 'search' && !local.notebook.interview && !local.notebook.suspect && $('#evidence-query');
+    const searchField = !languageChanged && view === 'deductions' && local.notebook?.section === 'search' && !local.notebook.interview && !local.notebook.suspect && $('#evidence-query');
     if (searchField) {
       // A changed room snapshot must not replace a search field mid-composition.
       if (searchField.value !== local.notebook.query) searchField.value = local.notebook.query ?? '';
       $('#evidence-results').innerHTML = views.renderEvidenceResults(state, local.notebook.query);
-      $('#notebook-interviews').textContent = `Interviews (${state.me.interviews.length})`;
+      $('#notebook-interviews').textContent = `${t("Interviews (")}${state.me.interviews.length})`;
     } else main.innerHTML = view === 'deductions' ? views.renderDeductions(state, local) : view === 'casefile' ? views.renderCaseFile(state) : RENDER[screen](state, local);
     for (const [id, value] of Object.entries(entryValues)) { const el = document.getElementById(id); if (el && el.type !== 'hidden') el.value = value; }
     main.scrollTop = keepScroll;
@@ -129,7 +147,7 @@ function playTransition(screen) {
 }
 function setBusy() {
   document.body.classList.toggle('busy', busy);
-  for (const b of document.querySelectorAll('[data-submit]')) b.disabled = busy || !!pending || b.dataset.locked === 'true';
+  for (const b of document.querySelectorAll('[data-submit]')) b.disabled = busy || !!pending || !!localeIntent || b.dataset.locked === 'true';
 }
 
 function applyState(next) {
@@ -146,6 +164,17 @@ function applyState(next) {
     const pendingReplies = new Set(reviewing ? reviewing.messages.filter(m => m.status === 'pending').map(m => m.id) : []);
     const arrived = next.me.interviews.find(i => views.chatKey(i) === local.notebook?.interview)?.messages.filter(m => pendingReplies.has(m.id) && m.status !== 'pending') ?? [];
     state = next; lastVersion = next.version;
+    if (localeIntent && localeIntent.code === state.code && localeIntent.player === state.me.id && (state.me.locale ?? 'en-GB') === localeIntent.locale) {
+      localeIntent = null; store.remove(LANGUAGE_PENDING);
+    }
+    // Another tab may have changed this same player's preference. Follow its confirmed
+    // snapshot without overriding a newer choice still queued by this tab.
+    const confirmedLocale = state.me.locale ?? 'en-GB';
+    if (!localeIntent && (restored || getLocale() !== confirmedLocale)) {
+      saveLocale(languageStorage, confirmedLocale);
+      document.dispatchEvent(new Event('languagechange'));
+    }
+    queueMicrotask(flushLocale);
     if (restored) {
       local.notebook = ui.notebook(state.code, state.me.id);
       local.tab = local.notebook.open ? 'deductions' : 'investigate';
@@ -156,7 +185,7 @@ function applyState(next) {
     if (fresh.length) showUnlocked(fresh);
     if (newReply) audio.effect('receive');
     offerInvitation();
-    if (arrived.length) $('#announcer').textContent = `Reply added to your private interview: ${arrived.map(m => m.reply).join(' ')}`;
+    if (arrived.length) $('#announcer').textContent = `${t("Reply added to your private interview:")} ${arrived.map(m => m.reply).join(' ')}`;
     return true;
   } catch (error) {
     // A projection or render failure must not replace the last usable snapshot.
@@ -183,9 +212,19 @@ async function run(work) {
         try { const response = await fetchJson(`/api/rooms/${encodeURIComponent(work.joinCode)}/state`); data = {code: response.data.code, playerId: response.data.me.id, state: response.data}; }
         catch (error) { if (error.status !== 401 || error.message !== 'Your session is not valid for this room.') throw error; }
       }
+      const recoveredSeat = !!data;
       data ??= (await fetchJson(work.path, {body: work.body})).data;
       validateRoomEntry(data, work.joinCode);
       session = {code: data.code, playerId: data.playerId};
+      // Explicit rejoining honours the landing choice even when the cookie already owns a seat.
+      // A choice made while this request was pending takes precedence over its original body.
+      if (recoveredSeat && !localeIntent && work.body.locale && work.body.locale !== (data.state.me.locale ?? 'en-GB')) {
+        localeIntent = {entryId: work.body.requestId, locale: work.body.locale};
+      }
+      if (localeIntent?.entryId === work.body?.requestId) {
+        localeIntent = {code: data.code, player: data.playerId, locale: localeIntent.locale};
+        store.set(LANGUAGE_PENDING, localeIntent);
+      }
       roomEpoch++;
       // Clear only in memory while rendering synchronously. The persisted request
       // remains recoverable until its snapshot has actually been accepted.
@@ -203,6 +242,7 @@ async function run(work) {
       if (work.action.type === 'ask') ui.clearMatchingDraft(work.context, work.action.question);
       store.remove(PENDING); clearNotice();
     }
+    queueMicrotask(flushLocale);
     return true;
   } catch (error) {
     session = previousSession; roomEpoch = previousEpoch;
@@ -217,15 +257,25 @@ async function run(work) {
       // change or reload. A definite rejection must not discard the question, but never
       // replace newer typing in this interview. Ambiguous failures keep the held retry.
       if (work.action?.type === 'ask' && !ui.draft(work.context)) ui.writeDraft(work.context, work.action.question);
+      if (work.action?.type === 'setLocale') {
+        localeIntent = null; store.remove(LANGUAGE_PENDING); saveLocale(languageStorage, state?.me.locale ?? 'en-GB');
+        document.dispatchEvent(new Event('languagechange'));
+      }
       notice(error.message, true);
     }
-    else notice(error.status === 429 ? error.message : 'Connection lost. Your action may have arrived. Retry safely: it will not be sent twice.', true);
+    else notice(error.status === 429 ? error.message : "Connection lost. Your action may have arrived. Retry safely: it will not be sent twice.", true);
+    // A definitively rejected entry has no seat to receive this queued preference.
+    // Keep the chosen UI/storage locale for the corrected entry; uncertain requests retain both records.
+    if (work.entry && !pending && localeIntent?.entryId === work.body?.requestId) {
+      localeIntent = null; store.remove(LANGUAGE_PENDING);
+    }
     render();
     offerInvitation();
     return false;
   }
 }
 function act(type, data = {}, extra = {}) {
+  if (type !== 'setLocale' && localeIntent) return Promise.resolve(false);
   const action = {type, ...data};
   return run({...extra, code: session.code, context: uiContext(state), action: {...action, id: requestIdFor(action)}});
 }
@@ -248,7 +298,7 @@ async function confirmAction() {
   const chosen = confirmation;
   closeConfirmation();
   if (!chosen || chosen.epoch !== roomEpoch || busy || pending) return;
-  if (chosen.kind !== 'room-switch' && (chosen.round !== state?.round || chosen.phase !== state?.phase)) { notice('The turn moved on. Check your choice again.', true); return; }
+  if (chosen.kind !== 'room-switch' && (chosen.round !== state?.round || chosen.phase !== state?.phase)) { notice("The turn moved on. Check your choice again.", true); return; }
   await chosen.onConfirm();
 }
 
@@ -262,6 +312,7 @@ function resetSession({preserve = false, invite = ''} = {}) {
   closeConfirmation();
   roomEpoch++;
   if (noticeKind === 'connection') clearNotice();
+  localeIntent = null; store.remove(LANGUAGE_PENDING);
   session = null; state = null; pending = null; lastVersion = -1; lastHeartbeat = 0;
   Object.assign(local, {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, notebook: null, entry: 'create', invite: ''});
   store.remove(SESSION); store.remove(PENDING);
@@ -323,7 +374,7 @@ async function resumeRoom() {
   } catch (error) {
     session = previousSession; roomEpoch = previousEpoch; busy = false;
     if (roomGone(error)) { resume = null; store.remove(RESUME); }
-    render(); notice(roomGone(error) ? 'That room or your place in it is no longer available.' : 'Could not reconnect to your room. Try again when the connection returns.', true);
+    render(); notice(roomGone(error) ? "That room or your place in it is no longer available." : "Could not reconnect to your room. Try again when the connection returns.", true);
     offerInvitation();
   }
 }
@@ -358,8 +409,8 @@ const actions = {
       : saved.deduction ? `source-${saved.deduction}` : `interview-${saved.interview}`;
     (document.getElementById(target) ?? $('#evidence-query'))?.focus();
   },
-  'copy-code': () => copy(state.code, 'Room code copied.', `Room code: ${state.code}`),
-  'copy-invite': () => copy(inviteLink(), 'Invite link copied. Send it to the table.', `Invite link: ${inviteLink()}`),
+  'copy-code': () => copy(state.code, t("Room code copied."), `${t("Room code:")} ${state.code}`),
+  'copy-invite': () => copy(inviteLink(), t("Invite link copied. Send it to the table."), `${t("Invite link:")} ${inviteLink()}`),
   begin: () => { ui.markSeen(state.code, state.me.id, {briefingSeen: true, lastSeenRound: state.round}); render(); },
   // Also run by the transition timer: focus lands on the new screen, as after leaving a chat.
   continue: () => { ui.markSeen(state.code, state.me.id, {lastSeenRound: views.stageOf(state)}); render(); $('#main').focus({preventScroll: true}); },
@@ -373,11 +424,11 @@ const actions = {
   },
   advance: () => state.me.host && openConfirmation({...views.ADVANCE_CONFIRM,
     onConfirm: () => act('advance', {round: state.round, confirmed: true})}),
-  claimHost: () => state.hostRecoverable && openConfirmation({title: 'Take over as host?', label: 'Take over',
-    body: '<p>The host has been out of contact for two minutes. They stay in the game and keep their conversations.</p>',
+  claimHost: () => state.hostRecoverable && openConfirmation({title: t("Take over as host?"), label: t("Take over"),
+    body: `<p>${t("The host has been out of contact for two minutes. They stay in the game and keep their conversations.")}</p>`,
     onConfirm: () => act('claimHost', {confirmed: true})}),
-  finalizeAccusations: () => state.canFinalizeAccusations && openConfirmation({title: 'Reveal without them?', label: 'Reveal now',
-    body: `<p>${state.players.filter(p => !p.voteSubmitted).length} agent(s) have not summoned anyone and have been away for two minutes. They count as abstentions.</p><p><b>This cannot be undone.</b></p>`,
+  finalizeAccusations: () => state.canFinalizeAccusations && openConfirmation({title: t("Reveal without them?"), label: t("Reveal now"),
+    body: `<p>${state.players.filter(p => !p.voteSubmitted).length} ${t("agent(s) have not summoned anyone and have been away for two minutes. They count as abstentions.")}</p><p><b>${t("This cannot be undone.")}</b></p>`,
     onConfirm: () => act('finalizeAccusations', {confirmed: true})}),
 };
 
@@ -439,10 +490,36 @@ document.addEventListener('submit', event => {
   event.preventDefault();
   if (busy || pending) return;
   const form = event.target, data = Object.fromEntries(new FormData(form));
-  if (form.id === 'create-form') run({entry: true, path: '/api/rooms', body: {name: data.name, caseId: data.caseId, requestId: newRequestId()}});
+  if (form.id === 'create-form') run({entry: true, path: '/api/rooms', body: {name: data.name, locale: getLocale(), caseId: data.caseId, requestId: newRequestId()}});
   if (form.id === 'join-form') {
     const code = data.code.trim().toUpperCase();
-    run({entry: true, joinCode: code, path: `/api/rooms/${encodeURIComponent(code)}/join`, body: {name: data.name, requestId: newRequestId()}});
+    run({entry: true, joinCode: code, path: `/api/rooms/${encodeURIComponent(code)}/join`, body: {name: data.name, locale: getLocale(), requestId: newRequestId()}});
+  }
+});
+async function flushLocale() {
+  if (!localeIntent || !state || busy || pending || localeIntent.code !== state.code || localeIntent.player !== state.me.id) return;
+  const wanted = localeIntent.locale;
+  if ((state.me.locale ?? 'en-GB') === wanted) { localeIntent = null; store.remove(LANGUAGE_PENDING); render(); return; }
+  await act('setLocale', {locale: wanted});
+}
+$('#language').addEventListener('change', async event => {
+  const wanted = event.target.value;
+  saveLocale(languageStorage, wanted);
+  if (session) {
+    localeIntent = {code: session.code, player: session.playerId, locale: wanted};
+    store.set(LANGUAGE_PENDING, localeIntent);
+  } else if (pending?.entry) {
+    localeIntent = {entryId: pending.body.requestId, locale: wanted};
+    store.set(LANGUAGE_PENDING, localeIntent);
+  }
+  render();
+  document.dispatchEvent(new Event('languagechange'));
+  if (state) void flushLocale();
+  else {
+    try {
+      const catalog = (await fetchJson(`/api/cases?locale=${wanted}`)).data;
+      if (!state && getLocale() === wanted) { local.cases = catalog.cases; render(); }
+    } catch { /* The existing catalogue remains usable offline. */ }
   }
 });
 $('#confirm-cancel').addEventListener('click', cancelConfirmation);
@@ -453,7 +530,7 @@ window.addEventListener('hashchange', () => {
   if (!code) { requestedInvite = ''; if (confirmation?.kind === 'room-switch') closeConfirmation(); return; }
   requestedInvite = code;
   closeConfirmation();
-  if (busy || pending) notice('Finish the current action or its safe retry before switching rooms. Your invitation will wait.', true);
+  if (busy || pending) notice("Finish the current action or its safe retry before switching rooms. Your invitation will wait.", true);
   offerInvitation();
 });
 
@@ -461,9 +538,9 @@ function pollFailed(error) {
   const gone = roomGone(error);
   if (gone) {
     resetSession();
-    notice(gone === 'expired' ? ROOM_EXPIRED : 'Your place in the room could not be restored. Join a new case.', true);
+    notice(gone === 'expired' ? ROOM_EXPIRED : "Your place in the room could not be restored. Join a new case.", true);
     offerInvitation();
-  } else notice('Connection interrupted. Reconnecting…', true, 'connection');
+  } else notice("Connection interrupted. Reconnecting…", true, 'connection');
 }
 const currentPoll = source => !!session && source?.code === session.code && source.localEpoch === roomEpoch && !busy && !pending;
 const poller = pollLoop({
@@ -484,7 +561,9 @@ setInterval(async () => {
 render();
 try {
   await fetchJson('/api/session', {body: {}});
-  const catalog = (await fetchJson('/api/cases')).data;
+  const catalogLocale = getLocale();
+  let catalog = (await fetchJson(`/api/cases?locale=${catalogLocale}`)).data;
+  if (catalogLocale !== getLocale()) catalog = (await fetchJson(`/api/cases?locale=${getLocale()}`)).data;
   local.cases = catalog.cases;
   local.dialogueMode = catalog.dialogueMode;
   render();
@@ -492,4 +571,4 @@ try {
   if (pending) await run(pending);
   else if (session) poller.now();
   else offerInvitation();
-} catch { notice('The server is unavailable. Reload when your connection returns.', true); }
+} catch { notice("The server is unavailable. Reload when your connection returns.", true); }

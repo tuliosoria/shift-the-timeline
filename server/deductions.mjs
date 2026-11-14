@@ -7,9 +7,9 @@ export function sourcesFor(caseData, suspectId) {
   return ids;
 }
 
-function record(player, interview, message, ids) {
+function record(caseData, player, interview, message, ids) {
   player.deductions ??= [];
-  for (const id of ids) player.deductions.push({ id, round: interview.round, suspectId: interview.suspectId, messageId: message.id });
+  for (const id of ids) player.deductions.push({ id, round: interview.round, suspectId: interview.suspectId, messageId: message.id, ...(typeof caseData.deductions?.find(d=>d.id===id)?.text==='string'?{text:caseData.deductions.find(d=>d.id===id).text}:{}) });
   message.unlocked = [...ids];
   return ids;
 }
@@ -23,7 +23,7 @@ export function resolveCanonical(caseData, player, interview, message) {
   const ids = (caseData.deductions ?? [])
     .filter(d => !have.has(d.id) && d.sources.some(s => s.suspectId === interview.suspectId && s.topic === message.topic))
     .map(d => d.id);
-  return record(player, interview, message, ids);
+  return record(caseData, player, interview, message, ids);
 }
 
 export function resolveWithAi(caseData, player, interview, message, { reply, unlocked } = {}) {
@@ -34,12 +34,12 @@ export function resolveWithAi(caseData, player, interview, message, { reply, unl
     if (ids.length >= MAX_AI_UNLOCKS) break;
     if (typeof id === 'string' && allowed.has(id) && !have.has(id) && !ids.includes(id)) ids.push(id);
   }
-  return record(player, interview, message, ids);
+  return record(caseData, player, interview, message, ids);
 }
 
 export function deductionView(caseData, player) {
   const byId = new Map((caseData.deductions ?? []).map(d => [d.id, d]));
-  return (player.deductions ?? []).filter(u => byId.has(u.id)).map(u => ({ id: u.id, text: byId.get(u.id).text, suspectId: u.suspectId, round: u.round,
+  return (player.deductions ?? []).filter(u => byId.has(u.id)).map(u => ({ id: u.id, text: typeof u.text==='string'?u.text:byId.get(u.id).text, suspectId: u.suspectId, round: u.round,
     ...(typeof u.messageId === 'string' ? {messageId: u.messageId} : {}) }));
 }
 

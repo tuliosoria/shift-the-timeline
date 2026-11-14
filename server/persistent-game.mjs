@@ -1,3 +1,4 @@
+import {localiseCase} from './case-locales.mjs';
 import {caseForRoom} from './case-loader.mjs';
 import {createHash} from 'node:crypto';
 import {GameService,DomainError} from './game.mjs';
@@ -7,9 +8,9 @@ const HOUR=3_600_000;
 const hash=x=>createHash('sha256').update(x).digest('hex');
 function identifier(id){if(typeof id!=='string'||!/[\w-]{16,100}/.test(id)||!/^[\w-]+$/.test(id)||id.length>100)throw new DomainError('Invalid identifier.');}
 export class DurableGame {
- constructor({store,caseData,catalog,registry,now=Date.now,ai=null}){this.store=store;this.caseData=caseData;this.catalog=catalog;this.registry=registry;this.now=now;this.ai=ai;}
- cases(){return this.catalog;}
- engine(room){const g=new GameService({caseData:this.caseData,catalog:this.catalog,registry:this.registry,now:this.now,deferAnswers:!!this.ai});if(room)g.rooms.set(room.code,room);return g;}
+ constructor({store,caseData,catalog,registry,translations,now=Date.now,ai=null}){this.store=store;this.caseData=caseData;this.catalog=catalog;this.registry=registry;this.translations=translations;this.now=now;this.ai=ai;}
+ cases(locale){return this.engine().cases(locale);}
+ engine(room){const g=new GameService({caseData:this.caseData,catalog:this.catalog,registry:this.registry,translations:this.translations,now:this.now,deferAnswers:!!this.ai,durablePreferenceReceipts:true});if(room)g.rooms.set(room.code,room);return g;}
  async load(code){if(typeof code!=='string'||!/^[A-HJ-NP-Z2-9]{8}$/.test(code.toUpperCase()))throw new DomainError('Invalid room code.',404);const room=await this.store.getRoom(code.toUpperCase());if(!room||room.expiresAt<=this.now()||room.createdAt+24*HOUR<=this.now())throw new DomainError('Room not found or expired.',404);if(!caseForRoom(this,room))throw new DomainError('Case version unavailable.',503);return room;}
  async view(code,session){const room=await this.load(code);return this.engine(room).view(room.code,session);}
  async prior(key,fingerprint,session){const receipt=await this.store.getReceipt(key);if(!receipt)return null;if(receipt.fingerprint!==fingerprint)throw new DomainError('Request identifier reused with different data.',409);return {code:receipt.code,playerId:receipt.playerId,state:await this.view(receipt.code,session)};}
@@ -35,11 +36,12 @@ export class DurableGame {
  async admit({room,player,before,receiptKey}){
   const interview=player.interviews.find(i=>i.round===before.round),message=interview?.messages.at(-1);
   if(message?.status!=='pending')return [];
-  const writes=this.ai?await this.ai.prepareQuestion({room,player,interview,message,receiptKey,caseData:caseForRoom(this,room)}):[];
-  if(!writes.length)resolveCanonical(caseForRoom(this,room),player,interview,message);
+  const caseData=localiseCase(caseForRoom(this,room),this.translations,message.locale);
+  const writes=this.ai?await this.ai.prepareQuestion({room,player,interview,message,receiptKey,caseData}):[];
+  if(!writes.length)resolveCanonical(caseData,player,interview,message);
   return writes;
  }
- async create(session,name,caseId,id){return this.mutate({kind:'create',session,id,payload:{name,caseId},run:g=>{const created=g.create(name,caseId,id);g.rooms.get(created.code).players[0].token=session;return created;}});}
- async join(code,session,name,id){code=code.toUpperCase();return this.mutate({kind:'join',code,session,id,payload:{name},run:(g,before)=>{if(before.players.some(p=>p.token===session))throw new DomainError('This browser has already joined this room.',409);const joined=g.join(code,name,id);g.rooms.get(code).players.find(p=>p.id===joined.playerId).token=session;return joined;}});}
+ async create(session,name,caseId,id,locale){return this.mutate({kind:'create',session,id,payload:{name,caseId,...(locale===undefined?{}:{locale})},run:g=>{const created=g.create(name,caseId,id,locale);g.rooms.get(created.code).players[0].token=session;return created;}});}
+ async join(code,session,name,id,locale){code=code.toUpperCase();return this.mutate({kind:'join',code,session,id,payload:{name,...(locale===undefined?{}:{locale})},run:(g,before)=>{if(before.players.some(p=>p.token===session))throw new DomainError('This browser has already joined this room.',409);const joined=g.join(code,name,id,locale);g.rooms.get(code).players.find(p=>p.id===joined.playerId).token=session;return joined;}});}
  async act(code,session,action){const result=await this.mutate({kind:'act',code:code.toUpperCase(),session,id:action?.id,payload:action,run:(g,before)=>{if(action.expectedVersion!==undefined&&action.expectedVersion!==before.version)throw new DomainError('The room has changed. Refresh before trying again.',409);g.act(before.code,session,action);return {code:before.code};}});return result.state;}
 }
