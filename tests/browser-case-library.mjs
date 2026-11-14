@@ -8,6 +8,7 @@ try{
   const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
   await context.route('**/*',route=>{if(new URL(route.request().url()).origin!==server.origin){external.push(route.request().url());return route.abort();}return route.continue();});
   const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(server.origin);
+  await page.locator('#case-choice').waitFor();
   assert.equal(await page.locator('#case-choice option').count(),6);await page.selectOption('#case-choice',c.id);await page.fill('#create-name','   ');
   const rejected=page.waitForResponse(r=>r.url()===server.origin+'/api/rooms'&&r.status()===400);await page.click('#create-form button');await rejected;await page.waitForFunction(()=>!document.body.classList.contains('busy'));
   assert.equal(await page.inputValue('#case-choice'),c.id,'rejected create preserves the selected case');
