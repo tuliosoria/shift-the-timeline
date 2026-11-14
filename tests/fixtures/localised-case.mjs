@@ -1,0 +1,7 @@
+import {TRAIN_CASE,CASES} from './case.mjs';
+import {validateCase} from '../../server/case-loader.mjs';
+export function translationFor(raw=TRAIN_CASE){
+ const source=validateCase({caseData:raw,catalog:[{id:raw.id,title:raw.title,available:true}]}).caseData;
+ return {locale:'pt-BR',caseId:raw.id,caseVersion:source.version,title:'Caso sintético',victim:'Personagem fictício',place:'Laboratório de teste',method:'Evento fictício',prediction:'Uma previsão sintética de um crime futuro.',catalog:{title:'Caso sintético',location:'Ambiente de teste',description:'Dados sintéticos, sem mistério editorial.'},suspects:raw.suspects.map(s=>({id:s.id,role:'Participante fictício',profile:`Perfil sintético de ${s.id}.`,opening:'Olá, agente da Polícia de Crimes Futuros. Podemos conversar.',brief:`Resumo privado sintético de ${s.id}.`,responses:{alibi:`Álibi sintético de ${s.id}.`,motive:`Motivação sintética de ${s.id}.`,clue:`Pista sintética de ${s.id}.`,relationship:`Relação sintética de ${s.id}.`}})),deductions:raw.deductions.map(d=>({id:d.id,text:`Dedução sintética: ${d.id}.`})),solution:{motive:'Motivo sintético.',plan:'Plano sintético.',evidence:raw.solution.evidence.map((_,i)=>`Evidência sintética ${i}.`),timeline:raw.solution.timeline.map(e=>({time:e.time,text:'Evento sintético.'}))}};
+}
+export const translatedLibrary=()=>({cases:[structuredClone(TRAIN_CASE)],catalog:structuredClone(CASES),translations:[translationFor()]});

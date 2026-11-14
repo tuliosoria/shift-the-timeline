@@ -270,3 +270,73 @@ included. A submit/poll/release failure may follow an effective deployment; insp
 state before another attempt rather than retrying blindly. The actual verified
 GitHub OIDC subject includes the numeric owner/repository IDs shown above, not
 the legacy name-only subject; changing the trust policy is a separate approved action.
+
+## Private bilingual source: required release gate
+
+The private release path hydrates the tested public code artifact only after the
+existing main-only OIDC login. See [CASE_LIBRARY.md](CASE_LIBRARY.md). No private
+case data is placed in Git or a GitHub Actions artifact. Existing permissions are
+reused; denial is a stop condition, not permission to add a grant or use keys.
+
+The exact initial source target is:
+
+- Subscription: `ddb0b48c-aa74-4420-bf1b-49a3f7eaa970`.
+- Storage account: `shiftartzndzouh3e74wy`; existing container: `releases`.
+- Blob: `case-libraries/6153e2cbe6574bd18c5b8b408af5a9c311cf2274131fdd54bf436271482943a5.json`.
+- Source: `private/release-bilingual/case-library.json`, 389,291 bytes, SHA-256
+  `6153e2cbe6574bd18c5b8b408af5a9c311cf2274131fdd54bf436271482943a5`.
+- Expected library: six current English cases and six complete PT-BR sidecars.
+
+Before merge/deployment, an authorised operator must establish that the existing
+container is private, the existing deployment identity can read the exact blob,
+and download/readback matches the pointer and the complete schema. The managed
+cloud used for preparation has no Azure identity; local fixture hydration does
+not establish live access. No Azure upload, configuration change or inventory has
+been performed by this code preparation. Do not merge while this gate is unknown
+because a main push may automatically deploy.
+
+Only after explicit approval for the exact target above, the operator can publish
+the reviewed JSON once using Entra authentication and no overwrite:
+
+```sh
+az storage blob upload \
+  --subscription ddb0b48c-aa74-4420-bf1b-49a3f7eaa970 \
+  --account-name shiftartzndzouh3e74wy --container-name releases \
+  --auth-mode login \
+  --name case-libraries/6153e2cbe6574bd18c5b8b408af5a9c311cf2274131fdd54bf436271482943a5.json \
+  --file private/release-bilingual/case-library.json \
+  --overwrite false --if-none-match '*' --output none
+```
+
+Do not execute that command merely because it is documented. A source already
+present must be verified rather than overwritten. No public access, account key,
+SAS export, new storage resource or expanded role is part of this procedure.
+The helper uses documented [Azure CLI container reads](https://learn.microsoft.com/en-us/cli/azure/storage/container?view=azure-cli-latest#az-storage-container-show)
+and [conditional blob downloads](https://learn.microsoft.com/en-us/cli/azure/storage/blob?view=azure-cli-latest#az-storage-blob-download).
+
+## Aggregate room inventory, without deletion
+
+`scripts/azure-room-inventory.sql` runs an explicit read-only transaction with a
+five-second statement timeout. Execute it only through an existing authorised
+private database connection. Its result contains totals/expiry for rooms,
+receipts, sessions, counters and AI records; pending/in-flight/settled job counts;
+and missing/expired/unexpired room links. It never returns room codes, player
+identifiers, question/answer content, credentials or raw case data. Tests execute
+it against ephemeral PostgreSQL and verify durable records are unchanged.
+
+The report deliberately marks recovery exports and backup capability as unknown:
+those require separate evidence from the existing backup configuration. Do not
+infer current recovery guarantees from historical template settings. This script
+contains no deletion, cleanup, configuration or admission changes. No live counts
+are claimed by its presence.
+
+Room deletion is not required to integrate the reviewed library: its original
+English revisions remain available, and existing rooms/jobs retain their pins.
+The aggregate inventory alone does not prove pin compatibility. If it reports
+unexpired rooms or unfinished jobs, separately compare their required
+`(caseId, caseVersion)` pins with the reviewed bundle through an authorised
+restricted read; do not expose room or player identifiers. Otherwise establish
+that no active rooms/jobs require an older revision before release or rollback.
+Any later requested cleanup needs the concrete aggregate inventory, exact target,
+recovery assessment and separately confirmed execution scope. Never delete or
+invalidate rooms merely to make this release work.

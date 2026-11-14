@@ -1,0 +1,183 @@
+// Synthetic/offline: exercises real controls and durable preference commands, no provider calls.
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {launchBrowser} from './helpers/browser.mjs';
+import {startFakeAiServer} from './helpers/fake-ai-server.mjs';
+const server = await startFakeAiServer({delay: 1800});
+let browser;
+try {
+  browser = await launchBrowser(process.env.CHROMIUM_PATH ? {executablePath: process.env.CHROMIUM_PATH} : {});
+  // A definitive rejected entry must release its queued preference without losing the choice.
+  for (const entry of ['create', 'join']) for (const status of [400, 503]) {
+    const rejectedContext = await browser.newContext();
+    const rejectedPage = await rejectedContext.newPage();
+    let reportRequest, releaseResponse;
+    const requested = new Promise(resolve => { reportRequest = resolve; });
+    const released = new Promise(resolve => { releaseResponse = resolve; });
+    if (entry === 'join') await rejectedPage.route('**/api/rooms/ABCD2345/state', route => route.fulfill({status:401, json:{error:'Your session is not valid for this room.'}}));
+    await rejectedPage.route(entry === 'create' ? '**/api/rooms' : '**/api/rooms/ABCD2345/join', async route => {
+      reportRequest(); await released;
+      await route.fulfill({status, json:{error:status === 400 ? 'Name: enter between 1 and 24 characters.' : 'Case version unavailable.'}});
+    });
+    await rejectedPage.goto(server.origin);
+    if (entry === 'join') { await rejectedPage.click('[data-entry=join]'); await rejectedPage.fill('#join-code','ABCD2345'); }
+    await rejectedPage.fill(`#${entry}-name`, '   ');
+    await rejectedPage.click(`#${entry}-form button`); await requested;
+    await rejectedPage.selectOption('#language', 'pt-BR');
+    releaseResponse();
+    await rejectedPage.waitForFunction(() => !sessionStorage.getItem('shift-pending'));
+    await rejectedPage.fill(`#${entry}-name`, 'Corrected');
+    assert.equal(await rejectedPage.locator(`#${entry}-form button`).isDisabled(), false, `${entry} ${status}: corrected entry is enabled`);
+    assert.equal(await rejectedPage.evaluate(() => sessionStorage.getItem('shift-language-pending')), null);
+    assert.equal(await rejectedPage.locator('#language').inputValue(), 'pt-BR');
+    assert.equal(await rejectedPage.evaluate(() => localStorage.getItem('shift-locale-v1')), 'pt-BR');
+    await rejectedContext.close();
+  }
+  const context = await browser.newContext({viewport: {width: 320, height: 740}, reducedMotion: 'reduce'});
+  const page = await context.newPage(), errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.setDefaultTimeout(12000);
+  await page.goto(server.origin);
+  await page.waitForSelector('#create-name');
+  assert.equal(await page.locator('html').getAttribute('lang'), 'en-GB');
+  await page.fill('#create-name', 'New room');
+  await page.selectOption('#language', 'pt-BR');
+  assert.equal(await page.locator('#create-name').inputValue(), 'New room');
+  assert.equal(await page.locator('[data-entry=create]').textContent(), 'Nova sala');
+  assert.equal(await page.locator('#sound-toggle').getAttribute('aria-label'), 'Silenciar');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.reload(); await page.waitForSelector('#create-name');
+  assert.equal(await page.locator('#language').inputValue(), 'pt-BR');
+  await page.fill('#create-name', 'New room'); await page.click('#create-form button');
+  await page.waitForSelector('.room-code');
+  const code = (await page.locator('.room-code').textContent()).trim();
+  assert.equal(await page.locator('.roster b').first().textContent(), 'New room (você)');
+  const other = await browser.newContext(); const otherPage = await other.newPage();
+  await otherPage.goto(server.origin + '/#join=' + code); await otherPage.fill('#join-name', 'Second'); await otherPage.click('#join-form button'); await otherPage.waitForSelector('.roster');
+  assert.equal(await otherPage.locator('#language').inputValue(), 'en-GB');
+  await server.game.join(code, 'language-third', 'Third', randomUUID());
+  await page.waitForFunction(() => !document.querySelector('[data-action=start]')?.disabled);
+  await page.click('[data-action=start]'); await page.click('[data-action=begin]');
+  await page.click('[data-suspect=suspect-1]');
+  await page.selectOption('#language', 'en-GB'); await page.selectOption('#language', 'pt-BR');
+  await page.waitForFunction(() => !document.querySelector('[data-action=question]').disabled);
+  assert.equal(await page.locator('[data-suspect=suspect-1]').getAttribute('aria-pressed'),'true');
+  await page.click('[data-action=question]');
+  await page.waitForSelector('#question');
+  const opening = await page.locator('#transcript .b.them').first().textContent();
+  await page.fill('#question', 'New room');
+  await page.evaluate(() => { const q=document.querySelector('#question');q.focus();q.setSelectionRange(2,5);const s=document.querySelector('#language');s.value='en-GB';s.dispatchEvent(new Event('change',{bubbles:true})); });
+  await page.waitForFunction(() => !document.querySelector('.send').disabled);
+  assert.deepEqual(await page.locator('#question').evaluate(e => [e.value,e.selectionStart,e.selectionEnd,document.activeElement===e]), ['New room',2,5,true]);
+  assert.equal(await page.locator('#transcript .b.them').first().textContent(), opening);
+  await page.fill('#question', 'Where is the key?'); await page.press('#question', 'Enter');
+  await page.waitForSelector('#transcript .typing');
+  await page.selectOption('#language', 'pt-BR');
+  await page.fill('#question', 'Unsaved personal text');
+  await page.waitForFunction(() => !document.querySelector('#transcript .typing'));
+  assert.equal(await page.locator('#transcript .b.me').textContent(), 'Where is the key?');
+  assert.equal(await page.locator('#question').inputValue(), 'Unsaved personal text');
+  assert.equal(await page.locator('#question').getAttribute('placeholder'), 'Pergunte a Character o que quiser…');
+  assert.equal(await page.locator('#transcript .b.them').first().textContent(), opening);
+  assert.equal(await otherPage.locator('#language').inputValue(), 'en-GB');
+  await page.reload(); await page.waitForSelector('#question');
+  assert.equal(await page.locator('#language').inputValue(), 'pt-BR');
+  assert.equal(await page.locator('#question').inputValue(), 'Unsaved personal text');
+  assert.equal(await page.locator('#transcript .b.me').count(), 1);
+  // An uncertain ask retains its exact ID and payload while a language intent waits.
+  let corruptAsk = true, corruptLocale = false;
+  const commands = [];
+  await page.route('**/actions', async route => {
+    const action = route.request().postDataJSON(); commands.push(action);
+    const response = await route.fetch();
+    if (action.type === 'ask' && corruptAsk) { corruptAsk = false; return route.fulfill({response, json: {incomplete:true}}); }
+    if (action.type === 'setLocale' && corruptLocale) { corruptLocale = false; return route.fulfill({response, json: {incomplete:true}}); }
+    return route.fulfill({response});
+  });
+  await page.fill('#question', 'Recovery personal text'); await page.press('#question', 'Enter');
+  await page.waitForSelector('#notice [data-action=retry]');
+  const heldAsk = await page.evaluate(() => JSON.parse(sessionStorage.getItem('shift-pending')).action);
+  await page.selectOption('#language', 'en-GB');
+  assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem('shift-pending')).action), heldAsk);
+  await page.reload(); await page.waitForSelector('#question');
+  await page.waitForFunction(() => !sessionStorage.getItem('shift-pending') && !sessionStorage.getItem('shift-language-pending'));
+  assert.equal(await page.locator('#language').inputValue(), 'en-GB');
+  assert.equal(await page.locator('#transcript .b.me').count(), 2);
+  assert.deepEqual(commands.filter(a => a.type === 'ask').map(a => a.id), [heldAsk.id, heldAsk.id]);
+  // A second preference chosen while the first response is uncertain is applied after replay.
+  corruptLocale = true;
+  await page.selectOption('#language', 'pt-BR');
+  await page.waitForSelector('#notice [data-action=retry]');
+  const heldLocale = await page.evaluate(() => JSON.parse(sessionStorage.getItem('shift-pending')).action);
+  await page.selectOption('#language', 'en-GB');
+  assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem('shift-pending')).action), heldLocale);
+  await page.reload(); await page.waitForSelector('#question');
+  await page.waitForFunction(() => !sessionStorage.getItem('shift-pending') && !sessionStorage.getItem('shift-language-pending'));
+  assert.equal(await page.locator('#language').inputValue(), 'en-GB');
+  assert.equal(await page.locator('#transcript .b.me').count(), 2);
+  // Two tabs can own the same seat. A confirmed preference from either tab is authoritative.
+  const mirror = await context.newPage(); mirror.setDefaultTimeout(12000);
+  await mirror.goto(server.origin); await mirror.waitForSelector('#question');
+  await mirror.fill('#question', 'Private same-seat draft');
+  await mirror.locator('#question').evaluate(e => { e.focus(); e.setSelectionRange(2,8); });
+  await page.selectOption('#language', 'pt-BR');
+  await mirror.waitForFunction(() => document.documentElement.lang === 'pt-BR');
+  assert.equal(await mirror.locator('#language').inputValue(), 'pt-BR');
+  assert.equal(await mirror.locator('#question').getAttribute('placeholder'), 'Pergunte a Character o que quiser…');
+  assert.deepEqual(await mirror.locator('#question').evaluate(e => [e.value,e.selectionStart,e.selectionEnd,document.activeElement===e]), ['Private same-seat draft',2,8,true]);
+  assert.equal(await mirror.locator('#transcript .b.me').count(), 2);
+  await mirror.selectOption('#language', 'en-GB');
+  await page.waitForFunction(() => document.documentElement.lang === 'en-GB');
+  assert.equal(await page.locator('#language').inputValue(), 'en-GB');
+  assert.equal(await page.evaluate(() => localStorage.getItem('shift-locale-v1')), 'en-GB');
+  await mirror.close();
+  await page.click('[data-tab=deductions]'); await page.click('[data-notebook=search]');
+  await page.fill('#evidence-query', 'Where');
+  await page.evaluate(() => { const q=document.querySelector('#evidence-query');q.focus();q.setSelectionRange(1,3);const s=document.querySelector('#language');s.value='pt-BR';s.dispatchEvent(new Event('change',{bubbles:true})); });
+  await page.waitForFunction(() => !sessionStorage.getItem('shift-pending') && !sessionStorage.getItem('shift-language-pending'));
+  assert.deepEqual(await page.locator('#evidence-query').evaluate(e => [e.value,e.selectionStart,e.selectionEnd,document.activeElement===e]), ['Where',1,3,true]);
+  assert.equal(await page.locator('#main .title').textContent(), 'Buscar nas suas evidências');
+  await page.click('[data-tab=investigate]');
+  // Explicit rejoin uses the landing choice even when membership recovery skips POST join.
+  await page.selectOption('#language', 'en-GB');
+  await page.waitForFunction(() => !sessionStorage.getItem('shift-pending') && !sessionStorage.getItem('shift-language-pending'));
+  await page.click('[data-tab=case]'); await page.click('[data-action=switch-room]'); await page.click('#confirm-accept');
+  await page.waitForSelector('#join-name');
+  const recoveredJoins = [];
+  page.on('request', request => { if (request.method() === 'POST' && request.url().endsWith('/join')) recoveredJoins.push(request.url()); });
+  await page.selectOption('#language', 'pt-BR');
+  await page.fill('#join-code', code); await page.fill('#join-name', 'Recovered'); await page.click('#join-form button');
+  await page.waitForSelector('#question');
+  await page.waitForFunction(() => !sessionStorage.getItem('shift-pending') && !sessionStorage.getItem('shift-language-pending'));
+  assert.equal(await page.locator('#language').inputValue(), 'pt-BR', 'explicit rejoin honours the selected landing language');
+  const recovered = await page.evaluate(async code => (await fetch(`/api/rooms/${code}/state`)).json(), code);
+  assert.equal(recovered.me.locale, 'pt-BR');
+  assert.equal(recovered.me.name, 'New room');
+  assert.equal(recovered.players.length, 3);
+  assert.equal(recovered.me.interviews[0].messages.length, 2);
+  assert.deepEqual(recoveredJoins, []);
+  await page.click('[data-tab=case]'); await page.click('[data-action=switch-room]'); await page.click('#confirm-accept');
+  await page.waitForSelector('#join-name');
+  let reportRecovery, releaseRecovery, holdRecovery = true;
+  const recoveryStarted = new Promise(resolve => {reportRecovery = resolve;});
+  const recoveryReleased = new Promise(resolve => {releaseRecovery = resolve;});
+  await page.route(`**/api/rooms/${code}/state`, async route => {
+    if (!holdRecovery) return route.continue();
+    holdRecovery = false; const response = await route.fetch(); reportRecovery(); await recoveryReleased;
+    return route.fulfill({response});
+  });
+  await page.fill('#join-code', code); await page.fill('#join-name', 'Recovered'); await page.click('#join-form button');
+  await recoveryStarted; await page.selectOption('#language', 'en-GB'); releaseRecovery();
+  await page.waitForSelector('#question');
+  await page.waitForFunction(() => !sessionStorage.getItem('shift-pending') && !sessionStorage.getItem('shift-language-pending'));
+  assert.equal(await page.locator('#language').inputValue(), 'en-GB', 'pending-entry choice wins over original PT body');
+  assert.equal(await page.locator('#transcript .b.me').count(), 2);
+  assert.deepEqual(recoveredJoins, []);
+
+  assert.deepEqual(errors, []);
+  const blocked = await browser.newContext();const blockedPage = await blocked.newPage();
+  await blockedPage.addInitScript(() => Object.defineProperty(window, 'localStorage', {get() {throw new Error('blocked');}}));
+  await blockedPage.goto(server.origin); await blockedPage.selectOption('#language', 'pt-BR');
+  assert.equal(await blockedPage.locator('[data-entry=create]').textContent(), 'Nova sala');
+  console.log('Browser language: persistence, isolated players, pending reply, draft/caret, blocked storage and 320px passed.');
+} finally { await browser?.close(); await server.close(); }

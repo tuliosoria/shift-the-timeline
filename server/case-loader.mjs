@@ -1,3 +1,4 @@
+import {validateTranslations} from './case-locales.mjs';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -77,4 +78,41 @@ export function validateCase({caseData,catalog}={}) {
   if(Buffer.byteLength(serialized)>150_000)invalid('caseData','content exceeds 150000 bytes');
   return {caseData:{...caseData,version:`${caseData.version??'v1'}:${createHash('sha256').update(serialized).digest('hex')}`},catalog};
 }
-export async function loadCase(env=process.env){if(!env.SHIFT_CASE_FILE)throw new Error('SHIFT_CASE_FILE is required; no public demo is loaded automatically');const data=await import(pathToFileURL(resolve(env.SHIFT_CASE_FILE)));return validateCase({caseData:data.TRAIN_CASE??data.caseData,catalog:data.CASES??data.catalog});}
+// A library carries raw authoring data. Validate each raw revision exactly once so legacy
+// room pins remain identical to the single-case loader's original content hash.
+export function validateCaseLibrary(input) {
+  if (!input?.cases) {const data=validateCase(input);const registry={current:new Map([[data.caseData.id,data.caseData]]),revisions:new Map([[`${data.caseData.id}@${data.caseData.version}`,data.caseData]])};return {...data,translations:validateTranslations(input?.translations,registry)};}
+  object(input,'library');array(input.cases,'library.cases');
+  if(input.cases.length<1||input.cases.length>20)invalid('library.cases','expected 1–20 current cases');
+  const archived=input.archivedCases??[];array(archived,'library.archivedCases');
+  if(archived.length>40)invalid('library.archivedCases','expected at most 40 archived revisions');
+  const current=new Map(), revisions=new Map();
+  for(const raw of input.cases){
+    const {caseData}=validateCase({caseData:raw,catalog:input.catalog});
+    if(current.has(caseData.id))invalid('library.cases','expected unique current case IDs');
+    current.set(caseData.id,caseData);revisions.set(`${caseData.id}@${caseData.version}`,caseData);
+  }
+  for(const raw of archived){
+    // Archived revisions need not be offered to new rooms.
+    const {caseData}=validateCase({caseData:raw,catalog:[{id:raw?.id,title:raw?.title,available:true}]});
+    const key=`${caseData.id}@${caseData.version}`;
+    if(revisions.has(key))invalid('library.archivedCases','expected unique revisions');
+    revisions.set(key,caseData);
+  }
+  for(const entry of input.catalog)if(entry.available&&!current.has(entry.id))invalid('catalog','available entry has no current case');
+  const defaultId=input.defaultCaseId??input.cases[0].id;
+  if(!current.has(defaultId))invalid('library.defaultCaseId','expected a current case');
+  let serialized;
+  try{serialized=JSON.stringify(input);}catch{invalid('library','expected JSON-serializable content');}
+  if(Buffer.byteLength(serialized)>2_000_000)invalid('library','content exceeds 2000000 bytes');
+  return {caseData:current.get(defaultId),catalog:input.catalog,registry:{current,revisions},translations:validateTranslations(input.translations,{current,revisions})};
+}
+export function caseForRoom({caseData,registry},room) {
+  if(!registry)return room.caseId===caseData.id&&room.caseVersion===caseData.version?caseData:null;
+  return registry.revisions.get(`${room.caseId}@${room.caseVersion}`)??null;
+}
+export async function loadCase(env=process.env){
+  if(!env.SHIFT_CASE_FILE)throw new Error('SHIFT_CASE_FILE is required; no public demo is loaded automatically');
+  const data=await import(pathToFileURL(resolve(env.SHIFT_CASE_FILE)));
+  return validateCaseLibrary(data.caseLibrary??{caseData:data.TRAIN_CASE??data.caseData,catalog:data.CASES??data.catalog,translations:data.translations});
+}

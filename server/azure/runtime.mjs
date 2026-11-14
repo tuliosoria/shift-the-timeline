@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {readAzureConfig} from './config.mjs';
 import {startupStep} from './diagnostics.mjs';
 import {releaseResponse} from './release.mjs';
-import {validateCase} from '../case-loader.mjs';
+import {validateCaseLibrary} from '../case-loader.mjs';
 import {DurableGame} from '../persistent-game.mjs';
 import {Sessions} from '../sessions.mjs';
 import {createRateLimiter} from '../limits.mjs';
@@ -25,15 +25,18 @@ async function packageDigest(caseFile){
 }
 export async function readPinnedCase(config,notice=console.warn) {
  const size=(await stat(config.caseFile)).size;
- if(size>200000||size<1)throw Object.assign(new Error('Case artifact unavailable.'),{code:'SHIFT_CASE_SIZE'});
+ if(size>2_000_000||size<1)throw Object.assign(new Error('Case artifact unavailable.'),{code:'SHIFT_CASE_SIZE'});
  const bytes=await readFile(config.caseFile);
  const digest=createHash('sha256').update(bytes).digest('hex');
- if(bytes.length>200000)throw Object.assign(new Error('Case integrity mismatch.'),{code:'SHIFT_CASE_INTEGRITY'});
+ if(bytes.length>2_000_000)throw Object.assign(new Error('Case integrity mismatch.'),{code:'SHIFT_CASE_INTEGRITY'});
  if(digest!==config.caseHash){
   if(digest!==await packageDigest(config.caseFile))throw Object.assign(new Error('Case integrity mismatch.'),{code:'SHIFT_CASE_INTEGRITY'});
   notice(startupNotice('case_pin_superseded'));
  }
- return validateCase(JSON.parse(bytes.toString('utf8')));
+ let input;
+ try{input=JSON.parse(bytes.toString('utf8'));}catch{throw new SyntaxError('Invalid case artifact JSON.');}
+ if(!input.cases&&size>200000)throw Object.assign(new Error('Case artifact unavailable.'),{code:'SHIFT_CASE_SIZE'});
+ return validateCaseLibrary(input);
 }
 export async function createAzureRuntime({env=process.env,store,loadCaseImpl=readPinnedCase,fetchImpl=fetch,now=Date.now,notice=console.warn}) {
  const config=await startupStep('config',()=>readAzureConfig(env));

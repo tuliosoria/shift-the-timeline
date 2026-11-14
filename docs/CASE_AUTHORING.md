@@ -83,3 +83,10 @@ Repeated questions and topics are allowed and consume a question like any other 
 understanding. When AI voices the answers it may only echo the case and unlock
 deductions of the suspect being interviewed; it never decides the truth or the
 outcome, and canonical answers are the fallback.
+
+For multiple cases, pinned revisions, private export and Azure packaging, see
+[CASE_LIBRARY.md](CASE_LIBRARY.md).
+
+For EN/PT-BR authoring, use the complete text-only sidecar contract in
+[CASE_LIBRARY.md](CASE_LIBRARY.md#individual-languages-and-translation-revisions).
+Keep all translations and linguistic review notes under ignored `private/`.

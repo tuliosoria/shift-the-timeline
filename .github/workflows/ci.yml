@@ -128,6 +128,13 @@ jobs:
           tenant-id: ${{ vars.SHIFT_AZURE_TENANT_ID }}
           subscription-id: ddb0b48c-aa74-4420-bf1b-49a3f7eaa970
           enable-AzPSSession: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Hydrate pinned private case library
+        run: |
+          digest="$(sha256sum release/azure-release.zip | cut -d ' ' -f1)"
+          python scripts/azure-private-case.py --artifact release/azure-release.zip --commit "$GITHUB_SHA" --sha256 "$digest" --manifest config/private-case-release.json --output release/azure-private-release.zip
       # Temporary read-only diagnosis under the existing exact-main deployment identity.
       # A denied read is reported without raw errors; no permissions are added.
       - name: Diagnose AI settings without exposing credentials
@@ -137,5 +144,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           test "$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)" = "$GITHUB_SHA"
-          digest="$(sha256sum release/azure-release.zip | cut -d ' ' -f1)"
-          python scripts/azure-ci-deploy.py --artifact release/azure-release.zip --commit "$GITHUB_SHA" --sha256 "$digest"
+          digest="$(sha256sum release/azure-private-release.zip | cut -d ' ' -f1)"
+          python scripts/azure-ci-deploy.py --artifact release/azure-private-release.zip --commit "$GITHUB_SHA" --sha256 "$digest"
+      - name: Remove private runner artifact
+        if: always()
+        run: rm -f release/azure-private-release.zip

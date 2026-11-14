@@ -17,7 +17,7 @@ function target(room,job,now){if(!room||room.expiresAt<=now||room.createdAt+DAY<
 // A reply still lands after its turn closed or advanced; it only needs the question to be unresolved.
 function current(room,job,now){const t=target(room,job,now);return t?.message.status==='pending'?t:null;}
 // The job keeps the case's deductions for this suspect, so any process holding only the store can settle it.
-function scopeFor(caseData,suspectId){return {deductions:(caseData.deductions??[]).filter(d=>d.sources.some(s=>s.suspectId===suspectId)).map(d=>({id:d.id,sources:d.sources.filter(s=>s.suspectId===suspectId)}))};}
+function scopeFor(caseData,suspectId){return {deductions:(caseData.deductions??[]).filter(d=>d.sources.some(s=>s.suspectId===suspectId)).map(d=>({id:d.id,...(typeof d.text==='string'?{text:d.text}:{}),sources:d.sources.filter(s=>s.suspectId===suspectId)}))};}
 
 // Only explicitly injected by tests/development. Production runtime does not enable this repository.
 export class AiJobs {
@@ -35,13 +35,13 @@ export class AiJobs {
   const now=this.now(),date=new Date(now),day=date.toISOString().slice(0,10),month=day.slice(0,7);
   const scopes=[{key:`AIBUDGET#ROOM#${room.code}`,max:this.policy.roomMicroUsd,expiresAt:room.createdAt+8*DAY},{key:`AIBUDGET#DAY#${day}`,max:this.policy.dayMicroUsd,expiresAt:Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()+8)},{key:`AIBUDGET#MONTH#${month}`,max:this.policy.monthMicroUsd,expiresAt:Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,8)}];
   const id=createHash('sha256').update(`ai:${receiptKey}`).digest('hex'),deadline=now+30000,expiresAt=room.createdAt+DAY;
-  const job={kind:'job',id,code:room.code,playerId:player.id,round:interview.round,messageId:message.id,suspectId:interview.suspectId,caseVersion:room.caseVersion,scope,model:this.policy.model,rates:{inputRate:this.policy.inputRate,outputRate:this.policy.outputRate},status:'pending',createdAt:now,deadline,expiresAt,dueAt:deadline,reservedMicroUsd:this.reserve,budgetKeys:scopes.map(s=>s.key)};
+  const job={kind:'job',locale:message.locale??'en-GB',id,code:room.code,playerId:player.id,round:interview.round,messageId:message.id,suspectId:interview.suspectId,caseVersion:room.caseVersion,scope,model:this.policy.model,rates:{inputRate:this.policy.inputRate,outputRate:this.policy.outputRate},status:'pending',createdAt:now,deadline,expiresAt,dueAt:deadline,reservedMicroUsd:this.reserve,budgetKeys:scopes.map(s=>s.key)};
   let jobWrite;
   try{
    const history=collectConversationHistory({room,player,interview,message});
    const earnedIds=(player.deductions??[]).map(d=>d.id).filter(id=>allowedIds.includes(id));
    jobWrite=fitConversationHistory(history,history=>{
-    const context={...buildChatContext({caseData,suspectId:interview.suspectId,history,question:message.question,currentRound:interview.round,earnedIds}),allowedIds};
+    const context={...buildChatContext({caseData,locale:job.locale,suspectId:interview.suspectId,history,question:message.question,currentRound:interview.round,earnedIds}),allowedIds};
     const candidate=write(jobKey(id),null,{...job,context});
     // Measure the actual Item, including indexes, duplicated keys and escaped
     // nested JSON. Leave 1 KiB for lease/fence/start/settlement/recovery fields

@@ -57,7 +57,7 @@ try {
   let catalogueReached, releaseCatalogue;
   const catalogueStarted = new Promise(resolve => { catalogueReached = resolve; });
   const catalogueGate = new Promise(resolve => { releaseCatalogue = resolve; });
-  await entryPage.route('**/api/cases', async route => { catalogueReached(); await catalogueGate; return route.continue(); });
+  await entryPage.route(url => url.pathname === '/api/cases', async route => { catalogueReached(); await catalogueGate; return route.continue(); });
   await entryPage.goto(`${server.origin}/#join=${b}`); await catalogueStarted;
   assert.equal(await entryPage.inputValue('#join-code'), b);
   await entryPage.fill('#join-code', c); await entryPage.fill('#join-name', 'Typed before loading');
