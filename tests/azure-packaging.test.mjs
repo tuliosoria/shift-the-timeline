@@ -21,3 +21,21 @@ test('packaged Azure maintenance server is runnable and refuses game access',asy
   assert.equal(config.scripts.start,'node server/azure-index.mjs');
  }finally{await new Promise(resolve=>server.close(resolve));}
 });
+
+test('explicit JSON library packages all cases, preserves raw hashes and never bundles private stories into web/server assets',async()=>{
+ const {execFile}=await import('node:child_process');const {promisify}=await import('node:util');const {mkdtemp,writeFile,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const {join}=await import('node:path');const {createHash}=await import('node:crypto');
+ const {caseLibrary}=await import('./fixtures/case-library.mjs');const {readPinnedCase}=await import('../server/azure/runtime.mjs');const {validateCaseLibrary}=await import('../server/case-loader.mjs');const {PUBLIC_ASSETS}=await import('../server/public-assets.mjs');
+ const dir=await mkdtemp(join(tmpdir(),'shift-library-package-'));const file=join(dir,'cases.json'),run=promisify(execFile);
+ try{
+  const input=structuredClone(caseLibrary);for(const c of input.cases)c.privateTestPadding='SYNTHETIC_PRIVATE_SENTINEL_'.repeat(1400);
+  const bytes=JSON.stringify(input);assert.ok(Buffer.byteLength(bytes)>200000);await writeFile(file,bytes);
+  await run(process.execPath,['scripts/package-azure.mjs','--case-bundle',file,'--release-commit','a'.repeat(40)]);
+  const packed=await readFile(new URL('../build/azure/private/case.json',import.meta.url));assert.equal(packed.toString(),bytes);
+  const manifest=JSON.parse(await readFile(new URL('../build/azure/case-manifest.json',import.meta.url),'utf8'));assert.equal(manifest.case,'private-library');assert.equal(manifest.sha256,createHash('sha256').update(packed).digest('hex'));
+  const data=await readPinnedCase({caseFile:new URL('../build/azure/private/case.json',import.meta.url).pathname,caseHash:manifest.sha256});assert.equal(data.registry.current.size,6);assert.equal(data.caseData.version,validateCaseLibrary(input).caseData.version);
+  for(const path of ['server/azure-index.mjs',...PUBLIC_ASSETS.map(a=>'public/'+a.file)])assert.ok(!(await readFile(new URL('../build/azure/'+path,import.meta.url))).includes(Buffer.from('SYNTHETIC_PRIVATE_SENTINEL_')),`Private marker in ${path}`);
+  for(const args of [['--case-bundle'],['--case-bundle',file,'--case-bundle',file]])await assert.rejects(()=>run(process.execPath,['scripts/package-azure.mjs',...args]));
+  await writeFile(file,'PRIVATE_MALFORMED_CONTENT');await assert.rejects(()=>run(process.execPath,['scripts/package-azure.mjs','--case-bundle',file]),e=>!e.stderr.includes('PRIVATE_MALFORMED_CONTENT')&&e.stderr.includes('Invalid case bundle'));
+  await writeFile(file,'x'.repeat(2_000_001));await assert.rejects(()=>run(process.execPath,['scripts/package-azure.mjs','--case-bundle',file]),/size limit/);
+ }finally{await rm(dir,{recursive:true,force:true});}
+});

@@ -89,7 +89,7 @@ function render() {
   local.draftsPersistent = ui.persistent;
   const main = $('#main'), focus = captureFocus($('#app')), previousView = main.dataset.view;
   const keepScroll = main.dataset.view === view ? main.scrollTop : 0;
-  const entryValues = state ? {} : Object.fromEntries([...main.querySelectorAll('input[id]')].map(el => [el.id, el.value]));
+  const entryValues = state ? {} : Object.fromEntries([...main.querySelectorAll('input[id], select[id]')].map(el => [el.id, el.value]));
   const header = views.renderHeader(state, local);
   $('#header').innerHTML = header;
   $('#header').hidden = !header || view === 'transition';

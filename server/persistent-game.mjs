@@ -1,3 +1,4 @@
+import {caseForRoom} from './case-loader.mjs';
 import {createHash} from 'node:crypto';
 import {GameService,DomainError} from './game.mjs';
 import {ConflictError} from './storage/memory.mjs';
@@ -6,10 +7,10 @@ const HOUR=3_600_000;
 const hash=x=>createHash('sha256').update(x).digest('hex');
 function identifier(id){if(typeof id!=='string'||!/[\w-]{16,100}/.test(id)||!/^[\w-]+$/.test(id)||id.length>100)throw new DomainError('Invalid identifier.');}
 export class DurableGame {
- constructor({store,caseData,catalog,now=Date.now,ai=null}){this.store=store;this.caseData=caseData;this.catalog=catalog;this.now=now;this.ai=ai;}
+ constructor({store,caseData,catalog,registry,now=Date.now,ai=null}){this.store=store;this.caseData=caseData;this.catalog=catalog;this.registry=registry;this.now=now;this.ai=ai;}
  cases(){return this.catalog;}
- engine(room){const g=new GameService({caseData:this.caseData,catalog:this.catalog,now:this.now,deferAnswers:!!this.ai});if(room)g.rooms.set(room.code,room);return g;}
- async load(code){if(typeof code!=='string'||!/^[A-HJ-NP-Z2-9]{8}$/.test(code.toUpperCase()))throw new DomainError('Invalid room code.',404);const room=await this.store.getRoom(code.toUpperCase());if(!room||room.expiresAt<=this.now()||room.createdAt+24*HOUR<=this.now())throw new DomainError('Room not found or expired.',404);if(room.caseVersion!==this.caseData.version)throw new DomainError('Case version unavailable.',503);return room;}
+ engine(room){const g=new GameService({caseData:this.caseData,catalog:this.catalog,registry:this.registry,now:this.now,deferAnswers:!!this.ai});if(room)g.rooms.set(room.code,room);return g;}
+ async load(code){if(typeof code!=='string'||!/^[A-HJ-NP-Z2-9]{8}$/.test(code.toUpperCase()))throw new DomainError('Invalid room code.',404);const room=await this.store.getRoom(code.toUpperCase());if(!room||room.expiresAt<=this.now()||room.createdAt+24*HOUR<=this.now())throw new DomainError('Room not found or expired.',404);if(!caseForRoom(this,room))throw new DomainError('Case version unavailable.',503);return room;}
  async view(code,session){const room=await this.load(code);return this.engine(room).view(room.code,session);}
  async prior(key,fingerprint,session){const receipt=await this.store.getReceipt(key);if(!receipt)return null;if(receipt.fingerprint!==fingerprint)throw new DomainError('Request identifier reused with different data.',409);return {code:receipt.code,playerId:receipt.playerId,state:await this.view(receipt.code,session)};}
  async mutate({kind,code,session,id,payload,run}){
@@ -19,7 +20,7 @@ export class DurableGame {
    const prior=await this.prior(key,fingerprint,session);if(prior)return prior;
    const before=code?await this.load(code):null;const g=this.engine(before?structuredClone(before):null);
    let result;try{result=run(g,before);}catch(error){const concurrent=await this.prior(key,fingerprint,session);if(concurrent)return concurrent;throw error;}const room=g.rooms.get(result.code??code?.toUpperCase());
-   room.caseVersion=this.caseData.version;room.schemaVersion=1;room.expiresAt=kind==='act'&&payload.type==='heartbeat'?before.expiresAt:Math.min(room.createdAt+24*HOUR,this.now()+6*HOUR);
+   room.schemaVersion=before?.schemaVersion??1;room.expiresAt=kind==='act'&&payload.type==='heartbeat'?before.expiresAt:Math.min(room.createdAt+24*HOUR,this.now()+6*HOUR);
    // Entries are receipt-scoped in durable storage, never persisted bearer tokens.
    const p=room.players.find(p=>p.token===session);if(!p)throw new Error('Missing participant after command');
    for(const player of room.players)if(Buffer.byteLength(JSON.stringify({...player,requests:[...player.requests]}))>120_000)throw new DomainError('Game data limit reached.',413);
@@ -34,8 +35,8 @@ export class DurableGame {
  async admit({room,player,before,receiptKey}){
   const interview=player.interviews.find(i=>i.round===before.round),message=interview?.messages.at(-1);
   if(message?.status!=='pending')return [];
-  const writes=this.ai?await this.ai.prepareQuestion({room,player,interview,message,receiptKey,caseData:this.caseData}):[];
-  if(!writes.length)resolveCanonical(this.caseData,player,interview,message);
+  const writes=this.ai?await this.ai.prepareQuestion({room,player,interview,message,receiptKey,caseData:caseForRoom(this,room)}):[];
+  if(!writes.length)resolveCanonical(caseForRoom(this,room),player,interview,message);
   return writes;
  }
  async create(session,name,caseId,id){return this.mutate({kind:'create',session,id,payload:{name,caseId},run:g=>{const created=g.create(name,caseId,id);g.rooms.get(created.code).players[0].token=session;return created;}});}
