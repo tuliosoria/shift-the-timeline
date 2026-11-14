@@ -340,3 +340,34 @@ that no active rooms/jobs require an older revision before release or rollback.
 Any later requested cleanup needs the concrete aggregate inventory, exact target,
 recovery assessment and separately confirmed execution scope. Never delete or
 invalidate rooms merely to make this release work.
+
+## Sanitised private-source failure reasons
+
+The private-source helper reports fixed `event`, `stage` and `reason` fields.
+Its dedicated read-only CLI runner retains at most 64 KiB across stdout/stderr,
+uses the existing 120-second deadline, and never prints captured output, raw
+exception text, tokens, URLs/SAS or case values. It runs the same container show,
+blob show and conditional download commands as before, with Entra login. No new
+Azure call, retry, identity, permission or workflow step is added. The central
+Azure deployment helper is unchanged.
+
+Recognised Azure error codes map to authentication, authorisation, not-found or
+precondition categories. Bare HTTP failures remain HTTP categories: for example,
+`http_forbidden` does not prove Azure RBAC denial and may originate from a proxy.
+Known transport exception types map to `network_error`; unrecognised command
+failures remain `cli_failed`/`unknown`. These categories are diagnostic evidence,
+not authority to grant permissions or weaken access checks.
+
+A successful read with `publicAccess` equal to `blob` or `container` reports
+`container_public`. Missing fields, unsupported values and malformed structures
+report `unexpected_shape`. Only explicit JSON `null` is accepted as private;
+absence remains blocked. All failures still stop before the deployment helper.
+
+The failed job 132580967826 identified runner image `ubuntu24/20261111.370`.
+Its [official software manifest](https://github.com/actions/runner-images/blob/ubuntu24/20261111.370/images/ubuntu/Ubuntu2404-Readme.md)
+records Azure CLI 2.92.0; this is inferred from the image, not a direct `az --version`
+measurement. That release's [command registration](https://github.com/Azure/azure-cli/blob/azure-cli-2.92.0/src/azure-cli/azure/cli/command_modules/storage/commands.py#L402)
+and [container transformer](https://github.com/Azure/azure-cli/blob/azure-cli-2.92.0/src/azure-cli/azure/cli/command_modules/storage/_transformers.py#L306)
+explicitly produce `properties.publicAccess`, including null for private access.
+No output-format bug was established. The earlier stage-only log cannot identify
+which failure occurred; do not retroactively infer its cause from these changes.
