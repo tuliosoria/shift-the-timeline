@@ -20,7 +20,7 @@ api = createApi({game, sessions: new Sessions({store, secure: false}), allowedOr
 let browser, aiServer;
 try {
   browser = await launchBrowser();
-  for (const width of [320, 390]) {
+  for (const [width, locale] of [[320, 'en-GB'], [390, 'pt-BR']]) {
     const context = await browser.newContext({viewport: {width, height: 740}, reducedMotion: 'reduce'});
     const page = await context.newPage(), errors = [], mutations = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -69,6 +69,24 @@ try {
     assert.equal(mutations.filter(m => m.type === 'select').length, 1);
     assert.equal(mutations.find(m => m.type === 'select').suspectId, 'suspect-1');
     assert.equal(mutations.filter(m => m.type === 'ask').length, 0);
+    await page.selectOption('#language', locale);
+    await page.waitForFunction(() => !sessionStorage.getItem('shift-language-pending'));
+    assert.match(await page.locator('.suggestion-hint').textContent(), locale === 'pt-BR' ? /opcionais.*não são enviadas/ : /optional.*not sent/);
+    await page.locator('.chip').first().click();
+    assert.ok(await page.inputValue('#question'));
+    assert.equal(mutations.filter(m => m.type === 'ask').length, 0, 'a suggestion only fills a draft');
+    for (let question = 0; question < 3; question++) {
+      await page.fill('#question', `Synthetic question ${question}?`);
+      await page.click('.send');
+      await page.waitForFunction(count => document.querySelectorAll('#transcript .b.me').length === count && !document.querySelector('.typing'), question + 1);
+    }
+    assert.match(await page.locator('.done').textContent(), locale === 'pt-BR' ? /Continuar.*não envia/ : /Continue.*does not send/);
+    assert.equal(await page.locator('#question').count(), 0);
+    await page.click('[data-action=leave-chat]');
+    await page.locator('.waiting').waitFor();
+    assert.match(await page.locator('.waiting').textContent(), locale === 'pt-BR' ? /quem disse.*hipóteses.*automaticamente/ : /who said.*hypotheses.*automatically/);
+    assert.equal(mutations.filter(m => m.type === 'ask').length, 3, 'Continue never sends a fourth question');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     assert.deepEqual(errors, []);
     await context.close();
   }

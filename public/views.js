@@ -142,7 +142,7 @@ export function renderBriefing(state, local) {
 <ol class="rules">
 <li><b>${t("Beat the clock.")}</b> ${r * hours} ${t("story hours, split into")} ${r} ${t("turns. This is not a real-time countdown.")}</li>
 <li><b>${t("Split up.")}</b> ${t("Each turn, each player interviews one person. Use all")} ${q} ${t("questions to finish your interview. Choose different suspects to cover more ground.")}</li>
-<li><b>${t("Compare notes.")}</b> ${t("Useful answers unlock deductions in your private notebook. Tell your team what you learn; your notes stay with you between turns.")}</li>
+<li><b>${t("Compare notes.")}</b> ${t("Useful answers unlock deductions in your private notebook. Tell your team who said what, and separate evidence from your hypotheses. Your notes stay with you between turns.")}</li>
 <li><b>${t("Move on together.")}</b> ${t("When everyone finishes their interview, the next turn starts automatically.")}</li>
 <li><b>${t("Change the future.")}</b> ${t("Discuss your evidence, then each summon the suspect you believe is responsible. Everyone must choose correctly for a full team victory.")}</li>
 </ol>
@@ -218,7 +218,7 @@ export function renderTranscript(state, local) {
 }
 
 export const chatEnded = (state, local) => { const {interview, pending} = chatParts(state, local); return !!interview?.closed && !pending; };
-const chatDone = () => `<div class="done"><p>${t("That's all your questions for this turn.")}</p><button type="button" class="btn ghost" data-action="leave-chat">${t("Continue")}</button></div>`;
+const chatDone = () => `<div class="done"><p>${t("That's all your questions for this turn. Continue does not send a question.")}</p><button type="button" class="btn ghost" data-action="leave-chat">${t("Continue")}</button></div>`;
 
 export const CHAT_DONE = chatDone();
 
@@ -252,7 +252,7 @@ export function renderChatFooter(state, local) {
   const victim = String(state.case?.victim ?? '').split(',')[0].trim();
   const base = getTopicLabels(getLocale());
   const labels = victim ? {...base, relationship: getLocale() === 'pt-BR' ? `Você conhece ${victim}?` : `Do you know ${victim}?`, motive: getLocale() === 'pt-BR' ? `Você teve desentendimentos com ${victim} recentemente?` : `Have you had any disagreements with ${victim} recently?`} : base;
-  return `<p class="suggestion-hint">${t("Suggestions fill an empty draft. Review, then send.")}</p><div class="chips" role="group" aria-label="${t("Suggested question drafts")}">${Object.values(labels).map(label => `<button type="button" class="chip" data-chip="${esc(label)}" ${hold || String(local?.draft ?? '').length ? 'disabled' : ''}>${esc(label)}</button>`).join('')}</div>
+  return `<p class="suggestion-hint">${t("Suggestions are optional drafts, not sent questions. Edit if you like, then send.")}</p><div class="chips" role="group" aria-label="${t("Suggested question drafts")}">${Object.values(labels).map(label => `<button type="button" class="chip" data-chip="${esc(label)}" ${hold || String(local?.draft ?? '').length ? 'disabled' : ''}>${esc(label)}</button>`).join('')}</div>
 <div class="question-reminder" role="status" aria-live="polite" hidden></div>
 <form id="question-form" class="composer"><label class="visually-hidden" for="question">${t("Your question")}</label><textarea id="question" name="question" rows="1" maxlength="300" placeholder="${t("Ask")} ${esc(firstName(s?.name))} ${t("anything…")}" enterkeyhint="send" autocomplete="off" ${interview.closed ? 'readonly' : ''}>${esc(local?.draft)}</textarea><button type="button" class="send" aria-label="${t("Send question")}" ${hold || !String(local?.draft ?? '').trim() ? 'disabled' : ''}>↑</button></form>`;
 }
@@ -277,7 +277,7 @@ export function renderWaiting(state, local) {
 <p class="eyebrow">${t("Turn")} ${state.round} ${t("of")} ${rounds(state)} · ${esc(state.clock?.time)}</p>
 <h1 class="title">${t("Your turn is done.")}</h1>
 <p class="sub">${waiting.length ? `${t("Waiting for:")} ${esc(waiting.join(', '))}` : t("Everyone has finished. The clock is moving…")}</p>
-<p class="hint">${t("Tell the table what you found while you wait.")}</p>
+<p class="hint">${t("Tell the table who said what, and separate evidence from your hypotheses. The next stage starts automatically when everyone finishes.")}</p>
 <div class="cta">
 <button type="button" class="btn ghost" data-tab="deductions">${t("Review your deductions (")}${count})</button>
 ${state.me.host ? `<button type="button" class="btn danger" data-action="advance" data-submit>${t("Advance now")}</button><p class="hint">${t("Anyone still talking loses their remaining questions.")}</p>` : ''}

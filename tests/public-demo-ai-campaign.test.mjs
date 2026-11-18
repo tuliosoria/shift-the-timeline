@@ -45,18 +45,18 @@ test('three-player public-demo campaign answers every adversarial question priva
      // Each reply is made unique so a peer's own transcript can never be mistaken for a leak.
      const attack=attacks[questions%attacks.length],sample={...attack,reply:`${attack.reply} [question ${questions+1}]`},command={type:'ask',round,question:sample.question,id:id()};
      const [first,replay]=await Promise.all([act(p,command),act(p,command)]);assert.equal(first.body.version,replay.body.version);questions++;
-     const message=first.body.me.interviews.find(i=>i.round===round).messages[q];assert.equal(message.status,'pending');
+     const interview=first.body.me.interviews.find(i=>i.round===round),message=interview.messages[q];assert.equal(message.status,'pending');
      const job=[...store.ai.values()].find(x=>x.kind==='job'&&x.messageId===message.id);assert.ok(job);
      const earnedIds=[...unlockedBy[p]].filter(x=>allowed.includes(x)),input=JSON.parse(job.context.input);
      // Check the admitted snapshot independently of the prompt builder: only this
      // player's settled exchanges and scoped awards may accompany this question.
-     assert.deepEqual(input.history,history);assert.equal(input.question,sample.question);
+     assert.equal(input.opening,interview.opening);assert.deepEqual(input.history,history);assert.equal(input.question,sample.question);
      assert.deepEqual(input.conversation,{currentRound:round,historyMayBeIncomplete:true});
      assert.deepEqual(input.previouslyEarnedDeductionIds??[],earnedIds);
      assert.deepEqual(job.context.allowedIds,allowed,'earned cards do not narrow server settlement scope');
      const awardLine=job.context.instructions.split('\n').find(line=>line.startsWith('Listed deductions: '));
      assert.deepEqual(JSON.parse(awardLine.slice('Listed deductions: '.length)).map(d=>d.id),allowed.filter(x=>!earnedIds.includes(x)));
-     expected={sample,suspectId:suspect.id,unlocked:[allowed[0],'forged-deduction-id',foreign].filter(Boolean),context:{...buildChatContext({caseData,suspectId:suspect.id,history,question:sample.question,currentRound:round,earnedIds}),allowedIds:allowed}};
+     expected={sample,suspectId:suspect.id,unlocked:[allowed[0],'forged-deduction-id',foreign].filter(Boolean),context:{...buildChatContext({caseData,suspectId:suspect.id,opening:interview.opening,history,question:sample.question,currentRound:round,earnedIds}),allowedIds:allowed}};
      assert.deepEqual(job.context,expected.context);await runtime.tick();
      const mine=await get(code,cookies[p]),updated=mine.me.interviews.find(i=>i.round===round).messages[q];
      if(sample.fallback){assert.equal(updated.status,'canonical');assert.equal(updated.reply,suspect.responses[inferTopic(sample.question)]);}
