@@ -41,7 +41,7 @@ export class AiJobs {
    const history=collectConversationHistory({room,player,interview,message});
    const earnedIds=(player.deductions??[]).map(d=>d.id).filter(id=>allowedIds.includes(id));
    jobWrite=fitConversationHistory(history,history=>{
-    const context={...buildChatContext({caseData,locale:job.locale,suspectId:interview.suspectId,history,question:message.question,currentRound:interview.round,earnedIds}),allowedIds};
+    const context={...buildChatContext({caseData,locale:job.locale,suspectId:interview.suspectId,opening:interview.opening,history,question:message.question,currentRound:interview.round,earnedIds}),allowedIds};
     const candidate=write(jobKey(id),null,{...job,context});
     // Measure the actual Item, including indexes, duplicated keys and escaped
     // nested JSON. Leave 1 KiB for lease/fence/start/settlement/recovery fields

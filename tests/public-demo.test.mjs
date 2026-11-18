@@ -21,10 +21,11 @@ test('prediction mentions 24 hours and no longer mentions fixed accounts',()=>{
  assert.match(caseData.prediction,/\b(24|twenty-four) hours\b/i);assert.match(caseData.prediction,/four turns of six hours/i);
  assert.doesNotMatch(caseData.prediction,/fixed accounts|does not unlock new testimony/i);
 });
-// The job record store holds 16 KB; the context must leave room for history and metadata.
-test('every suspect chat context fits the job record budget',()=>{
+// The provider context cap is 20 KB. Admission/storage headroom and history fitting
+// are exercised separately in conversation-history.test.mjs.
+test('every suspect opening and ordinary question fit the provider context budget',()=>{
  const question='Q'.repeat(300);
- for(const s of caseData.suspects){const {instructions,input}=buildChatContext({caseData,suspectId:s.id,history:[],question});assert.ok(Buffer.byteLength(instructions+input)<=12000,s.id);}
+ for(const s of caseData.suspects){const {instructions,input}=buildChatContext({caseData,suspectId:s.id,opening:s.opening,history:[],question});assert.ok(Buffer.byteLength(instructions+input)<=20000,s.id);}
 });
 for(const route of reviewRoutes)test(`authored route is mechanically available without AI: ${route.name}`,()=>{
  assert.ok(route.interviews.length<=6);assert.ok(route.interviews.length>=2);const unique=new Set(route.interviews.map(i=>i.suspectId));assert.equal(unique.size,route.interviews.length);
