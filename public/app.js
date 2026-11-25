@@ -32,7 +32,7 @@ let roomEpoch = 0, requestedInvite = invitationCode(location.hash);
 let session = store.get(SESSION), pending = store.get(PENDING), state = null, busy = false, lastVersion = -1, confirmation = null, lastHeartbeat = 0;
 // `reading` keeps a finished chat on screen until the player moves on, even after the turn
 // itself has moved on (see views.screenFor): the transition waits for it.
-const local = {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, entry: 'create', cases: [], invite: ''};
+const local = {briefingSeen: false, lastSeenRound: 0, tab: 'investigate', selected: null, draft: '', reading: null, entry: 'create', cases: [], invite: '', startup: null};
 const LANGUAGE_PENDING = 'shift-language-pending';
 let localeIntent = store.get(LANGUAGE_PENDING), renderedLocale = getLocale();
 if (!(localeIntent?.entryId && pending?.entry && localeIntent.entryId === pending.body?.requestId) && (!session || localeIntent?.code !== session.code || localeIntent?.player !== session.playerId)) localeIntent = null;
@@ -380,6 +380,7 @@ async function resumeRoom() {
 }
 
 const actions = {
+  'retry-startup': () => connectStartup(),
   retry: () => pending && run(pending),
   reset: () => resetSession(),
   'new-investigation': () => {
@@ -488,7 +489,7 @@ document.addEventListener('input', event => {
 });
 document.addEventListener('submit', event => {
   event.preventDefault();
-  if (busy || pending) return;
+  if (busy || pending || local.startup !== 'ready') return;
   const form = event.target, data = Object.fromEntries(new FormData(form));
   if (form.id === 'create-form') run({entry: true, path: '/api/rooms', body: {name: data.name, locale: getLocale(), caseId: data.caseId, requestId: newRequestId()}});
   if (form.id === 'join-form') {
@@ -515,7 +516,7 @@ $('#language').addEventListener('change', async event => {
   render();
   document.dispatchEvent(new Event('languagechange'));
   if (state) void flushLocale();
-  else {
+  else if (local.startup === 'ready') {
     try {
       const catalog = (await fetchJson(`/api/cases?locale=${wanted}`)).data;
       if (!state && getLocale() === wanted) { local.cases = catalog.cases; render(); }
@@ -544,7 +545,7 @@ function pollFailed(error) {
 }
 const currentPoll = source => !!session && source?.code === session.code && source.localEpoch === roomEpoch && !busy && !pending;
 const poller = pollLoop({
-  getState: () => (!session || busy || pending ? null : {...(state ?? {code: session.code, version: -1, me: {id: session.playerId}}), localEpoch: roomEpoch}),
+  getState: () => (local.startup !== 'ready' || !session || busy || pending ? null : {...(state ?? {code: session.code, version: -1, me: {id: session.playerId}}), localEpoch: roomEpoch}),
   onState: (next, source) => { if (currentPoll(source)) applyState(next); },
   onSuccess: source => { if (currentPoll(source) && noticeKind === 'connection') clearNotice(); },
   onError: (error, source) => { if (currentPoll(source)) pollFailed(error); },
@@ -558,17 +559,29 @@ setInterval(async () => {
   try { const beat = await command(session.code, {type: 'heartbeat'}); if (epoch === roomEpoch && !busy && !pending && beat?.version > lastVersion) applyState(beat); } catch {}
 }, 5000);
 
-render();
-try {
-  await fetchJson('/api/session', {body: {}});
-  const catalogLocale = getLocale();
-  let catalog = (await fetchJson(`/api/cases?locale=${catalogLocale}`)).data;
-  if (catalogLocale !== getLocale()) catalog = (await fetchJson(`/api/cases?locale=${getLocale()}`)).data;
-  local.cases = catalog.cases;
-  local.dialogueMode = catalog.dialogueMode;
+async function connectStartup() {
+  if (local.startup === 'connecting' || local.startup === 'ready') return;
+  local.startup = 'connecting';
   render();
-  if (local.invite) $('#join-name')?.focus();
+  try {
+    await fetchJson('/api/session', {body: {}});
+    const catalogLocale = getLocale();
+    let catalog = (await fetchJson(`/api/cases?locale=${catalogLocale}`)).data;
+    if (catalogLocale !== getLocale()) catalog = (await fetchJson(`/api/cases?locale=${getLocale()}`)).data;
+    if (!Array.isArray(catalog.cases)) throw Error('Incomplete case catalogue');
+    local.cases = catalog.cases;
+    local.dialogueMode = catalog.dialogueMode;
+  } catch {
+    local.startup = 'failed';
+    render();
+    return;
+  }
+  local.startup = 'ready';
+  render();
+  if (local.invite && [$('#main'), document.body].includes(document.activeElement)) $('#join-name')?.focus();
   if (pending) await run(pending);
   else if (session) poller.now();
   else offerInvitation();
-} catch { notice("The server is unavailable. Reload when your connection returns.", true); }
+}
+
+await connectStartup();
