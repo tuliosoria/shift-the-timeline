@@ -97,20 +97,25 @@ export function renderTabBar(state, local) {
 
 export function renderLanding(state, local) {
   const entry = local.entry === 'join' ? 'join' : 'create', cases = (local.cases ?? []).filter(c => c.available);
+  const launching = local.startup === 'connecting' || local.startup === 'failed';
+  const startupNotice = local.startup === 'failed'
+    ? `<p class="hint" role="alert">${t("Could not connect to the Bureau.")}</p><button class="btn ghost" type="button" data-action="retry-startup">${t("Retry connection")}</button>`
+    : launching ? `<p class="hint" role="status">${t("Connecting to the Bureau…")}</p>` : '';
   const caseField = cases.length > 1
     ? `<label for="case-choice">${t("Case")}</label><select id="case-choice" name="caseId">${cases.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('')}</select>`
     : `<input type="hidden" name="caseId" value="${esc(cases[0]?.id)}">`;
   const nameField = id => `<label for="${id}">${t("Your codename")}</label><input id="${id}" name="name" required maxlength="24" autocomplete="nickname" placeholder="${t("What should the table call you?")}">`;
   const form = entry === 'create'
     ? `<form id="create-form" class="entry">${nameField('create-name')}${caseField}<button class="btn" data-submit ${cases.length ? '' : 'disabled data-locked="true"'}>${t("Open the case →")}</button></form>`
-    : `<form id="join-form" class="entry">${nameField('join-name')}<label for="join-code">${t("Room code")}</label><input id="join-code" name="code" value="${esc(local.invite)}" required minlength="8" maxlength="8" pattern="[A-HJ-NP-Za-hj-np-z2-9]{8}" placeholder="ABCD2345" autocapitalize="characters" autocomplete="off" spellcheck="false"><button class="btn" data-submit>${t("Join the table →")}</button></form>`;
+    : `<form id="join-form" class="entry">${nameField('join-name')}<label for="join-code">${t("Room code")}</label><input id="join-code" name="code" value="${esc(local.invite)}" required minlength="8" maxlength="8" pattern="[A-HJ-NP-Za-hj-np-z2-9]{8}" placeholder="ABCD2345" autocapitalize="characters" autocomplete="off" spellcheck="false"><button class="btn" data-submit ${launching ? 'disabled data-locked="true"' : ''}>${t("Join the table →")}</button></form>`;
   return `<section class="screen landing">
 <div class="brand"><h1 class="wordmark">SHIFT</h1><p class="tagline">${t("The Timeline")}</p></div>
 <p class="lead">${t("A crime foretold. Someone dies in 24 hours.")}<br>${t("Find the killer before it happens.")}</p>
 <p class="table-guide">${t("3–4 players · one phone each.")}<br>${t("Play together and compare your discoveries out loud.")}</p>
 <div class="segmented" role="group" aria-label="${t("Room options")}"><button type="button" data-entry="create" aria-pressed="${entry === 'create'}">${t("New room")}</button><button type="button" data-entry="join" aria-pressed="${entry === 'join'}">${t("Join with a code")}</button></div>
 ${form}
-${local.resume ? `<button type="button" class="btn ghost" data-action="resume" data-submit>${t("Return to room")} ${esc(local.resume.code)}</button><p class="hint">${t("Reconnect to your previous seat on this browser, while the room is still available.")}</p>` : ''}
+${startupNotice}
+${local.resume ? `<button type="button" class="btn ghost" data-action="resume" data-submit ${launching ? 'disabled data-locked="true"' : ''}>${t("Return to room")} ${esc(local.resume.code)}</button><p class="hint">${t("Reconnect to your previous seat on this browser, while the room is still available.")}</p>` : ''}
 <p class="ai-notice">${esc(dialogueNotice(local.dialogueMode))}</p>
 </section>`;
 }
